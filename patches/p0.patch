@@ -1,3 +1,50 @@
+diff --git a/src/game/actor/actor.h b/src/game/actor/actor.h
+index cf65666..ce7b699 100644
+--- a/src/game/actor/actor.h
++++ b/src/game/actor/actor.h
+@@ -3,6 +3,8 @@
+ 
+ #include "common.h"
+ 
++struct EffectModel;
++
+ /*
+  * Shared actor types (types only: no prototypes, no externs, so any header can include it).
+  * The player (player_state.actor), the enemies (enemy_slots[].actor, boss_field_record.actor)
+@@ -48,8 +50,9 @@ typedef struct ActorBattle {
+     /* 0x12 */ u8 status_icon_ids[0x10]; /* Hud_StartActorStatusIndicator */
+     /* 0x22 */ s8 status_icon_timers[0x10];
+     /* 0x32 */ s8 status_effect_timers[0x12];
+-    /* 0x44 */ s32 status_effect_handles[4];
+-    /* 0x54 */ u8 pad54[0x84 - 0x54];
++    /* host pointers: this runtime record expands within its original gap */
++    struct EffectModel *status_effect_handles[4];
++    u8 pad68[0x84 - 0x68];
+     /* 0x84 */ u16 attack_power;
+     /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
+     /* 0x88 */ u16 defense; /* from ActorStats.defense */
+diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
+index b78bc53..100e6e8 100644
+--- a/src/game/audio/audio.c
++++ b/src/game/audio/audio.c
+@@ -268,7 +268,7 @@ void Audio_ThreadMain(void* arg) {
+                 task->next = NULL;
+                 task->msgQ = &rtnQ;
+                 task->msg = NULL;
+-                task->list.t.data_ptr = audio_cmd_lists[audio_task_index];
++                task->list.t.data_ptr = (u64 *)audio_cmd_lists[audio_task_index];
+                 task->list.t.data_size = (end - audio_cmd_lists[audio_task_index]) * sizeof(Acmd);
+                 task->list.t.type = M_AUDTASK;
+                 task->list.t.flags = 0;
+@@ -472,7 +472,7 @@ s32 Audio_PlaySeq(s32 slot) {
+     alCSPSetSeq(player, seq);
+     alSeqpPlay((ALSeqPlayer*) player);
+     for (i = 0; i < 16; i++) {
+-        alSeqpSetChlFXMix(player, i, 0x18);
++        alSeqpSetChlFXMix((ALSeqPlayer *)player, i, 0x18);
+     }
+     return 1;
+ }
 diff --git a/src/game/core/dma.c b/src/game/core/dma.c
 index e7ec32e..bfc7333 100644
 --- a/src/game/core/dma.c
@@ -85,6 +132,42 @@ index db2ffb3..196c261 100644
      }
  }
 +#endif
+diff --git a/src/game/event/scene.c b/src/game/event/scene.c
+index 4c00a3a..8705a34 100644
+--- a/src/game/event/scene.c
++++ b/src/game/event/scene.c
+@@ -56,15 +56,15 @@ void Cutscene_StartEntry(s32 arg0) {
+     }
+     npc_count = 0;
+     Npc_LoadAreaAssets(map_subarea_def->areaSetIndex);
+-    Npc_SpawnForArea(entry->npc_defs_addr, entry->npc_count);
++    Npc_SpawnForArea((NpcDef *)(uintptr_t)(u32)entry->npc_defs_addr, entry->npc_count);
+     enemy_count = 0;
+     Camera_InitForMap();
+     camera_state.mode = 3;
+     camera_state.eyeX = entry->camera_eye_x;
+     camera_state.eyeY = entry->camera_eye_y;
+     camera_state.eyeZ = entry->camera_eye_z;
+-    Math_MtxFRotate(mtx, -entry->camera_pitch_deg * 0.017453292519943295, -entry->camera_yaw_deg * 0.017453292519943295, 0.0f);
+-    Math_MtxFMulVecNegZ(mtx, 0.0f, 0.0f, -100.0f, &camera_state.atX, &camera_state.atY, &camera_state.atZ);
++    Math_MtxFRotate((MtxF *)mtx, -entry->camera_pitch_deg * 0.017453292519943295, -entry->camera_yaw_deg * 0.017453292519943295, 0.0f);
++    Math_MtxFMulVecNegZ((MtxF *)mtx, 0.0f, 0.0f, -100.0f, &camera_state.atX, &camera_state.atY, &camera_state.atZ);
+     camera_state.atX = camera_state.atX + camera_state.eyeX;
+     camera_state.atY = camera_state.atY + camera_state.eyeY;
+     camera_state.atZ = camera_state.eyeZ - camera_state.atZ;
+diff --git a/src/game/gfx/fade.c b/src/game/gfx/fade.c
+index 300a0ba..16d5c60 100644
+--- a/src/game/gfx/fade.c
++++ b/src/game/gfx/fade.c
+@@ -26,7 +26,7 @@ Gfx fade_quad_dl[8] = {
+     {{ 0xB7000000, 0x00000204 }},
+     {{ 0xFC42CA85, 0xFF97FFFF }},
+     {{ 0xBB000000, 0x80008000 }},
+-    {{ 0x0400103F, (u32) fade_quad_vtx }},
++    {{ 0x0400103F, PORT_ADDR(fade_quad_vtx) }},
+     {{ 0xB1020400, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
 diff --git a/src/game/input/input.c b/src/game/input/input.c
 index cc5330a..21cf5de 100644
 --- a/src/game/input/input.c
@@ -120,3 +203,1481 @@ index cc5330a..21cf5de 100644
      func_8003D6B0();
  }
 +#endif
+diff --git a/src/game/item/item.c b/src/game/item/item.c
+index 5e43dc3..f60ad8e 100644
+--- a/src/game/item/item.c
++++ b/src/game/item/item.c
+@@ -475,7 +475,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
+     Sfx_Play(0, 0x3B, 0xFF);
+ }
+ 
+-void Item_UseSpell(s32 arg0, ItemDef* arg1) {
++void Item_UseSpell(Actor *arg0, ItemDef* arg1) {
+     Magic_CreateCastEffect(arg0, arg1->unk4, 0, 4);
+ }
+ 
+diff --git a/src/game/item/item.h b/src/game/item/item.h
+index 6b4507a..19d3e92 100644
+--- a/src/game/item/item.h
++++ b/src/game/item/item.h
+@@ -44,7 +44,7 @@ s32 Item_CanUseSpell(s32 arg0, ItemDef* arg1);
+ void Item_UseNothing(s32 arg0, ItemDef* arg1);
+ void Item_UseRestore(Actor* arg0, ItemDef* arg1);
+ void Item_UseWarp(Actor* arg0, ItemDef* arg1);
+-void Item_UseSpell(s32 arg0, ItemDef* arg1);
++void Item_UseSpell(Actor *arg0, ItemDef* arg1);
+ void Item_DrawMenuFrame(s32 x, s32 y, s32 w, s32 h);
+ 
+ #endif
+diff --git a/src/game/map/map.c b/src/game/map/map.c
+index ebb5c68..bf046cd 100644
+--- a/src/game/map/map.c
++++ b/src/game/map/map.c
+@@ -1,4 +1,5 @@
+ #include "game/actor/anim.h"
++#include "game/audio/audio.h"
+ #include "game/audio/sound.h"
+ #include "game/core/main.h"
+ #include "game/env/env.h"
+@@ -157,9 +158,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
+ f32 mapobj_wave_z_div[4] = { 0.0f, 1000.0f, 5000.0f, 3000.0f };
+ 
+ void Map_LoadArea(void) {
+-    u32 *q;
+-    u32 start;
+-    u32 end;
++    MapRomRange *range;
+     u16 *src;
+     u16 *dst;
+     s32 i;
+@@ -210,10 +209,8 @@ void Map_LoadArea(void) {
+             if (map_flags & 2) {
+                 Dma_ReadRom(D_851F0, D_8010FE00, D_C8DE0 - D_851F0);
+             }
+-            q = &((u32 *)map_extra_rom_ranges)[map_area_def->extraRomRangeIndex * 3];
+-            start = *q++;
+-            end = *q++;
+-            Dma_ReadRom(start, *q, end - start);
++            range = &map_extra_rom_ranges[map_area_def->extraRomRangeIndex];
++            Dma_ReadRom(range->start, range->dst, range->end - range->start);
+         }
+         Dma_ReadRom(map_area_def->romStart, map_area_def->dst, map_area_def->romEnd - map_area_def->romStart);
+         switch (map_id) {
+@@ -244,8 +241,8 @@ void Map_LoadArea(void) {
+     map_env_flags = env_area_settings->mapFlags;
+     if (map_backdrop_id != env_area_settings->backdropId) {
+         map_backdrop_id = env_area_settings->backdropId;
+-        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
+-        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start + 0x800, map_backdrop_tex, 0x4000);
++        Dma_ReadRom((u8 *)(uintptr_t)map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
++        Dma_ReadRom((u8 *)(uintptr_t)(map_backdrop_defs[map_backdrop_id].start + 0x800), map_backdrop_tex, 0x4000);
+     }
+     if (exit_destination.entry != -1) {
+         sp = &map_subarea_def->entries[exit_destination.entry];
+@@ -645,7 +642,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+     gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
+     gfx_mtx_index++;
+     gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
+-    gSPDisplayList(gfx_dl_head++, map_backdrop_defs[env_area_settings->backdropId].dl);
++    gSPDisplayList(gfx_dl_head++, (Gfx *)(uintptr_t)map_backdrop_defs[env_area_settings->backdropId].dl_addr);
+ }
+ 
+ void MapObjAnim_ClearAll(void) {
+diff --git a/src/game/map/map.h b/src/game/map/map.h
+index 98f7354..e8bbd56 100644
+--- a/src/game/map/map.h
++++ b/src/game/map/map.h
+@@ -140,7 +140,7 @@ typedef struct MapRomRange {
+ /* A backdrop (map_backdrop_defs). */
+ typedef struct MapBackdropDef {
+     /* 0x00 */ u32 start;
+-    /* 0x04 */ Gfx *dl;
++    /* 0x04 */ u32 dl_addr; /* segmented N64 display-list address */
+ } MapBackdropDef; /* 0x8 bytes */
+ 
+ /* mapobj_spline_out: the first four channels of a Math_EvalTcbSpline result. */
+diff --git a/src/game/map/spirit.c b/src/game/map/spirit.c
+index eed5d97..bd810ea 100644
+--- a/src/game/map/spirit.c
++++ b/src/game/map/spirit.c
+@@ -76,7 +76,7 @@ Gfx spirit_sparkle_dl[10] = {
+     {{ 0xB7000000, 0x00000005 }},
+     {{ 0xFC629BFF, 0x1FFCFE38 }},
+     {{ 0xBB000001, 0x80008000 }},
+-    {{ 0x0400103F, (u32)spirit_sparkle_vtx }},
++    {{ 0x0400103F, PORT_ADDR(spirit_sparkle_vtx) }},
+     {{ 0xB1000204, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
+diff --git a/src/game/player/player.c b/src/game/player/player.c
+index c8c3fd5..2c32d7b 100644
+--- a/src/game/player/player.c
++++ b/src/game/player/player.c
+@@ -199,7 +199,7 @@ void Player_Spawn(void) {
+                 p->actor.z = pos->z + player_temp_vec.y * p->actor.scale;
+                 p->actor.animFlags = 1;
+                 Player_LoadAnim(&player_state.actor);
+-                Anim_UpdateRootMotion(&player_state.actor, p->actor.animIndex * 0xC + (s32) cd, p->actor.scale);
++                Anim_UpdateRootMotion(&player_state.actor, (AnimSet *)((u8 *)cd + p->actor.animIndex * 0xC), p->actor.scale);
+                 MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
+                 Sfx_Play(n, 8, 0xFF);
+                 break;
+@@ -213,7 +213,7 @@ void Player_Spawn(void) {
+                 p->move_step_z = player_temp_vec.y;
+                 p->actor.animFlags = 1;
+                 Player_LoadAnim(&player_state.actor);
+-                Anim_UpdateRootMotion(&player_state.actor, p->actor.animIndex * 0xC + (s32) cd, p->actor.scale);
++                Anim_UpdateRootMotion(&player_state.actor, (AnimSet *)((u8 *)cd + p->actor.animIndex * 0xC), p->actor.scale);
+                 MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
+                 Sfx_Play(5, 0x21, 0xFF);
+                 Sfx_Play(0xF, 0x21, 0xFF);
+@@ -361,7 +361,7 @@ void Player_Update(void) {
+                     p->actor.rot = player_front_chest->rot;
+                     p->finish_angle = player_front_chest->rot + 3.141592653589793;
+                     p->item_id = player_front_chest->animSetIndex;
+-                    Player_StartOpenChest(&player_state, &player_state.actor, (s32) cd);
++                    Player_StartOpenChest(&player_state, &player_state.actor, cd);
+                     player_front_chest = NULL;
+                 } else if (player_front_text_spot != NULL) {
+                     TextSpot_LoadMessage(player_front_text_spot);
+@@ -1494,10 +1494,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
+     arg1->animFlags |= 1;
+ }
+ 
+-void Player_StartOpenChest(Player *arg0, Actor *arg1, s32 arg2) {
++void Player_StartOpenChest(Player *arg0, Actor *arg1, PlayerAnimTable *arg2) {
+     Anim_SetCurrentAndNext(arg1, 0x1C, 1, 0x1D, 1, 1);
+     Player_LoadAnim(arg1);
+-    Anim_UpdateRootMotion(arg1, arg1->animIndex * 0xC + arg2, arg1->scale);
++    Anim_UpdateRootMotion(arg1, (AnimSet *)((u8 *)arg2 + arg1->animIndex * 0xC), arg1->scale);
+     arg0->state = 0xB;
+     arg0->state_timer = 0x5A;
+     arg1->animFlags |= 1;
+diff --git a/src/game/player/player.h b/src/game/player/player.h
+index 8d67837..d32ddb5 100644
+--- a/src/game/player/player.h
++++ b/src/game/player/player.h
+@@ -180,7 +180,7 @@ void Player_PushOutOfObjects(f32 *arg0, f32 *arg1, Actor *arg2);
+ void Player_ApplyFloorEffect(Player *arg0, Actor *arg1);
+ void Player_StartAreaExit(void);
+ void Player_StartObjectExit(Player *arg0, Actor *arg1);
+-void Player_StartOpenChest(Player *arg0, Actor *arg1, s32 arg2);
++void Player_StartOpenChest(Player *arg0, Actor *arg1, PlayerAnimTable *arg2);
+ void Player_StartUseItem(u8 arg0);
+ void Player_LoadAnim(Actor *arg0);
+ /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
+diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
+index f2ae77c..06e032f 100644
+--- a/src/game/save/save_menu.c
++++ b/src/game/save/save_menu.c
+@@ -974,7 +974,7 @@ void SaveMenu_SaveSelectedFile(void) {
+         SaveMenu_CaptureGameState(idx);
+     }
+     id = save_menu_selected_slot;
+-    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[id].file_no, 0, 0x80, &save_menu_save_headers[id]);
++    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[id].file_no, 0, 0x80, (u8 *)&save_menu_save_headers[id]);
+     if (err != 0) {
+         save_menu_pak_error = err;
+         switch (-Pak_ClassifyError(err)) {
+@@ -996,7 +996,7 @@ void SaveMenu_SaveSelectedFile(void) {
+         save_menu_flags &= ~0x2000;
+         return;
+     }
+-    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, &save_menu_game_state_block);
++    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, (u8 *)&save_menu_game_state_block);
+     if (err != 0) {
+         save_menu_pak_error = err;
+         switch (-Pak_ClassifyError(err)) {
+diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
+index e6f79b4..c045406 100644
+--- a/src/game/ui/hud.c
++++ b/src/game/ui/hud.c
+@@ -984,7 +984,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+     u8* str;
+     u32 tmp;
+ 
+-    id = Magic_LookupSpellSequence(arg3, (s32)arg2);
++    id = Magic_LookupSpellSequence(arg3, arg2);
+     flags = Magic_GetSpellRestrictionFlags(id, arg4);
+     tmp = (id >> 8) & 0xF;
+     id &= 0xFF;
+diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
+index c955abf..8f65565 100644
+--- a/src/game/ui/menu.c
++++ b/src/game/ui/menu.c
+@@ -1536,7 +1536,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
+     {{ 0xBA000E02, 0x00008000 }},
+     {{ 0xFCFF9BFF, 0xFFFCFE38 }},
+     {{ 0xBB000001, 0x80008000 }},
+-    {{ 0xFD100000, (u32)mapobj_kind11_tlut }},
++    {{ 0xFD100000, PORT_ADDR(mapobj_kind11_tlut) }},
+     {{ 0xE8000000, 0x00000000 }},
+     {{ 0xF5000100, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+@@ -1552,7 +1552,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
+     {{ 0xBA000E02, 0x00008000 }},
+     {{ 0xFCFF9BFF, 0xFFFCFE38 }},
+     {{ 0xBB000001, 0x80008000 }},
+-    {{ 0xFD100000, (u32)mapobj_kind12_tlut }},
++    {{ 0xFD100000, PORT_ADDR(mapobj_kind12_tlut) }},
+     {{ 0xE8000000, 0x00000000 }},
+     {{ 0xF5000100, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+@@ -1561,12 +1561,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
+     {{ 0xB8000000, 0x00000000 }},
+ };
+ Gfx mapobj_kind11_quad_dl[3] = {
+-    {{ 0x0400103F, (u32)mapobj_kind11_vtx }},
++    {{ 0x0400103F, PORT_ADDR(mapobj_kind11_vtx) }},
+     {{ 0xB1000204, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
+ Gfx mapobj_kind12_quad_dl[3] = {
+-    {{ 0x0400103F, (u32)mapobj_kind12_vtx }},
++    {{ 0x0400103F, PORT_ADDR(mapobj_kind12_vtx) }},
+     {{ 0xB1000204, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
+@@ -1605,13 +1605,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
+     {{ 0xB7000000, 0x00000005 }},
+     {{ 0xFCFF9BFF, 0xFFFCFE38 }},
+     {{ 0xBB000001, 0x80008000 }},
+-    {{ 0xFD100000, (u32)mapobj_arc_sprite_tlut }},
++    {{ 0xFD100000, PORT_ADDR(mapobj_arc_sprite_tlut) }},
+     {{ 0xE8000000, 0x00000000 }},
+     {{ 0xF5000100, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF0000000, 0x073FC000 }},
+     {{ 0xE7000000, 0x00000000 }},
+-    {{ 0x0400103F, (u32)mapobj_arc_sprite_vtx }},
++    {{ 0x0400103F, PORT_ADDR(mapobj_arc_sprite_vtx) }},
+     {{ 0xB1000204, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
+@@ -1632,11 +1632,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
+     {{ 0xB7000000, 0x00000005 }},
+     {{ 0xFCFF9BFF, 0xFFFCFE38 }},
+     {{ 0xBB000001, 0x80008000 }},
+-    {{ 0x0400103F, (u32)mapobj_drop_sprite_vtx }},
++    {{ 0x0400103F, PORT_ADDR(mapobj_drop_sprite_vtx) }},
+     {{ 0xB1000204, 0x00020604 }},
+     {{ 0xB8000000, 0x00000000 }},
+ };
+-/* D_80060C4C (undefined_syms.txt) is map_backdrop_defs[0].dl. */
++/* D_80060C4C (undefined_syms.txt) is map_backdrop_defs[0].dl_addr. */
+ MapBackdropDef map_backdrop_defs[8] = {
+     { 0x00D86970, 0x01001300 }, { 0x00D8B170, 0x01001300 }, { 0x00D8F970, 0x01002410 }, { 0x00D92D70, 0x01003630 },
+     { 0x00D96570, 0x01003630 }, { 0x00D99D70, 0x01003630 }, { 0x00D9D570, 0x01003630 }, { 0x00DA0D70, 0x01003630 },
+diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
+index fe5a9e7..1860370 100644
+--- a/src/overlays/ending/ending_data.c
++++ b/src/overlays/ending/ending_data.c
+@@ -92,103 +92,103 @@ EndingAnim ending_sprite_anim_table[8] = {
+     { (EndingAnimStep*) ending_sprite_anim_steps_7, 0x2 },
+ };
+ EndingSpriteCue ending_sprite_cues[97] = {
+-    { 0x0, 1, 0x08000000, 8, 30, 304, 6, 0, 0, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 36, 304, 6, 0, 6, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 42, 304, 6, 0, 12, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 48, 304, 6, 0, 18, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 54, 304, 6, 0, 24, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 60, 304, 6, 0, 30, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 66, 304, 6, 0, 36, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 72, 304, 6, 0, 42, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 78, 304, 6, 0, 48, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 84, 304, 6, 0, 54, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 90, 304, 6, 0, 60, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 96, 304, 6, 0, 66, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 102, 304, 6, 0, 72, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 108, 304, 6, 0, 78, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 114, 304, 6, 0, 84, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 120, 304, 6, 0, 90, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 126, 304, 6, 0, 96, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 132, 304, 6, 0, 102, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 138, 304, 6, 0, 108, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 144, 304, 6, 0, 114, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 150, 304, 6, 0, 120, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 156, 304, 6, 0, 126, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 162, 304, 6, 0, 132, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 168, 304, 6, 0, 138, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 174, 304, 6, 0, 144, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 180, 304, 6, 0, 150, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 186, 304, 6, 0, 156, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 192, 304, 6, 0, 162, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 198, 304, 6, 0, 168, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 204, 304, 6, 0, 174, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 210, 304, 6, 0, 180, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 216, 304, 6, 0, 186, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x0, 0, 0x08000000, 8, 222, 304, 6, 0, 192, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 360, 0x04000000, 27, 192, 267, 10, 0, 0, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 202, 267, 10, 0, 10, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 212, 267, 10, 0, 20, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 222, 267, 10, 0, 30, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 232, 267, 10, 0, 40, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 242, 267, 10, 0, 50, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 252, 267, 10, 0, 60, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 262, 267, 10, 0, 70, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 272, 267, 10, 0, 80, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 282, 267, 10, 0, 90, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 292, 267, 10, 0, 100, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 302, 267, 10, 0, 110, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 312, 267, 10, 0, 120, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 322, 267, 10, 0, 130, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 332, 267, 10, 0, 140, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 342, 267, 10, 0, 150, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 352, 267, 10, 0, 160, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 362, 267, 10, 0, 170, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 372, 267, 10, 0, 180, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 382, 267, 10, 0, 190, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 392, 267, 10, 0, 200, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 402, 267, 10, 0, 210, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 412, 267, 10, 0, 220, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 422, 267, 10, 0, 230, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 432, 267, 10, 0, 240, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 442, 267, 10, 0, 250, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 452, 267, 10, 0, 260, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 462, 267, 10, 0, 270, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 472, 267, 10, 0, 280, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 482, 267, 10, 0, 290, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x1, 0, 0x04000000, 27, 492, 267, 10, 0, 300, 267, 310, (s32) ending_sprite_anim_1_tex, (s32) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 2280, 0x08000000, 8, 30, 304, 6, 0, 0, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 36, 304, 6, 0, 6, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 42, 304, 6, 0, 12, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 48, 304, 6, 0, 18, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 54, 304, 6, 0, 24, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 60, 304, 6, 0, 30, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 66, 304, 6, 0, 36, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 72, 304, 6, 0, 42, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 78, 304, 6, 0, 48, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 84, 304, 6, 0, 54, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 90, 304, 6, 0, 60, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 96, 304, 6, 0, 66, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 102, 304, 6, 0, 72, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 108, 304, 6, 0, 78, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 114, 304, 6, 0, 84, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 120, 304, 6, 0, 90, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 126, 304, 6, 0, 96, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 132, 304, 6, 0, 102, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 138, 304, 6, 0, 108, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 144, 304, 6, 0, 114, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 150, 304, 6, 0, 120, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 156, 304, 6, 0, 126, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 162, 304, 6, 0, 132, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 168, 304, 6, 0, 138, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 174, 304, 6, 0, 144, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 180, 304, 6, 0, 150, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 186, 304, 6, 0, 156, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 192, 304, 6, 0, 162, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 198, 304, 6, 0, 168, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 204, 304, 6, 0, 174, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 210, 304, 6, 0, 180, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 216, 304, 6, 0, 186, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+-    { 0x2, 0, 0x08000000, 8, 222, 304, 6, 0, 192, 304, 224, (s32) ending_scroll_backdrop_tex, (s32) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 1, 0x08000000, 8, 30, 304, 6, 0, 0, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 36, 304, 6, 0, 6, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 42, 304, 6, 0, 12, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 48, 304, 6, 0, 18, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 54, 304, 6, 0, 24, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 60, 304, 6, 0, 30, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 66, 304, 6, 0, 36, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 72, 304, 6, 0, 42, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 78, 304, 6, 0, 48, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 84, 304, 6, 0, 54, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 90, 304, 6, 0, 60, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 96, 304, 6, 0, 66, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 102, 304, 6, 0, 72, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 108, 304, 6, 0, 78, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 114, 304, 6, 0, 84, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 120, 304, 6, 0, 90, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 126, 304, 6, 0, 96, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 132, 304, 6, 0, 102, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 138, 304, 6, 0, 108, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 144, 304, 6, 0, 114, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 150, 304, 6, 0, 120, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 156, 304, 6, 0, 126, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 162, 304, 6, 0, 132, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 168, 304, 6, 0, 138, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 174, 304, 6, 0, 144, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 180, 304, 6, 0, 150, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 186, 304, 6, 0, 156, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 192, 304, 6, 0, 162, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 198, 304, 6, 0, 168, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 204, 304, 6, 0, 174, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 210, 304, 6, 0, 180, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 216, 304, 6, 0, 186, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x0, 0, 0x08000000, 8, 222, 304, 6, 0, 192, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_first_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 360, 0x04000000, 27, 192, 267, 10, 0, 0, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 202, 267, 10, 0, 10, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 212, 267, 10, 0, 20, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 222, 267, 10, 0, 30, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 232, 267, 10, 0, 40, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 242, 267, 10, 0, 50, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 252, 267, 10, 0, 60, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 262, 267, 10, 0, 70, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 272, 267, 10, 0, 80, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 282, 267, 10, 0, 90, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 292, 267, 10, 0, 100, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 302, 267, 10, 0, 110, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 312, 267, 10, 0, 120, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 322, 267, 10, 0, 130, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 332, 267, 10, 0, 140, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 342, 267, 10, 0, 150, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 352, 267, 10, 0, 160, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 362, 267, 10, 0, 170, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 372, 267, 10, 0, 180, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 382, 267, 10, 0, 190, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 392, 267, 10, 0, 200, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 402, 267, 10, 0, 210, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 412, 267, 10, 0, 220, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 422, 267, 10, 0, 230, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 432, 267, 10, 0, 240, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 442, 267, 10, 0, 250, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 452, 267, 10, 0, 260, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 462, 267, 10, 0, 270, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 472, 267, 10, 0, 280, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 482, 267, 10, 0, 290, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x1, 0, 0x04000000, 27, 492, 267, 10, 0, 300, 267, 310, (uptr) ending_sprite_anim_1_tex, (uptr) ending_sprite_anim_1_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 2280, 0x08000000, 8, 30, 304, 6, 0, 0, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 36, 304, 6, 0, 6, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 42, 304, 6, 0, 12, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 48, 304, 6, 0, 18, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 54, 304, 6, 0, 24, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 60, 304, 6, 0, 30, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 66, 304, 6, 0, 36, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 72, 304, 6, 0, 42, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 78, 304, 6, 0, 48, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 84, 304, 6, 0, 54, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 90, 304, 6, 0, 60, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 96, 304, 6, 0, 66, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 102, 304, 6, 0, 72, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 108, 304, 6, 0, 78, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 114, 304, 6, 0, 84, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 120, 304, 6, 0, 90, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 126, 304, 6, 0, 96, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 132, 304, 6, 0, 102, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 138, 304, 6, 0, 108, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 144, 304, 6, 0, 114, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 150, 304, 6, 0, 120, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 156, 304, 6, 0, 126, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 162, 304, 6, 0, 132, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 168, 304, 6, 0, 138, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 174, 304, 6, 0, 144, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 180, 304, 6, 0, 150, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 186, 304, 6, 0, 156, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 192, 304, 6, 0, 162, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 198, 304, 6, 0, 168, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 204, 304, 6, 0, 174, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 210, 304, 6, 0, 180, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 216, 304, 6, 0, 186, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
++    { 0x2, 0, 0x08000000, 8, 222, 304, 6, 0, 192, 304, 224, (uptr) ending_scroll_backdrop_tex, (uptr) ending_scroll_backdrop_second_tlut, 0, -1, 0x0, { 0 } },
+ };
+ Gfx D_802107E8_ovl_ending[1] = {
+     {{ 0xB8000000, 0x00000000 }},
+diff --git a/src/overlays/ending/ending_data.h b/src/overlays/ending/ending_data.h
+index 337160b..cde65a5 100644
+--- a/src/overlays/ending/ending_data.h
++++ b/src/overlays/ending/ending_data.h
+@@ -27,8 +27,9 @@ typedef struct EndingSpriteCue {
+     /* 0x12 */ s16 texture_t;
+     /* 0x14 */ s16 texture_width;
+     /* 0x16 */ s16 unk16;
+-    /* 0x18 */ s32 texture_addr;
+-    /* 0x1C */ s32 palette_addr;
++    /* runtime C table: host addresses grow to pointer width */
++    uptr texture_addr;
++    uptr palette_addr;
+     /* 0x20 */ s16 anim_step_index;
+     /* 0x22 */ s16 sprite_slot;
+     /* 0x24 */ u16 previous_cue_index;
+diff --git a/src/overlays/intro/intro_data.c b/src/overlays/intro/intro_data.c
+index 20075a2..413953d 100644
+--- a/src/overlays/intro/intro_data.c
++++ b/src/overlays/intro/intro_data.c
+@@ -257,465 +257,465 @@ IntroAnim intro_sprite_anim_table[36] = {
+     { (IntroAnimStep*) intro_sprite_anim_steps_35, 0x3 },
+ };
+ IntroSpriteCue intro_sprite_cues[459] = {
+-    { 0x0, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x0, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 156, 0x08000000, 63, 85, 15, 76, 0, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 78, 85, 15, 76, 15, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 93, 85, 15, 76, 30, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 108, 85, 15, 76, 45, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 123, 85, 15, 76, 60, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 138, 85, 15, 76, 75, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 153, 85, 15, 76, 90, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 168, 85, 15, 76, 105, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 183, 85, 15, 76, 120, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 198, 85, 15, 76, 135, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 213, 85, 15, 76, 150, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 228, 85, 15, 76, 165, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x3, 0, 0x08000000, 243, 85, 14, 76, 180, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x4, 120, 0x04000000, 209, 24, 63, 21, 0, 0, 64, 64, (s32) intro_sprite_anim_4_tex, (s32) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
+-    { 0x4, 0, 0x04000000, 209, 45, 63, 21, 0, 21, 64, 64, (s32) intro_sprite_anim_4_tex, (s32) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
+-    { 0x4, 0, 0x04000000, 209, 66, 63, 21, 0, 42, 64, 64, (s32) intro_sprite_anim_4_tex, (s32) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
+-    { 0x6, 840, 0x04000000, 40, 17, 10, 190, 0, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 50, 17, 10, 190, 10, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 60, 17, 10, 190, 20, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 70, 17, 10, 190, 30, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 80, 17, 6, 190, 40, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 27, 149, 10, 0, 0, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 37, 149, 10, 0, 10, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 47, 149, 4, 0, 20, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04020000, 234, 17, 6, 190, 40, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04020000, 240, 17, 10, 190, 30, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04020000, 250, 17, 10, 190, 20, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04020000, 260, 17, 10, 190, 10, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04020000, 270, 17, 10, 190, 0, 0, 48, 190, (s32) intro_sprite_anim_6_variant0_tex, (s32) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 173, 149, 10, 0, 0, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 183, 149, 10, 0, 10, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x6, 0, 0x04000000, 86, 193, 149, 4, 0, 20, 160, 24, (s32) intro_sprite_anim_6_variant1_tex, (s32) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x7, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x8, 137, 0x04000000, 63, 63, 194, 10, 0, 0, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 73, 194, 10, 0, 10, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 83, 194, 10, 0, 20, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 93, 194, 10, 0, 30, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 103, 194, 10, 0, 40, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 113, 194, 10, 0, 50, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 123, 194, 10, 0, 60, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 133, 194, 10, 0, 70, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 143, 194, 10, 0, 80, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 153, 194, 10, 0, 90, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 163, 194, 10, 0, 100, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x8, 0, 0x04000000, 63, 173, 194, 4, 0, 110, 208, 114, (s32) intro_sprite_anim_8_tex, (s32) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
+-    { 0x9, 858, 0x08000000, 192, 57, 30, 30, 0, 0, 30, 30, (s32) D_8022CFA0_ovl_intro, (s32) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 270, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xA, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 90, 0x08000000, 78, 44, 109, 17, 0, 0, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 61, 109, 17, 0, 17, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 78, 109, 17, 0, 34, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 95, 109, 17, 0, 51, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 112, 109, 17, 0, 68, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 129, 109, 17, 0, 85, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 146, 109, 17, 0, 102, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 163, 109, 17, 0, 119, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 180, 109, 17, 0, 136, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 197, 109, 17, 0, 153, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xB, 0, 0x08000000, 78, 214, 109, 9, 0, 170, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0xC, 108, 0x04000000, 82, 71, 156, 10, 0, 0, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 81, 156, 10, 0, 10, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 91, 156, 10, 0, 20, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 101, 156, 10, 0, 30, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 111, 156, 10, 0, 40, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 121, 156, 10, 0, 50, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 131, 156, 10, 0, 60, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 141, 156, 10, 0, 70, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 151, 156, 10, 0, 80, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xC, 0, 0x04000000, 82, 161, 156, 9, 0, 90, 160, 99, (s32) intro_sprite_anim_12_tex, (s32) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
+-    { 0xD, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xD, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0xE, 138, 0x08000000, 186, 103, 30, 30, 0, 0, 30, 30, (s32) D_8022CFA0_ovl_intro, (s32) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 234, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0xF, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 120, 0x08020000, 134, 44, 109, 17, 0, 0, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 61, 109, 17, 0, 17, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 78, 109, 17, 0, 34, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 95, 109, 17, 0, 51, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 112, 109, 17, 0, 68, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 129, 109, 17, 0, 85, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 146, 109, 17, 0, 102, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 163, 109, 17, 0, 119, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 180, 109, 17, 0, 136, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 197, 109, 17, 0, 153, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x10, 0, 0x08020000, 134, 214, 109, 9, 0, 170, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x11, 114, 0x04000000, 74, 81, 172, 10, 0, 0, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 91, 172, 10, 0, 10, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 101, 172, 10, 0, 20, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 111, 172, 10, 0, 30, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 121, 172, 10, 0, 40, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 131, 172, 10, 0, 50, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 141, 172, 10, 0, 60, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x11, 0, 0x04000000, 74, 151, 172, 8, 0, 70, 176, 78, (s32) intro_sprite_anim_17_tex, (s32) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
+-    { 0x12, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x12, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x13, 138, 0x08000000, 109, 122, 30, 30, 0, 0, 30, 30, (s32) D_8022CFA0_ovl_intro, (s32) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 234, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x14, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 144, 0x08000000, 78, 44, 109, 17, 0, 0, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 61, 109, 17, 0, 17, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 78, 109, 17, 0, 34, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 95, 109, 17, 0, 51, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 112, 109, 17, 0, 68, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 129, 109, 17, 0, 85, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 146, 109, 17, 0, 102, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 163, 109, 17, 0, 119, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 180, 109, 17, 0, 136, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 197, 109, 17, 0, 153, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x15, 0, 0x08000000, 78, 214, 109, 9, 0, 170, 109, 179, (s32) D_80238A90_ovl_intro, (s32) D_80238890_ovl_intro, 0, -1, 0x0 },
+-    { 0x16, 108, 0x04000000, 75, 88, 171, 10, 0, 0, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 98, 171, 10, 0, 10, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 108, 171, 10, 0, 20, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 118, 171, 10, 0, 30, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 128, 171, 10, 0, 40, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 138, 171, 10, 0, 50, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x16, 0, 0x04000000, 75, 148, 171, 5, 0, 60, 176, 65, (s32) intro_sprite_anim_22_tex, (s32) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
+-    { 0x17, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x17, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8022D530_ovl_intro, (s32) D_8022D330_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 69, 92, 20, 0, 0, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 89, 92, 20, 0, 20, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 109, 92, 20, 0, 40, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 129, 92, 20, 0, 60, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 149, 92, 20, 0, 80, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x18, 0, 0x08000000, 114, 169, 92, 3, 0, 100, 92, 103, (s32) intro_sprite_anim_24_tex, (s32) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
+-    { 0x1A, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1A, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_80232FE0_ovl_intro, (s32) D_80232DE0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1B, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_8023D8D0_ovl_intro, (s32) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1C, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (s32) D_80243380_ovl_intro, (s32) D_80243180_ovl_intro, 0, -1, 0x0 },
+-    { 0x1D, 135, 0x04000000, 83, 101, 155, 10, 0, 0, 160, 39, (s32) intro_sprite_anim_29_tex, (s32) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
+-    { 0x1D, 0, 0x04000000, 83, 111, 155, 10, 0, 10, 160, 39, (s32) intro_sprite_anim_29_tex, (s32) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
+-    { 0x1D, 0, 0x04000000, 83, 121, 155, 10, 0, 20, 160, 39, (s32) intro_sprite_anim_29_tex, (s32) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
+-    { 0x1D, 0, 0x04000000, 83, 131, 155, 9, 0, 30, 160, 39, (s32) intro_sprite_anim_29_tex, (s32) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
+-    { 0x22, 546, 0x04000000, 88, 101, 145, 10, 0, 0, 160, 39, (s32) intro_sprite_anim_34_tex, (s32) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
+-    { 0x22, 0, 0x04000000, 88, 111, 145, 10, 0, 10, 160, 39, (s32) intro_sprite_anim_34_tex, (s32) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
+-    { 0x22, 0, 0x04000000, 88, 121, 145, 10, 0, 20, 160, 39, (s32) intro_sprite_anim_34_tex, (s32) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
+-    { 0x22, 0, 0x04000000, 88, 131, 145, 9, 0, 30, 160, 39, (s32) intro_sprite_anim_34_tex, (s32) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
+-    { 0x20, 546, 0x04000000, 100, 99, 121, 10, 0, 0, 128, 43, (s32) intro_sprite_anim_32_tex, (s32) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
+-    { 0x20, 0, 0x04000000, 100, 109, 121, 10, 0, 10, 128, 43, (s32) intro_sprite_anim_32_tex, (s32) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
+-    { 0x20, 0, 0x04000000, 100, 119, 121, 10, 0, 20, 128, 43, (s32) intro_sprite_anim_32_tex, (s32) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
+-    { 0x20, 0, 0x04000000, 100, 129, 121, 10, 0, 30, 128, 43, (s32) intro_sprite_anim_32_tex, (s32) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
+-    { 0x20, 0, 0x04000000, 100, 139, 121, 3, 0, 40, 128, 43, (s32) intro_sprite_anim_32_tex, (s32) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
+-    { 0x1F, 762, 0x08000000, 0, 0, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 6, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 12, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 18, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 24, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 30, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 36, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 42, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 48, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 54, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 60, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 66, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 72, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 78, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 84, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 90, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 96, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 102, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 108, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 114, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 120, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 126, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 132, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 138, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 144, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 150, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 156, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 162, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 168, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 174, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 180, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 186, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 192, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 198, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 204, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 210, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 216, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 222, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 228, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1F, 0, 0x08000000, 0, 234, 320, 6, 0, 0, 320, 6, (s32) intro_sprite_anim_31_tex, (s32) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
+-    { 0x1E, 60, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (s32) D_8021C3A0_ovl_intro, (s32) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 63, 69, 15, 76, 0, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 78, 69, 15, 76, 15, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 93, 69, 15, 76, 30, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 108, 69, 15, 76, 45, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 123, 69, 15, 76, 60, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 138, 69, 15, 76, 75, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 153, 69, 15, 76, 90, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 168, 69, 15, 76, 105, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 183, 69, 15, 76, 120, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 198, 69, 15, 76, 135, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 213, 69, 15, 76, 150, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 228, 69, 15, 76, 165, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
+-    { 0x1E, 0, 0x08000000, 243, 69, 14, 76, 180, 0, 194, 76, (s32) D_80218800_ovl_intro, (s32) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x0, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) intro_sprite_anim_0_tlut, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 156, 0x08000000, 63, 85, 15, 76, 0, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 78, 85, 15, 76, 15, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 93, 85, 15, 76, 30, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 108, 85, 15, 76, 45, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 123, 85, 15, 76, 60, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 138, 85, 15, 76, 75, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 153, 85, 15, 76, 90, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 168, 85, 15, 76, 105, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 183, 85, 15, 76, 120, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 198, 85, 15, 76, 135, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 213, 85, 15, 76, 150, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 228, 85, 15, 76, 165, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x3, 0, 0x08000000, 243, 85, 14, 76, 180, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x4, 120, 0x04000000, 209, 24, 63, 21, 0, 0, 64, 64, (uptr) intro_sprite_anim_4_tex, (uptr) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
++    { 0x4, 0, 0x04000000, 209, 45, 63, 21, 0, 21, 64, 64, (uptr) intro_sprite_anim_4_tex, (uptr) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
++    { 0x4, 0, 0x04000000, 209, 66, 63, 21, 0, 42, 64, 64, (uptr) intro_sprite_anim_4_tex, (uptr) intro_sprite_anim_4_tlut, 0, -1, 0x0 },
++    { 0x6, 840, 0x04000000, 40, 17, 10, 190, 0, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 50, 17, 10, 190, 10, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 60, 17, 10, 190, 20, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 70, 17, 10, 190, 30, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 80, 17, 6, 190, 40, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 27, 149, 10, 0, 0, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 37, 149, 10, 0, 10, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 47, 149, 4, 0, 20, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04020000, 234, 17, 6, 190, 40, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04020000, 240, 17, 10, 190, 30, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04020000, 250, 17, 10, 190, 20, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04020000, 260, 17, 10, 190, 10, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04020000, 270, 17, 10, 190, 0, 0, 48, 190, (uptr) intro_sprite_anim_6_variant0_tex, (uptr) intro_sprite_anim_6_variant0_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 173, 149, 10, 0, 0, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 183, 149, 10, 0, 10, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x6, 0, 0x04000000, 86, 193, 149, 4, 0, 20, 160, 24, (uptr) intro_sprite_anim_6_variant1_tex, (uptr) intro_sprite_anim_6_variant1_tlut, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x7, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x8, 137, 0x04000000, 63, 63, 194, 10, 0, 0, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 73, 194, 10, 0, 10, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 83, 194, 10, 0, 20, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 93, 194, 10, 0, 30, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 103, 194, 10, 0, 40, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 113, 194, 10, 0, 50, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 123, 194, 10, 0, 60, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 133, 194, 10, 0, 70, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 143, 194, 10, 0, 80, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 153, 194, 10, 0, 90, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 163, 194, 10, 0, 100, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x8, 0, 0x04000000, 63, 173, 194, 4, 0, 110, 208, 114, (uptr) intro_sprite_anim_8_tex, (uptr) intro_sprite_anim_8_tlut, 0, -1, 0x0 },
++    { 0x9, 858, 0x08000000, 192, 57, 30, 30, 0, 0, 30, 30, (uptr) D_8022CFA0_ovl_intro, (uptr) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 270, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xA, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 90, 0x08000000, 78, 44, 109, 17, 0, 0, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 61, 109, 17, 0, 17, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 78, 109, 17, 0, 34, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 95, 109, 17, 0, 51, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 112, 109, 17, 0, 68, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 129, 109, 17, 0, 85, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 146, 109, 17, 0, 102, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 163, 109, 17, 0, 119, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 180, 109, 17, 0, 136, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 197, 109, 17, 0, 153, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xB, 0, 0x08000000, 78, 214, 109, 9, 0, 170, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0xC, 108, 0x04000000, 82, 71, 156, 10, 0, 0, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 81, 156, 10, 0, 10, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 91, 156, 10, 0, 20, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 101, 156, 10, 0, 30, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 111, 156, 10, 0, 40, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 121, 156, 10, 0, 50, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 131, 156, 10, 0, 60, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 141, 156, 10, 0, 70, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 151, 156, 10, 0, 80, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xC, 0, 0x04000000, 82, 161, 156, 9, 0, 90, 160, 99, (uptr) intro_sprite_anim_12_tex, (uptr) intro_sprite_anim_12_tlut, 0, -1, 0x0 },
++    { 0xD, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xD, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0xE, 138, 0x08000000, 186, 103, 30, 30, 0, 0, 30, 30, (uptr) D_8022CFA0_ovl_intro, (uptr) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 234, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0xF, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 120, 0x08020000, 134, 44, 109, 17, 0, 0, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 61, 109, 17, 0, 17, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 78, 109, 17, 0, 34, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 95, 109, 17, 0, 51, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 112, 109, 17, 0, 68, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 129, 109, 17, 0, 85, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 146, 109, 17, 0, 102, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 163, 109, 17, 0, 119, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 180, 109, 17, 0, 136, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 197, 109, 17, 0, 153, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x10, 0, 0x08020000, 134, 214, 109, 9, 0, 170, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x11, 114, 0x04000000, 74, 81, 172, 10, 0, 0, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 91, 172, 10, 0, 10, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 101, 172, 10, 0, 20, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 111, 172, 10, 0, 30, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 121, 172, 10, 0, 40, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 131, 172, 10, 0, 50, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 141, 172, 10, 0, 60, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x11, 0, 0x04000000, 74, 151, 172, 8, 0, 70, 176, 78, (uptr) intro_sprite_anim_17_tex, (uptr) intro_sprite_anim_17_tlut, 0, -1, 0x0 },
++    { 0x12, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x12, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x13, 138, 0x08000000, 109, 122, 30, 30, 0, 0, 30, 30, (uptr) D_8022CFA0_ovl_intro, (uptr) D_8022CDA0_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 234, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x14, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 144, 0x08000000, 78, 44, 109, 17, 0, 0, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 61, 109, 17, 0, 17, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 78, 109, 17, 0, 34, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 95, 109, 17, 0, 51, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 112, 109, 17, 0, 68, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 129, 109, 17, 0, 85, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 146, 109, 17, 0, 102, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 163, 109, 17, 0, 119, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 180, 109, 17, 0, 136, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 197, 109, 17, 0, 153, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x15, 0, 0x08000000, 78, 214, 109, 9, 0, 170, 109, 179, (uptr) D_80238A90_ovl_intro, (uptr) D_80238890_ovl_intro, 0, -1, 0x0 },
++    { 0x16, 108, 0x04000000, 75, 88, 171, 10, 0, 0, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 98, 171, 10, 0, 10, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 108, 171, 10, 0, 20, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 118, 171, 10, 0, 30, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 128, 171, 10, 0, 40, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 138, 171, 10, 0, 50, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x16, 0, 0x04000000, 75, 148, 171, 5, 0, 60, 176, 65, (uptr) intro_sprite_anim_22_tex, (uptr) intro_sprite_anim_22_tlut, 0, -1, 0x0 },
++    { 0x17, 480, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x17, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8022D530_ovl_intro, (uptr) D_8022D330_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 69, 92, 20, 0, 0, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 89, 92, 20, 0, 20, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 109, 92, 20, 0, 40, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 129, 92, 20, 0, 60, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 149, 92, 20, 0, 80, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x18, 0, 0x08000000, 114, 169, 92, 3, 0, 100, 92, 103, (uptr) intro_sprite_anim_24_tex, (uptr) intro_sprite_anim_24_tlut, 0, -1, 0x0 },
++    { 0x1A, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1A, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_80232FE0_ovl_intro, (uptr) D_80232DE0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1B, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_8023D8D0_ovl_intro, (uptr) D_8023D6D0_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 1, 0x08000000, 73, 47, 176, 10, 0, 0, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 57, 176, 10, 0, 10, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 67, 176, 10, 0, 20, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 77, 176, 10, 0, 30, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 87, 176, 10, 0, 40, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 97, 176, 10, 0, 50, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 107, 176, 10, 0, 60, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 117, 176, 10, 0, 70, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 127, 176, 10, 0, 80, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 137, 176, 10, 0, 90, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 147, 176, 10, 0, 100, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 157, 176, 10, 0, 110, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1C, 0, 0x08000000, 73, 167, 176, 9, 0, 120, 176, 129, (uptr) D_80243380_ovl_intro, (uptr) D_80243180_ovl_intro, 0, -1, 0x0 },
++    { 0x1D, 135, 0x04000000, 83, 101, 155, 10, 0, 0, 160, 39, (uptr) intro_sprite_anim_29_tex, (uptr) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
++    { 0x1D, 0, 0x04000000, 83, 111, 155, 10, 0, 10, 160, 39, (uptr) intro_sprite_anim_29_tex, (uptr) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
++    { 0x1D, 0, 0x04000000, 83, 121, 155, 10, 0, 20, 160, 39, (uptr) intro_sprite_anim_29_tex, (uptr) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
++    { 0x1D, 0, 0x04000000, 83, 131, 155, 9, 0, 30, 160, 39, (uptr) intro_sprite_anim_29_tex, (uptr) intro_sprite_anim_29_tlut, 0, -1, 0x0 },
++    { 0x22, 546, 0x04000000, 88, 101, 145, 10, 0, 0, 160, 39, (uptr) intro_sprite_anim_34_tex, (uptr) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
++    { 0x22, 0, 0x04000000, 88, 111, 145, 10, 0, 10, 160, 39, (uptr) intro_sprite_anim_34_tex, (uptr) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
++    { 0x22, 0, 0x04000000, 88, 121, 145, 10, 0, 20, 160, 39, (uptr) intro_sprite_anim_34_tex, (uptr) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
++    { 0x22, 0, 0x04000000, 88, 131, 145, 9, 0, 30, 160, 39, (uptr) intro_sprite_anim_34_tex, (uptr) intro_sprite_anim_34_tlut, 0, -1, 0x0 },
++    { 0x20, 546, 0x04000000, 100, 99, 121, 10, 0, 0, 128, 43, (uptr) intro_sprite_anim_32_tex, (uptr) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
++    { 0x20, 0, 0x04000000, 100, 109, 121, 10, 0, 10, 128, 43, (uptr) intro_sprite_anim_32_tex, (uptr) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
++    { 0x20, 0, 0x04000000, 100, 119, 121, 10, 0, 20, 128, 43, (uptr) intro_sprite_anim_32_tex, (uptr) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
++    { 0x20, 0, 0x04000000, 100, 129, 121, 10, 0, 30, 128, 43, (uptr) intro_sprite_anim_32_tex, (uptr) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
++    { 0x20, 0, 0x04000000, 100, 139, 121, 3, 0, 40, 128, 43, (uptr) intro_sprite_anim_32_tex, (uptr) intro_sprite_anim_32_tlut, 0, -1, 0x0 },
++    { 0x1F, 762, 0x08000000, 0, 0, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 6, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 12, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 18, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 24, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 30, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 36, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 42, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 48, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 54, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 60, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 66, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 72, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 78, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 84, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 90, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 96, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 102, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 108, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 114, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 120, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 126, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 132, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 138, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 144, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 150, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 156, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 162, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 168, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 174, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 180, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 186, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 192, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 198, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 204, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 210, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 216, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 222, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 228, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1F, 0, 0x08000000, 0, 234, 320, 6, 0, 0, 320, 6, (uptr) intro_sprite_anim_31_tex, (uptr) intro_sprite_anim_31_tlut, 0, -1, 0x0 },
++    { 0x1E, 60, 0x08000000, 8, 0, 304, 6, 0, 0, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 6, 304, 6, 0, 6, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 12, 304, 6, 0, 12, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 18, 304, 6, 0, 18, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 24, 304, 6, 0, 24, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 30, 304, 6, 0, 30, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 36, 304, 6, 0, 36, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 42, 304, 6, 0, 42, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 48, 304, 6, 0, 48, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 54, 304, 6, 0, 54, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 60, 304, 6, 0, 60, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 66, 304, 6, 0, 66, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 72, 304, 6, 0, 72, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 78, 304, 6, 0, 78, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 84, 304, 6, 0, 84, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 90, 304, 6, 0, 90, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 96, 304, 6, 0, 96, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 102, 304, 6, 0, 102, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 108, 304, 6, 0, 108, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 114, 304, 6, 0, 114, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 120, 304, 6, 0, 120, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 126, 304, 6, 0, 126, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 132, 304, 6, 0, 132, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 138, 304, 6, 0, 138, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 144, 304, 6, 0, 144, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 150, 304, 6, 0, 150, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 156, 304, 6, 0, 156, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 162, 304, 6, 0, 162, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 168, 304, 6, 0, 168, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 174, 304, 6, 0, 174, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 180, 304, 6, 0, 180, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 186, 304, 6, 0, 186, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 192, 304, 6, 0, 192, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 198, 304, 6, 0, 198, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 204, 304, 6, 0, 204, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 210, 304, 6, 0, 210, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 216, 304, 6, 0, 216, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 8, 222, 304, 2, 0, 222, 304, 224, (uptr) D_8021C3A0_ovl_intro, (uptr) D_8021C1A0_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 63, 69, 15, 76, 0, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 78, 69, 15, 76, 15, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 93, 69, 15, 76, 30, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 108, 69, 15, 76, 45, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 123, 69, 15, 76, 60, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 138, 69, 15, 76, 75, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 153, 69, 15, 76, 90, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 168, 69, 15, 76, 105, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 183, 69, 15, 76, 120, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 198, 69, 15, 76, 135, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 213, 69, 15, 76, 150, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 228, 69, 15, 76, 165, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
++    { 0x1E, 0, 0x08000000, 243, 69, 14, 76, 180, 0, 194, 76, (uptr) D_80218800_ovl_intro, (uptr) D_80218600_ovl_intro, 0, -1, 0x0 },
+ };
+ IntroCueGroup intro_cue_groups[1] = {
+     { (IntroSpriteCue*) intro_sprite_cues, 0x1CB },
+diff --git a/src/overlays/intro/intro_data.h b/src/overlays/intro/intro_data.h
+index a93dfb8..f3c00c4 100644
+--- a/src/overlays/intro/intro_data.h
++++ b/src/overlays/intro/intro_data.h
+@@ -15,8 +15,9 @@ typedef struct IntroSpriteCue {
+     /* 0x12 */ s16 texture_t;
+     /* 0x14 */ s16 texture_width;
+     /* 0x16 */ s16 unk16;
+-    /* 0x18 */ s32 texture_addr;
+-    /* 0x1C */ s32 palette_addr;
++    /* runtime C table: host addresses grow to pointer width */
++    uptr texture_addr;
++    uptr palette_addr;
+     /* 0x20 */ s16 anim_step_index;
+     /* 0x22 */ s16 sprite_slot;
+     /* 0x24 */ u16 previous_cue_index;
+diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
+index d3ba9ee..faaa820 100644
+--- a/src/overlays/title/title_draw.c
++++ b/src/overlays/title/title_draw.c
+@@ -54,7 +54,7 @@ Gfx title_menu_sprite_setup_dl[5] = {
+     {{ 0xB8000000, 0x00000000 }},
+ };
+ Gfx D_8020F2A8_ovl_title[11] = {
+-    {{ 0xFD480057, (u32) title_menu_atlas_tex }},
++    {{ 0xFD480057, PORT_ADDR(title_menu_atlas_tex) }},
+     {{ 0xF5480800, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF4000000, 0x0706A02C }},
+@@ -67,7 +67,7 @@ Gfx D_8020F2A8_ovl_title[11] = {
+     {{ 0xB8000000, 0x00000000 }},
+ };
+ Gfx D_8020F300_ovl_title[11] = {
+-    {{ 0xFD480057, (u32) title_menu_atlas_tex }},
++    {{ 0xFD480057, PORT_ADDR(title_menu_atlas_tex) }},
+     {{ 0xF5480800, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF406C000, 0x070D802C }},
+@@ -80,7 +80,7 @@ Gfx D_8020F300_ovl_title[11] = {
+     {{ 0xB8000000, 0x00000000 }},
+ };
+ Gfx D_8020F358_ovl_title[11] = {
+-    {{ 0xFD480057, (u32) title_menu_atlas_tex }},
++    {{ 0xFD480057, PORT_ADDR(title_menu_atlas_tex) }},
+     {{ 0xF5480A00, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF40DA000, 0x0715C02C }},
+@@ -97,13 +97,13 @@ Gfx title_initial_screen_dl[21] = {
+     {{ 0xB900031D, 0x00504240 }},
+     {{ 0xFCFF9BFF, 0xFF34FE7F }},
+     {{ 0xBA000E02, 0x00008000 }},
+-    {{ 0xFD100000, (u32) title_initial_screen_image_tlut }},
++    {{ 0xFD100000, PORT_ADDR(title_initial_screen_image_tlut) }},
+     {{ 0xE8000000, 0x00000000 }},
+     {{ 0xF5000100, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF0000000, 0x073FC000 }},
+     {{ 0xE7000000, 0x00000000 }},
+-    {{ 0xFD480063, (u32) title_initial_screen_image_tex }},
++    {{ 0xFD480063, PORT_ADDR(title_initial_screen_image_tex) }},
+     {{ 0xF5481800, 0x07000000 }},
+     {{ 0xE6000000, 0x00000000 }},
+     {{ 0xF4000000, 0x07168038 }},

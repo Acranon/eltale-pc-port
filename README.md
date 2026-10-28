@@ -25,6 +25,15 @@ python tools/build_windows.py --rom "C:\path\to\eltalemonsters.jp.z64"
 This builds and runs `out\p0-windows\eltale-p0.exe` as a native Windows
 program. For a build without a ROM, pass `--build-only`.
 
+To compile every game and overlay C module into a native archive as well:
+
+```powershell
+python tools/build_windows.py --rom "C:\path\to\eltalemonsters.jp.z64" --full-compile
+```
+
+The archive is a compile gate. The boot executable still stops at the P0
+checkpoint while the remaining native ABI and first intro frame are ported.
+
 Linux/WSL remains available for comparison:
 
 ```sh

@@ -36,6 +36,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rom", type=Path, help="user-supplied Eltale Monsters (J) z64 ROM")
     parser.add_argument("--build-only", action="store_true")
+    parser.add_argument("--full-compile", action="store_true",
+                        help="also compile every game and overlay C module into a native archive")
     args = parser.parse_args()
     if not (ROOT / "work/src/game/core/main.c").is_file():
         raise SystemExit("run `python tools/patches.py apply` first")
@@ -49,11 +51,13 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     generated = OUT / "include/PR/gbi.h"
     run([sys.executable, "tools/gen_host_gbi.py", str(generated)])
+    run([sys.executable, "tools/gen_addresses.py", str(OUT / "include/port/addresses.h")])
     includes = [
         f"-I{OUT / 'include'}", "-Iport/include", "-I.", "-Iwork/src",
         "-Idecomp/include", "-Idecomp/src",
         "-idirafter", "decomp/include/ultra64",
         "-idirafter", "decomp/include/ultra64/PR",
+        "-include", "port/addresses.h",
         "-include", "game/actor/actor.h",
     ]
     flags = [
@@ -87,6 +91,27 @@ def main() -> None:
          "-o", str(endian_exe)])
     run([str(abi_exe)])
     run([str(endian_exe)])
+    if args.full_compile:
+        if not args.rom:
+            raise SystemExit("--full-compile requires --rom to extract local assets")
+        run([sys.executable, "tools/check_rom.py", str(args.rom)])
+        run([sys.executable, "decomp/tools/extract_assets.py", "decomp/assets.yaml",
+             str(args.rom), str(OUT / "assets")])
+        all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
+                      sorted((ROOT / "work/src/overlays").rglob("*.c"))
+        full_flags = [flag for flag in flags if flag != "-DELTALE_P0_BOOT_PROBE"]
+        full_flags += ["-Wno-deprecated-non-prototype", "-Wno-pointer-sign"]
+        full_objects: list[Path] = []
+        for index, source in enumerate(all_sources):
+            obj = OUT / f"full_{index}.o"
+            run([cc, *full_flags, *includes, f"-I{OUT}", "-c", str(source), "-o", str(obj)])
+            full_objects.append(obj)
+        ar = shutil.which("llvm-ar")
+        if not ar:
+            raise SystemExit("llvm-ar was not found on PATH")
+        archive = OUT / "eltale-game.a"
+        run([ar, "rcs", str(archive), *(str(obj) for obj in full_objects)])
+        print(f"FULL_COMPILE_OK sources={len(all_sources)} archive={archive}")
     if args.build_only:
         print(f"Windows P0 build OK: {exe}")
         return

@@ -9,5 +9,9 @@ _Static_assert(sizeof(Gfx) == 8, "F3DEX commands must be eight bytes");
 _Static_assert(sizeof(Mtx) == 64, "N64 matrix packets must be 64 bytes");
 _Static_assert(offsetof(GfxFrameData, dl) == 0x8A70,
                "the display-list packet region must retain its N64 offset");
+_Static_assert(offsetof(ActorBattle, attack_power) == 0x84,
+               "expanded status handles must not shift live battle stats");
+_Static_assert(sizeof(ActorBattle) == 0x98,
+               "actor battle record must keep its runtime size");
 
 int main(void) { return 0; }

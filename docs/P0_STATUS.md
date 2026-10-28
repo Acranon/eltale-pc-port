@@ -22,6 +22,10 @@ picture or a playable game frame.
 
 - `decomp/` is a pinned submodule; `tools/patches.py` applies/saves PC-only
   game changes into `patches/p0.patch` without modifying it.
+- Native Windows Clang now compiles all 47 game and overlay C modules, including
+  `NON_MATCHING` drafts, into `out/p0-windows/eltale-game.a` with ROM assets
+  generated into the ignored build directory. This is a compile gate; those
+  objects are not all linked into the boot executable yet.
 - The host uses fixed-width N64 scalar types. `tools/gen_host_gbi.py` generates
   an ignored SDK header with 32-bit `Gfx` and `Mtx` words (`sizeof` is checked
   at build time). The Windows build and `make abi-test` on Linux also check the
@@ -44,8 +48,8 @@ picture or a playable game frame.
 
 ## Next work to complete P0
 
-1. Compile and port the remaining game C, including the 22 `NON_MATCHING`
-   drafts, without temporary audio or PakMenu stand-ins.
+1. Link and execute the required game/intro modules, replacing the probe's
+   mode-0 shortcut with the actual first intro display-list path.
 2. Audit every pointer-to-integer conversion and every ROM/save struct on a
    64-bit host. Add strict compiler gates after the known conversions are
    fixed. The P0 build currently suppresses these warnings for the copied
