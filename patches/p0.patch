@@ -12,7 +12,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..82de922 100644
+index db2ffb3..196c261 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,6 @@
@@ -32,12 +32,31 @@ index db2ffb3..82de922 100644
 +    core_game_mode = 0;
 +    Gfx_BuildFrameDisplayList(&D_80301000[0]);
 +    Port_P0DisplayListReady(&D_80301000[0]);
-+#endif
++#else
 +
      while (1) {
          Boss_ClearDefeated();
          Chest_ClearOpenedFlags();
-@@ -324,6 +335,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -208,8 +219,10 @@ void Core_MainThread(void *arg0) {
+             goto loop;
+         }
+     }
++#endif
+ }
+ 
++#ifndef ELTALE_P0_BOOT_PROBE
+ void Core_ResetGameState(void) {
+     core_flags &= 0x20000;
+     core_flags |= 0x160;
+@@ -241,6 +254,7 @@ void Core_ResetGameState(void) {
+     D_8007A1CD = 0;
+ }
+ 
++#endif
+ void Gfx_InitFrames(void) {
+     u16 *b;
+     u16 *a;
+@@ -324,6 +338,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -45,7 +64,7 @@ index db2ffb3..82de922 100644
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
          Camera_Update(sub);
          Env_PrepareFrameLighting();
-@@ -406,6 +418,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -406,6 +421,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
              core_game_mode = 7;
          }
      }
@@ -53,11 +72,32 @@ index db2ffb3..82de922 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
+@@ -420,6 +436,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+     arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
+ }
+ 
++#ifndef ELTALE_P0_BOOT_PROBE
+ void Core_RunGameplayLoop(void) {
+     OSMesg msg;
+     GfxFrame *frame;
+@@ -888,3 +905,4 @@ void Fade_StartTransitionOut(void) {
+             break;
+     }
+ }
++#endif
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..9adc9a8 100644
+index cc5330a..21cf5de 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
-@@ -212,7 +212,7 @@ u8 Pak_AllocateGameFile(s32 arg0, u8 arg1) {
+@@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
+     return ret;
+ }
+ 
++#ifndef ELTALE_P0_BOOT_PROBE
+ void Input_ReadController(s32 cont) {
+     OSContPad *pad;
+     u16 button;
+@@ -212,7 +213,7 @@ u8 Pak_AllocateGameFile(s32 arg0, u8 arg1) {
      ext = pak_allocate_extension_template;
      file_no = -1;
      ext.b[0] = arg1;
@@ -66,7 +106,7 @@ index cc5330a..9adc9a8 100644
      if (ret == 0) {
          ret = file_no;
          pak_game_file_scans[arg0].note_ext_first_bytes[ret] = arg1;
-@@ -228,7 +228,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
+@@ -228,7 +229,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
  
      ext = pak_delete_extension_template;
      ext.b[0] = arg1;
@@ -75,3 +115,8 @@ index cc5330a..9adc9a8 100644
  }
  
  s32 Pak_ReadFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
+@@ -321,3 +322,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
+ void Pak_InitGbPak(void) {
+     func_8003D6B0();
+ }
++#endif

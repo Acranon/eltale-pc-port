@@ -2,8 +2,10 @@
 
 ## Boot checkpoint reached
 
-On x86-64 Linux/WSL with GCC, `make p0-test ROM=...` uses the user-supplied
-retail ROM (SHA1 `50ea6c3d4de4b68b3c9b77524d8177066b9f36e7`) and runs
+On native x64 Windows with MinGW Clang, `python tools/build_windows.py --rom ...`
+uses the user-supplied ROM and runs the same checkpoint as the Linux/WSL GCC
+`make p0-test ROM=...` path. Both use the retail ROM (SHA1
+`50ea6c3d4de4b68b3c9b77524d8177066b9f36e7`) and run
 the decomp's boot, scheduler setup, controller initialization, DMA, font load,
 graphics frame initialization and first display-list builder. The observed
 checkpoint is five threads created/started, two run synchronously, 24 DMA
@@ -22,10 +24,12 @@ picture or a playable game frame.
   game changes into `patches/p0.patch` without modifying it.
 - The host uses fixed-width N64 scalar types. `tools/gen_host_gbi.py` generates
   an ignored SDK header with 32-bit `Gfx` and `Mtx` words (`sizeof` is checked
-  at build time). `make abi-test` also checks the display-list packet offset.
+  at build time). The Windows build and `make abi-test` on Linux also check the
+  display-list packet offset.
   Host runtime structs may grow with 64-bit pointers.
 - A mapped N64 address range receives raw ROM DMA bytes. Fixed linker labels
-  are generated from unresolved `D_` names by `tools/gen_abs_symbols.py`.
+  are generated from unresolved `D_` names by `tools/gen_abs_symbols.py`
+  (linker flags on Linux, an absolute COFF symbol object on Windows).
   The enlarged graphics frames use host storage and a trace-only physical
   address; a real RDRAM mapping is still needed for rendering.
 - `port/endian.h` has big-endian scalar read/write helpers and a small test.
@@ -35,7 +39,8 @@ picture or a playable game frame.
   safety certificate.
 - The OS stand-in runs boot thread IDs 1 and 6 synchronously, records the
   three scheduler workers, and services blocking PI DMA through message
-  queues. P1 will replace this with priority-scheduled fibers and events.
+  queues. Windows reserves RDRAM with `VirtualAlloc`, Linux with `mmap`.
+  P1 will replace the stand-in with priority-scheduled fibers and events.
 
 ## Next work to complete P0
 

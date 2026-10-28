@@ -1,4 +1,6 @@
+#ifndef _WIN32
 #define _GNU_SOURCE
+#endif
 #include "port/p0/host.h"
 #include "port/boot_probe.h"
 #include "game/core/main.h"
@@ -8,7 +10,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <sys/mman.h>
+#endif
 
 enum { ROM_BYTES = 16 * 1024 * 1024, RDRAM_BYTES = 8 * 1024 * 1024 };
 static const uintptr_t RDRAM_BASE = 0x80000000u;
@@ -53,12 +60,22 @@ int Port_HostInit(const char *rom_path) {
         fprintf(stderr, "P0 error: ROM is not big-endian z64 format\n");
         return -1;
     }
+#ifdef _WIN32
+    void *mem = VirtualAlloc((void *)RDRAM_BASE, RDRAM_BYTES,
+                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (mem != (void *)RDRAM_BASE) {
+        fprintf(stderr, "P0 error: cannot reserve N64 address range (Win32 %lu)\n",
+                (unsigned long)GetLastError());
+        return -1;
+    }
+#else
     void *mem = mmap((void *)RDRAM_BASE, RDRAM_BYTES, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     if (mem == MAP_FAILED) {
         fprintf(stderr, "P0 error: cannot reserve N64 address range: %s\n", strerror(errno));
         return -1;
     }
+#endif
     return 0;
 }
 

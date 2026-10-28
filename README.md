@@ -7,11 +7,25 @@ Eltale Monsters (J) ROM in big-endian `.z64` order.
 
 ## P0 boot probe
 
-The current x86-64 Linux/WSL build boots the decomp's `Boot_Main` and
-`Core_MainThread`, creates their threads and scheduler queues, runs the game's
-blocking ROM DMA and font loads, initializes graphics frames, and reaches an
-18-command display list made by the game's display-list builder. It checks
+The native x64 Windows and x86-64 Linux/WSL builds boot the decomp's `Boot_Main` and
+`Core_MainThread`, create their threads and scheduler queues, run the game's
+blocking ROM DMA and font loads, initialize graphics frames, and reach an
+18-command display list made by the game's display-list builder. They check
 the ROM SHA1, four DMA destination spans and the display-list end command.
+
+Windows is the primary development path. Use a MinGW-targeting Clang
+(`clang -dumpmachine` should print `x86_64-w64-windows-gnu`), Python 3 and Git:
+
+```powershell
+git submodule update --init
+python tools/patches.py apply
+python tools/build_windows.py --rom "C:\path\to\eltalemonsters.jp.z64"
+```
+
+This builds and runs `out\p0-windows\eltale-p0.exe` as a native Windows
+program. For a build without a ROM, pass `--build-only`.
+
+Linux/WSL remains available for comparison:
 
 ```sh
 git submodule update --init
@@ -22,7 +36,7 @@ make abi-test
 make census                 # writes out/p0/census.json
 ```
 
-Expected result: `P0_BOOT_OK threads_created=5 ... dl_words=18`.
+Expected on either platform: `P0_BOOT_OK threads_created=5 ... dl_words=18`.
 
 The probe is headless. It stops after the clear/display-list prefix; audio
 synthesis and the PakMenu entry are temporary P0 stand-ins, and the three
