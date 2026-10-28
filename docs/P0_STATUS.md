@@ -34,6 +34,19 @@ the exact path and data read before the checkpoint.
   at build time). The Windows build and `make abi-test` on Linux also check the
   display-list packet offset.
   Host runtime structs may grow with 64-bit pointers.
+- **Address model.** Display-list words stay 32-bit, so every address the game
+  puts in one must be below 4 GiB: the RDRAM range at 0x80000000 (raw
+  big-endian N64 bytes) or the game's own image (native data). Windows links
+  at a fixed image base of 0x10000000 without ASLR, Linux links without PIE,
+  and the host checks at startup that the image ends below RDRAM. Fixed lists
+  carry the N64 address of their data (`PORT_ADDR`); the host copies the first
+  MiB of the ROM to 0x80000400 at startup as IPL3 does, so those addresses hold
+  the original bytes. A renderer tells the two kinds apart by range: inside
+  RDRAM is big-endian N64 data, anything else is native. The pointer-width casts
+  are compile errors (`-Werror=pointer-to-int-cast` and friends) in both builds;
+  the generated `gbi.h` casts packet words through `uintptr_t`, and the game's
+  own pointer/integer casts go through `uptr`. Stacks are not checked: the game
+  never puts a stack address in a list. Fiber stacks in P1 can live anywhere.
 - A mapped N64 address range receives raw ROM DMA bytes. Fixed linker labels
   are generated from unresolved `D_` names by `tools/gen_abs_symbols.py`
   (linker flags on Linux, an absolute COFF symbol object on Windows).
@@ -52,7 +65,7 @@ the exact path and data read before the checkpoint.
 ## Boundary after the first-list milestone
 
 The first-list milestone is reproducible on native Windows and Linux. The
-later code paths still have pointer-width warnings and ROM/save records that
+later code paths still have ROM/save records that
 need byte-order conversion before they can run correctly; the boot executable
 does not certify them. The build keeps later audio, Pak, math and graphics
 functions as fail-fast stand-ins. The next phase replaces those, runs the

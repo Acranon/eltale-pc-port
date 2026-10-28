@@ -59,8 +59,8 @@ def main() -> None:
     flags = [
         "-std=gnu11", "-O2", "-g", "-mcmodel=large", "-ffp-contract=off",
         "-ffunction-sections", "-fdata-sections", "-fno-stack-protector",
-        "-Wno-int-to-pointer-cast",
-        "-Wno-pointer-to-int-cast", "-D_LANGUAGE_C", "-D_MIPS_SZLONG=32",
+        "-Werror=int-to-pointer-cast", "-Werror=pointer-to-int-cast",
+        "-Werror=int-to-void-pointer-cast", "-Werror=void-pointer-to-int-cast", "-D_LANGUAGE_C", "-D_MIPS_SZLONG=32",
         "-DF3DEX_GBI", "-DNDEBUG", "-D_FINALROM",
         "-DBUILD_VERSION=VERSION_J", "-DNON_MATCHING",
         "-DELTALE_P0_BOOT_PROBE",
@@ -85,7 +85,10 @@ def main() -> None:
     abs_obj = OUT / "abs.o"
     run([cc, "-c", str(asm), "-o", str(abs_obj)])
     exe = OUT / "eltale-p0.exe"
-    run([cc, *(str(obj) for obj in objects), str(abs_obj), "-Wl,/OPT:REF", "-lm", "-o", str(exe)])
+    run([cc, *(str(obj) for obj in objects), str(abs_obj), "-Wl,/OPT:REF",
+         # display-list words are 32-bit: keep the image below 4 GiB and below RDRAM
+         "-Wl,--image-base=0x10000000", "-Wl,--disable-dynamicbase", "-Wl,--disable-high-entropy-va",
+         "-lm", "-o", str(exe)])
 
     abi_exe = OUT / "abi-test.exe"
     endian_exe = OUT / "endian-test.exe"

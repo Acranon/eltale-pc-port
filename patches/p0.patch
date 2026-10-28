@@ -24,10 +24,19 @@ index cf65666..ce7b699 100644
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
 diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
-index b78bc53..100e6e8 100644
+index b78bc53..d050237 100644
 --- a/src/game/audio/audio.c
 +++ b/src/game/audio/audio.c
-@@ -268,7 +268,7 @@ void Audio_ThreadMain(void* arg) {
+@@ -259,7 +259,7 @@ void Audio_ThreadMain(void* arg) {
+                 end = audio_cmd_lists[audio_task_index];
+                 idx = audio_output_frame_index % 3;
+                 Audio_FreeOldDmaBuffers();
+-                phys = (s16*) osVirtualToPhysical(audio_output_buffers[idx]);
++                phys = (s16*)(uptr) osVirtualToPhysical(audio_output_buffers[idx]); /* port: a physical address until the audio port */
+                 audio_output_sample_counts[idx] = (frameSize - samplesLeft + 0x60) & ~0xF;
+                 if (audio_output_sample_counts[idx] < frameSize - 16) {
+                     audio_output_sample_counts[idx] = frameSize - 16;
+@@ -268,12 +268,12 @@ void Audio_ThreadMain(void* arg) {
                  task->next = NULL;
                  task->msgQ = &rtnQ;
                  task->msg = NULL;
@@ -36,6 +45,35 @@ index b78bc53..100e6e8 100644
                  task->list.t.data_size = (end - audio_cmd_lists[audio_task_index]) * sizeof(Acmd);
                  task->list.t.type = M_AUDTASK;
                  task->list.t.flags = 0;
+                 task->list.t.ucode_boot = (u64*) D_8004B980;
+-                task->list.t.ucode_boot_size = (u32) D_8004BA50 - (u32) D_8004B980;
++                task->list.t.ucode_boot_size = (u32)((uptr) D_8004BA50 - (uptr) D_8004B980);
+                 task->list.t.ucode = (u64*) D_8004CE80;
+                 task->list.t.ucode_data = (u64*) D_80070A60;
+                 task->list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
+@@ -434,11 +434,11 @@ void Audio_InitSeqPlayers(u8* bankStart, u8* bankEnd, u8* seqFile, u8* seqFileEn
+     audio_seq_slots[1].config.stopOsc = 0;
+     audio_seq_slots[1].config.debugFlags = 0;
+     alCSPNew(&audio_seq_slots[1].player, &audio_seq_slots[1].config);
+-    Audio_LoadSeqFileHeader((u32) seqFile);
++    Audio_LoadSeqFileHeader((u32)(uptr) seqFile);
+     alSeqFileNew(audio_seq_file, seqFile);
+     size = bankEnd - bankStart;
+     audio_seq_bank_file = alHeapAlloc(&audio_heap, 1, size);
+-    Audio_DmaReadRom((u32) bankStart, audio_seq_bank_file, size);
++    Audio_DmaReadRom((u32)(uptr) bankStart, audio_seq_bank_file, size);
+     alBnkfNew(audio_seq_bank_file, table);
+     bank = audio_seq_bank_file->bankArray[0];
+     alSeqpSetBank((ALSeqPlayer*) &audio_seq_slots[0].player, bank);
+@@ -454,7 +454,7 @@ void Audio_LoadSeq(s32 slot, s32 seqNo) {
+     if (len & 1) {
+         len++;
+     }
+-    Audio_DmaReadRom((u32) offset, audio_seq_slots[slot].seqData, len);
++    Audio_DmaReadRom((u32)(uptr) offset, audio_seq_slots[slot].seqData, len);
+     audio_seq_slots[slot].seqNo = seqNo;
+ }
+ 
 @@ -472,7 +472,7 @@ s32 Audio_PlaySeq(s32 slot) {
      alCSPSetSeq(player, seq);
      alSeqpPlay((ALSeqPlayer*) player);
@@ -45,6 +83,15 @@ index b78bc53..100e6e8 100644
      }
      return 1;
  }
+@@ -491,7 +491,7 @@ void Audio_InitSoundPlayer(u8* start, u8* end, u8* table) {
+ 
+     size = end - start;
+     audio_sound_bank_file = alHeapAlloc(&audio_heap, 1, size);
+-    Audio_DmaReadRom((u32) start, audio_sound_bank_file, size);
++    Audio_DmaReadRom((u32)(uptr) start, audio_sound_bank_file, size);
+     audio_sound_player_config.maxSounds = 0x50;
+     audio_sound_player_config.maxEvents = 0x20;
+     audio_sound_player_config.heap = &audio_heap;
 diff --git a/src/game/core/dma.c b/src/game/core/dma.c
 index e7ec32e..bfc7333 100644
 --- a/src/game/core/dma.c
@@ -59,7 +106,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..a949960 100644
+index db2ffb3..c799bb8 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,6 @@
@@ -87,6 +134,15 @@ index db2ffb3..a949960 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
+@@ -274,7 +281,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+     arg0->task.list.t.type = M_GFXTASK;
+     arg0->task.list.t.flags = 0;
+     arg0->task.list.t.ucode_boot = D_8004B980;
+-    arg0->task.list.t.ucode_boot_size = (u32)&D_8004B980[0xD0 / 8] - (u32)D_8004B980;
++    arg0->task.list.t.ucode_boot_size = (u32)((uptr)&D_8004B980[0xD0 / 8] - (uptr)D_8004B980);
+     arg0->task.list.t.ucode = D_8004BA50;
+     arg0->task.list.t.ucode_data = D_80070260;
+     arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
 @@ -324,6 +331,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
@@ -162,6 +218,64 @@ index a502109..fb962c0 100644
  }
  
  void Overlay_LoadEnding(void) {
+diff --git a/src/game/core/sched.c b/src/game/core/sched.c
+index 647c971..9c10f84 100644
+--- a/src/game/core/sched.c
++++ b/src/game/core/sched.c
+@@ -58,7 +58,7 @@ void nnScEventHandler(NNSched *sc) {
+ 
+     while (1) {
+         osRecvMesg(&sc->retraceMQ, &msg, OS_MESG_BLOCK);
+-        switch ((int)msg) {
++        switch ((int)(uptr)msg) {
+             case VIDEO_MSG:
+                 nnsc_retrace_count++;
+                 nnScEventBroadcast(sc, &sc->retraceMsg);
+diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
+index 481f713..7f9294a 100644
+--- a/src/game/enemy/enemy.c
++++ b/src/game/enemy/enemy.c
+@@ -636,7 +636,7 @@ void Enemy_StartAttack(Enemy *e, Actor *obj, EnemyAttack *arg2) {
+         e->state_timer = 1;
+     }
+     if (battle_flags & 0x100) {
+-        Enemy_StartAttackScript(arg2->attack_code & 0xFF, (s32)e);
++        Enemy_StartAttackScript(arg2->attack_code & 0xFF, e);
+     }
+ }
+ 
+@@ -943,11 +943,13 @@ void Enemy_ClearAttackScript(void) {
+     enemy_script_cmd = 0;
+ }
+ 
+-void Enemy_StartAttackScript(s32 arg0, s32 arg1) {
+-    ((Unk8007C060 *)&enemy_script_time)->time = 0;
+-    ((Unk8007C060 *)&enemy_script_time)->cmd = enemy_attack_scripts[arg0];
+-    ((Unk8007C060 *)&enemy_script_time)->enemy_ptr = arg1;
+-    ((Unk8007C060 *)&enemy_script_time)->actor = &enemy_slots[0].actor;
++/* Port: the N64 code writes the four script globals through one struct view
++ * (Unk8007C060), which relies on their .bss order and 32-bit pointers. */
++void Enemy_StartAttackScript(s32 arg0, Enemy *arg1) {
++    enemy_script_time = 0;
++    enemy_script_cmd = enemy_attack_scripts[arg0];
++    enemy_script_enemy = arg1;
++    enemy_script_obj = &enemy_slots[0].actor;
+ }
+ 
+ #ifdef NON_MATCHING
+diff --git a/src/game/enemy/enemy.h b/src/game/enemy/enemy.h
+index e32b469..97cc751 100644
+--- a/src/game/enemy/enemy.h
++++ b/src/game/enemy/enemy.h
+@@ -144,7 +144,7 @@ void Enemy_PlayMissEffect(Actor *obj);
+ s32 Enemy_GetSlotIndex(Actor *arg0);
+ void Enemy_SpawnDeathEffects(Actor *obj);
+ void Enemy_ClearAttackScript(void);
+-void Enemy_StartAttackScript(s32 arg0, s32 arg1);
++void Enemy_StartAttackScript(s32 arg0, struct Enemy *arg1);
+ void Enemy_RunAttackScript(void);
+ 
+ #endif
 diff --git a/src/game/event/scene.c b/src/game/event/scene.c
 index 4c00a3a..8705a34 100644
 --- a/src/game/event/scene.c
@@ -185,6 +299,28 @@ index 4c00a3a..8705a34 100644
      camera_state.atX = camera_state.atX + camera_state.eyeX;
      camera_state.atY = camera_state.atY + camera_state.eyeY;
      camera_state.atZ = camera_state.eyeZ - camera_state.atZ;
+diff --git a/src/game/gfx/effect.c b/src/game/gfx/effect.c
+index 4d66344..f092eff 100644
+--- a/src/game/gfx/effect.c
++++ b/src/game/gfx/effect.c
+@@ -297,7 +297,7 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
+     u16 v = arg0->life;
+ 
+     if (!(v & 3)) {
+-        arg0->tex = (u8*)effect_flipbook_frame_ptrs[v >> 2];
++        arg0->tex = (u8*)(uptr)(u32)effect_flipbook_frame_ptrs[v >> 2]; /* N64 RDRAM addresses */
+     }
+     arg0->scaleX = arg0->scaleY = effect_flipbook_scale_anim[v];
+     gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, effect_flipbook_alpha_anim[arg0->life]);
+@@ -1084,7 +1084,7 @@ void Effect_DrawStatUpMarkers(struct GfxFrameData* arg0) {
+                 {
+                     Gfx* _g = gfx_dl_head++;
+                     _g->words.w0 = 0x01020040;
+-                    _g->words.w1 = (u32)&D_2000000.mtx[gfx_mtx_index];
++                    _g->words.w1 = (u32)(uptr)&D_2000000.mtx[gfx_mtx_index];
+                     gfx_mtx_index++;
+                 }
+                 gDPSetEnvColor(gfx_dl_head++, effect_stat_up_marker_colors[i / 1][0], effect_stat_up_marker_colors[i / 1][1], effect_stat_up_marker_colors[i / 1][2], alpha);
 diff --git a/src/game/gfx/fade.c b/src/game/gfx/fade.c
 index 300a0ba..16d5c60 100644
 --- a/src/game/gfx/fade.c
@@ -259,6 +395,45 @@ index 6b4507a..19d3e92 100644
  void Item_DrawMenuFrame(s32 x, s32 y, s32 w, s32 h);
  
  #endif
+diff --git a/src/game/magic/magic.c b/src/game/magic/magic.c
+index 8719c3e..e896b46 100644
+--- a/src/game/magic/magic.c
++++ b/src/game/magic/magic.c
+@@ -820,7 +820,7 @@ void Magic_RemoveEnemyOrDamagePlayer(MagicEffect* arg0, Actor* arg1) {
+     }
+ }
+ 
+-void Magic_ClearActorStatuses(s32 arg0, Actor* arg1) {
++void Magic_ClearActorStatuses(MagicEffect* arg0, Actor* arg1) {
+     if (arg1->battle->status_bits != 0) {
+         arg1->battle->status_bits = 0;
+         if (arg1->typeFlags & 1) {
+@@ -836,8 +836,8 @@ void Magic_ClearActorStatuses(s32 arg0, Actor* arg1) {
+     }
+ }
+ 
+-void Magic_DamageAndClearStatuses(s32 arg0, Actor* arg1) {
+-    Magic_ApplyEffectDamage((void*)arg0, arg1);
++void Magic_DamageAndClearStatuses(MagicEffect* arg0, Actor* arg1) {
++    Magic_ApplyEffectDamage(arg0, arg1);
+     Magic_ClearActorStatuses(arg0, arg1);
+ }
+ 
+diff --git a/src/game/magic/magic.h b/src/game/magic/magic.h
+index 1922075..64304e1 100644
+--- a/src/game/magic/magic.h
++++ b/src/game/magic/magic.h
+@@ -206,8 +206,8 @@ void Magic_TryStartFlag4ReturnTransition(s32 arg0, Actor *arg1);
+ void Magic_ApplyZeroDamageHit(MagicEffect *arg0, Actor *arg1);
+ void Magic_TryStartFlag8ReturnTransition(s32 arg0, Actor *arg1);
+ void Magic_RemoveEnemyOrDamagePlayer(MagicEffect *arg0, Actor *arg1);
+-void Magic_ClearActorStatuses(s32 arg0, Actor *arg1);
+-void Magic_DamageAndClearStatuses(s32 arg0, Actor *arg1);
++void Magic_ClearActorStatuses(MagicEffect *arg0, Actor *arg1);
++void Magic_DamageAndClearStatuses(MagicEffect *arg0, Actor *arg1);
+ void Magic_SelectClosestAimTarget(MagicEffect *arg0);
+ void Magic_SelectFirstActiveTarget(MagicEffect *arg0);
+ void Magic_TargetCaster(MagicEffect *arg0);
 diff --git a/src/game/map/map.c b/src/game/map/map.c
 index ebb5c68..bf046cd 100644
 --- a/src/game/map/map.c
@@ -418,10 +593,41 @@ index f2ae77c..06e032f 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
+diff --git a/src/game/text/text_window.c b/src/game/text/text_window.c
+index 4f9f215..e6d9cce 100644
+--- a/src/game/text/text_window.c
++++ b/src/game/text/text_window.c
+@@ -761,7 +761,7 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
+   ;
+   t = &prm.e[type];
+   {
+-    { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = ((((unsigned int) ((((unsigned int) 0xfd) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) (t->w - 1)) & ((0x01 << 12) - 1)) << 0)); _g->words.w1 = (unsigned int) tex.p[type]; }
++    { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = ((((unsigned int) ((((unsigned int) 0xfd) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) (t->w - 1)) & ((0x01 << 12) - 1)) << 0)); _g->words.w1 = (unsigned int)(uptr) tex.p[type]; }
+     ;
+     { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
+     ;
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..c045406 100644
+index e6f79b4..9b054c1 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
+@@ -128,7 +128,7 @@ void Hud_Draw(GfxFrameData* buf) {
+     }
+     if (!(core_flags & 0xC00)) {
+         Hud_DrawPlayerMeters((Actor*)&player_state.actor);
+-        Hud_DrawElementLevels(buf, (s32)player_state.stats);
++        Hud_DrawElementLevels(buf, player_state.stats);
+         if (hud_panel_transition_state == 1) {
+             if (++hud_panel_transition_frame >= 13) {
+                 hud_panel_transition_frame = 12;
+@@ -237,7 +237,7 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+ extern Gfx D_803AA3C8[];
+ extern Gfx D_803AA2F8[];
+ 
+-void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
++void Hud_DrawElementLevels(GfxFrameData* buf, ActorStats *arg1) {
+     s32 x;
+     f32 fx;
+     f32 fy;
 @@ -984,7 +984,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
@@ -431,6 +637,19 @@ index e6f79b4..c045406 100644
      flags = Magic_GetSpellRestrictionFlags(id, arg4);
      tmp = (id >> 8) & 0xF;
      id &= 0xFF;
+diff --git a/src/game/ui/hud.h b/src/game/ui/hud.h
+index 3246010..539f21a 100644
+--- a/src/game/ui/hud.h
++++ b/src/game/ui/hud.h
+@@ -74,7 +74,7 @@ extern u8 hud_spell_label_palettes[8];
+ void Hud_ResetState(void);
+ void Hud_Draw(struct GfxFrameData* buf);
+ void Hud_DrawPlayerMeters(Actor* arg0);
+-void Hud_DrawElementLevels(struct GfxFrameData* buf, s32 arg1);
++void Hud_DrawElementLevels(struct GfxFrameData* buf, struct ActorStats *arg1);
+ void Hud_DrawCompass(struct GfxFrameData* buf);
+ void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
+ void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
 index c955abf..8f65565 100644
 --- a/src/game/ui/menu.c
@@ -719,6 +938,19 @@ index 337160b..cde65a5 100644
      /* 0x20 */ s16 anim_step_index;
      /* 0x22 */ s16 sprite_slot;
      /* 0x24 */ u16 previous_cue_index;
+diff --git a/src/overlays/intro/intro.c b/src/overlays/intro/intro.c
+index fc18718..6d55484 100644
+--- a/src/overlays/intro/intro.c
++++ b/src/overlays/intro/intro.c
+@@ -364,7 +364,7 @@ s32 Intro_RunSpriteScript(void) {
+             intro_fade_alpha = 0xFF;
+         }
+         g = gfx_dl_head++; g->words.w0 = _SHIFTL(G_RDPPIPESYNC, 24, 8); g->words.w1 = 0;
+-        g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_DL, 24, 8) | _SHIFTL(G_DL_PUSH, 16, 8)); g->words.w1 = (u32)D_802122E0_ovl_intro;
++        g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_DL, 24, 8) | _SHIFTL(G_DL_PUSH, 16, 8)); g->words.w1 = (u32)(uptr)D_802122E0_ovl_intro;
+         g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_SETOTHERMODE_H,24,8) | _SHIFTL(G_MDSFT_TEXTLUT,8,8) | _SHIFTL(2,0,8)); g->words.w1 = G_TT_RGBA16;
+         gDPSetRenderMode(gfx_dl_head++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+         gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, intro_fade_alpha);
 diff --git a/src/overlays/intro/intro_data.c b/src/overlays/intro/intro_data.c
 index 20075a2..413953d 100644
 --- a/src/overlays/intro/intro_data.c
@@ -1664,6 +1896,19 @@ index a93dfb8..f3c00c4 100644
      /* 0x20 */ s16 anim_step_index;
      /* 0x22 */ s16 sprite_slot;
      /* 0x24 */ u16 previous_cue_index;
+diff --git a/src/overlays/pakmenu/pakmenu.c b/src/overlays/pakmenu/pakmenu.c
+index 145e9b5..a888315 100644
+--- a/src/overlays/pakmenu/pakmenu.c
++++ b/src/overlays/pakmenu/pakmenu.c
+@@ -745,7 +745,7 @@ void PakMenu_DrawSprites(PakMenuSprite* arg0, s32 arg1) {
+ void PakMenu_WaitFrame(void) {
+     osWritebackDCacheAll();
+     osRecvMesg(pak_menu_vi_queue, &pak_menu_mesg, OS_MESG_BLOCK);
+-    if ((s32) pak_menu_mesg == 0x29D) {
++    if ((s32)(uptr) pak_menu_mesg == 0x29D) {
+         osViBlack(1);
+         return;
+     }
 diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
 index d3ba9ee..faaa820 100644
 --- a/src/overlays/title/title_draw.c

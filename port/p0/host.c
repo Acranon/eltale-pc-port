@@ -79,6 +79,29 @@ int Port_HostInit(const char *rom_path) {
         return -1;
     }
 #endif
+    /* As IPL3 does: the first MiB after the ROM header lands at 0x80000400. Native code
+     * keeps its own copy of this data; the RDRAM copy is what fixed display lists
+     * (PORT_ADDR) point at, as raw big-endian N64 bytes. */
+    memcpy((void *)(RDRAM_BASE + 0x400), rom_bytes + 0x1000, 0x100000);
+    /* Display-list words carry 32-bit addresses (PR/gbi.h). That only works if the
+     * game's image sits below 4 GiB and clear of the RDRAM range. Stacks are not
+     * checked: the RSP reads a list after the code that built it has returned, so
+     * the game never puts a stack address in one. */
+#ifdef _WIN32
+    extern IMAGE_DOS_HEADER __ImageBase;
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)&__ImageBase + __ImageBase.e_lfanew);
+    uintptr_t image_start = (uintptr_t)&__ImageBase;
+    uintptr_t image_end = image_start + nt->OptionalHeader.SizeOfImage;
+#else
+    extern char __executable_start, end;
+    uintptr_t image_start = (uintptr_t)&__executable_start;
+    uintptr_t image_end = (uintptr_t)&end;
+#endif
+    if (image_end > RDRAM_BASE) {
+        fprintf(stderr, "P0 error: image %#llx..%#llx is not below the RDRAM range\n",
+                (unsigned long long)image_start, (unsigned long long)image_end);
+        return -1;
+    }
     return 0;
 }
 

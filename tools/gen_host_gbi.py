@@ -31,6 +31,13 @@ packets = {
 for packet, pattern in packets.items():
     text, count = re.subn(pattern, f"typedef struct {{ u32 w0; u32 w1; }} {packet};", text)
     assert count == 1, packet
+# Packet words hold 32-bit addresses. Every address the game puts in a display
+# list is below 4 GiB on the host (the RDRAM range and a low, fixed image base;
+# port/p0/host.c checks this at startup), so the cast through uintptr_t only
+# drops zero bits.
+assert text.count("(unsigned int)(") == 43
+text = text.replace("(unsigned int)(", "(unsigned int)(uintptr_t)(")
+text = "#include <stdint.h>\n" + text
 dst.parent.mkdir(parents=True, exist_ok=True)
 dst.write_text(text)
 print(dst.relative_to(root))

@@ -17,7 +17,7 @@ CPPFLAGS := -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI -DNDEBUG -D_FINALROM \
   -include port/addresses.h -include game/actor/actor.h
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
-  -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
+  -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast
 LDFLAGS := -no-pie -Wl,--gc-sections -lm
 
 .PHONY: p0 p0-test endian-test abi-test census assets clean
