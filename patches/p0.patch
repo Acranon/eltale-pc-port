@@ -1,0 +1,77 @@
+diff --git a/src/game/core/dma.c b/src/game/core/dma.c
+index e7ec32e..bfc7333 100644
+--- a/src/game/core/dma.c
++++ b/src/game/core/dma.c
+@@ -20,7 +20,7 @@ void Dma_ReadRom(u8* devAddr, void* vAddr, s32 size) {
+         } else {
+             mesgSize = size;
+         }
+-        osPiStartDma(&dma_io_mesg, 0, 0, (u32) devAddr, vAddr, mesgSize, &dma_mesg_queue);
++        osPiStartDma(&dma_io_mesg, 0, 0, (u32)(uintptr_t)devAddr, vAddr, mesgSize, &dma_mesg_queue);
+         osRecvMesg(&dma_mesg_queue, NULL, 1);
+         size -= mesgSize;
+         devAddr = devAddr + mesgSize;
+diff --git a/src/game/core/main.c b/src/game/core/main.c
+index db2ffb3..82de922 100644
+--- a/src/game/core/main.c
++++ b/src/game/core/main.c
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P0_BOOT_PROBE
++#include "port/boot_probe.h"
++#endif
+ #include "game/core/main.h"
+ #include "game/core/dma.h"
+ #include "game/core/overlay_load.h"
+@@ -165,6 +168,14 @@ void Core_MainThread(void *arg0) {
+     gfx_sched_mq = nnScGetGfxMQ(&core_sched);
+     Gfx_InitFrames();
+ 
++#ifdef ELTALE_P0_BOOT_PROBE
++    /* P0 checkpoint: run the game's display-list builder through its clear
++     * commands. The intro renderer and frame scheduling follow in P1. */
++    core_game_mode = 0;
++    Gfx_BuildFrameDisplayList(&D_80301000[0]);
++    Port_P0DisplayListReady(&D_80301000[0]);
++#endif
++
+     while (1) {
+         Boss_ClearDefeated();
+         Chest_ClearOpenedFlags();
+@@ -324,6 +335,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+     gDPPipeSync(gfx_dl_head++);
+     gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
+ 
++#ifndef ELTALE_P0_BOOT_PROBE
+     if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
+         Camera_Update(sub);
+         Env_PrepareFrameLighting();
+@@ -406,6 +418,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+             core_game_mode = 7;
+         }
+     }
++#endif
+     gDPFullSync(gfx_dl_head++);
+     gSPEndDisplayList(gfx_dl_head++);
+     osWritebackDCache(&D_2000000, 0xDA70);
+diff --git a/src/game/input/input.c b/src/game/input/input.c
+index cc5330a..9adc9a8 100644
+--- a/src/game/input/input.c
++++ b/src/game/input/input.c
+@@ -212,7 +212,7 @@ u8 Pak_AllocateGameFile(s32 arg0, u8 arg1) {
+     ext = pak_allocate_extension_template;
+     file_no = -1;
+     ext.b[0] = arg1;
+-    ret = osPfsAllocateFile(&pak_port_states[arg0], 0x3943, 0x4E45544A, pak_game_name, &ext, 0x200, &file_no);
++    ret = osPfsAllocateFile(&pak_port_states[arg0], 0x3943, 0x4E45544A, pak_game_name, ext.b, 0x200, &file_no);
+     if (ret == 0) {
+         ret = file_no;
+         pak_game_file_scans[arg0].note_ext_first_bytes[ret] = arg1;
+@@ -228,7 +228,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
+ 
+     ext = pak_delete_extension_template;
+     ext.b[0] = arg1;
+-    return osPfsDeleteFile(&pak_port_states[arg0], 0x3943, 0x4E45544A, pak_game_name, &ext);
++    return osPfsDeleteFile(&pak_port_states[arg0], 0x3943, 0x4E45544A, pak_game_name, ext.b);
+ }
+ 
+ s32 Pak_ReadFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {

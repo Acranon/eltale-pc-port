@@ -1,0 +1,8 @@
+/work/
+/out/
+*.z64
+*.n64
+*.v64
+*.rom
+__pycache__/
+.venv/
