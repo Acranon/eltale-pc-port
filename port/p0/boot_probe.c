@@ -1,6 +1,7 @@
 #include "port/boot_probe.h"
 #include "game/core/boot.h"
 #include "game/core/main.h"
+#include "game/event/cutscene.h"
 #include "port/p0/host.h"
 
 #include <setjmp.h>
@@ -15,6 +16,7 @@ _Static_assert(sizeof(Mtx) == 64, "N64 matrix packets must stay 64 bytes");
 GfxFrame port_gfx_frames[2];
 static jmp_buf boot_done;
 static unsigned display_list_words;
+static uint64_t display_list_hash;
 
 void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
     GfxFrame *frame = (GfxFrame *)raw_frame;
@@ -27,6 +29,16 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
     if ((dl[words - 1].words.w0 >> 24) != (u8)G_ENDDL)
         Port_HostFatal("first display list has no end command");
     display_list_words = words;
+    display_list_hash = UINT64_C(0xCBF29CE484222325);
+    for (unsigned i = 0; i < words; i++) {
+        uint32_t pair[2] = { dl[i].words.w0, dl[i].words.w1 };
+        for (unsigned j = 0; j < 2; j++) {
+            for (int shift = 24; shift >= 0; shift -= 8) {
+                display_list_hash ^= (pair[j] >> shift) & 0xFFu;
+                display_list_hash *= UINT64_C(0x100000001B3);
+            }
+        }
+    }
     longjmp(boot_done, 1);
 }
 
@@ -49,13 +61,21 @@ int main(int argc, char **argv) {
     }
     if (Port_HostDmaCount() < 3 || Port_HostThreadCount() < 5 || Port_HostRunThreadCount() != 2)
         Port_HostFatal("boot skipped DMA or thread creation");
+    if (core_game_mode != 4 || intro_pak_check_done != 1 || Port_HostIntroUpdateCount() != 1)
+        Port_HostFatal("the first intro update did not complete");
+    if (display_list_hash != UINT64_C(0x0CF266FD815BB6A0))
+        Port_HostFatal("first intro display-list command hash changed");
     if (!Port_HostRomSpanMatches(0xDA4570, 0x80100000, 0x7080) ||
         !Port_HostRomSpanMatches(0xD3A8B0, 0x80332D30, 0x80) ||
         !Port_HostRomSpanMatches(0xD3A930, 0x803245A0, 0xE790) ||
-        !Port_HostRomSpanMatches(0x71920, 0x80095AF0, 0x3AD0))
+        !Port_HostRomSpanMatches(0x71920, 0x80095AF0, 0x3AD0) ||
+        !Port_HostRomSpanMatches(0x869620, 0x80206000, 0x60D0) ||
+        !Port_HostRomSpanMatches(0xDC62B0, 0x8020C0D0, 0x5C3E0))
         Port_HostFatal("boot DMA bytes differ from ROM");
-    printf("P0_BOOT_OK threads_created=%u threads_started=%u threads_run=%u dma_chunks=%u dma_bytes=%zu dl_words=%u\n",
+    printf("P0_BOOT_OK intro_updates=%u threads_created=%u threads_started=%u threads_run=%u dma_chunks=%u dma_bytes=%zu dl_words=%u dl_hash=%016llx\n",
+           Port_HostIntroUpdateCount(),
            Port_HostThreadCount(), Port_HostStartedThreadCount(), Port_HostRunThreadCount(),
-           Port_HostDmaCount(), Port_HostDmaBytes(), display_list_words);
+           Port_HostDmaCount(), Port_HostDmaBytes(), display_list_words,
+           (unsigned long long)display_list_hash);
     return 0;
 }

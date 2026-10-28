@@ -59,7 +59,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..196c261 100644
+index db2ffb3..a949960 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,6 @@
@@ -69,49 +69,37 @@ index db2ffb3..196c261 100644
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -165,6 +168,14 @@ void Core_MainThread(void *arg0) {
-     gfx_sched_mq = nnScGetGfxMQ(&core_sched);
-     Gfx_InitFrames();
- 
+@@ -181,6 +184,9 @@ void Core_MainThread(void *arg0) {
+         if (core_game_mode == 0) {
+             core_game_mode = 1;
+         }
 +#ifdef ELTALE_P0_BOOT_PROBE
-+    /* P0 checkpoint: run the game's display-list builder through its clear
-+     * commands. The intro renderer and frame scheduling follow in P1. */
-+    core_game_mode = 0;
-+    Gfx_BuildFrameDisplayList(&D_80301000[0]);
-+    Port_P0DisplayListReady(&D_80301000[0]);
++        Core_RunIntroLoop();
 +#else
-+
-     while (1) {
-         Boss_ClearDefeated();
-         Chest_ClearOpenedFlags();
-@@ -208,8 +219,10 @@ void Core_MainThread(void *arg0) {
+         switch (core_game_mode) {
+             case 1:
+                 Core_RunGameplayLoop();
+@@ -204,6 +210,7 @@ void Core_MainThread(void *arg0) {
+                 Core_RunEndingLoop();
+                 break;
+         }
++#endif
+         if (!(core_flags & 0x8000)) {
              goto loop;
          }
-     }
-+#endif
- }
- 
-+#ifndef ELTALE_P0_BOOT_PROBE
- void Core_ResetGameState(void) {
-     core_flags &= 0x20000;
-     core_flags |= 0x160;
-@@ -241,6 +254,7 @@ void Core_ResetGameState(void) {
-     D_8007A1CD = 0;
- }
- 
-+#endif
- void Gfx_InitFrames(void) {
-     u16 *b;
-     u16 *a;
-@@ -324,6 +338,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,6 +331,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
-+#ifndef ELTALE_P0_BOOT_PROBE
++#ifdef ELTALE_P0_BOOT_PROBE
++    if (core_game_mode == 4) {
++        func_8020C16C();
++    }
++#else
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
          Camera_Update(sub);
          Env_PrepareFrameLighting();
-@@ -406,6 +421,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -406,6 +418,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
              core_game_mode = 7;
          }
      }
@@ -119,7 +107,7 @@ index db2ffb3..196c261 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +436,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +433,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -127,11 +115,53 @@ index db2ffb3..196c261 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -888,3 +905,4 @@ void Fade_StartTransitionOut(void) {
+@@ -788,6 +802,7 @@ void Core_RunTitleLoop(void) {
+     Gfx_WaitForFrameMessage(2);
+ }
+ 
++#endif
+ void Core_RunIntroLoop(void) {
+     GfxFrame *frame;
+ 
+@@ -799,6 +814,9 @@ void Core_RunIntroLoop(void) {
+         gfx_mtx_index = 0;
+         Bgm_Update();
+         Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
++#ifdef ELTALE_P0_BOOT_PROBE
++        Port_P0DisplayListReady(&D_80301000[gfx_frame_index]);
++#endif
+         frame = &D_80301000[gfx_frame_index];
+         if (gfx_frame_sent == 0) {
+             gfx_frame_sent++;
+@@ -814,6 +832,7 @@ void Core_RunIntroLoop(void) {
+     Gfx_WaitForFrameMessage(2);
+ }
+ 
++#ifndef ELTALE_P0_BOOT_PROBE
+ void Core_RunEndingLoop(void) {
+     GfxFrame *frame;
+ 
+@@ -888,3 +907,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
 +#endif
+diff --git a/src/game/core/overlay_load.c b/src/game/core/overlay_load.c
+index a502109..fb962c0 100644
+--- a/src/game/core/overlay_load.c
++++ b/src/game/core/overlay_load.c
+@@ -20,7 +20,11 @@ void Overlay_LoadTitle(void) {
+ }
+ 
+ void Overlay_LoadIntro(void) {
++#ifdef ELTALE_P0_BOOT_PROBE
++    Dma_ReadRom(D_DC62B0, (void *)(uintptr_t)0x8020C0D0u, D_E22690 - D_DC62B0);
++#else
+     Dma_ReadRom(D_DC62B0, func_8020C0D0, D_E22690 - D_DC62B0);
++#endif
+ }
+ 
+ void Overlay_LoadEnding(void) {
 diff --git a/src/game/event/scene.c b/src/game/event/scene.c
 index 4c00a3a..8705a34 100644
 --- a/src/game/event/scene.c

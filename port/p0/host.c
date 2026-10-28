@@ -6,6 +6,7 @@
 #include "game/core/main.h"
 
 #include <errno.h>
+#include <fenv.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +44,8 @@ void Port_HostFatal(const char *what) {
 }
 
 int Port_HostInit(const char *rom_path) {
+    if (fesetround(FE_TONEAREST) != 0)
+        Port_HostFatal("cannot set N64 boot rounding mode");
     unsigned char header[4] = { 0x80, 0x37, 0x12, 0x40 };
     FILE *f = fopen(rom_path, "rb");
     if (!f) {
@@ -194,10 +197,12 @@ u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
     if (addr >= RDRAM_BASE && addr < RDRAM_BASE + RDRAM_BYTES)
         return (u32)(addr - RDRAM_BASE);
-    uintptr_t frames = (uintptr_t)&port_gfx_frames[0];
-    if (addr >= frames && addr < (uintptr_t)&port_gfx_frames[2]) {
-        /* Trace-only frame address; P1 will register a real RDRAM view. */
-        return 0x00700000u + (u32)(addr - frames);
+    for (unsigned i = 0; i < 2; i++) {
+        uintptr_t data = (uintptr_t)&port_gfx_frames[i].data;
+        if (addr >= data && addr < data + sizeof port_gfx_frames[i].data) {
+            /* Stable trace-only frame address across host struct ABIs. */
+            return 0x00600000u + i * 0x10000u + (u32)(addr - data);
+        }
     }
     Port_HostFatal("physical address requested for an unknown host pointer");
 }

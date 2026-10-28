@@ -2,7 +2,7 @@
 """Build and run the native x64 Windows P0 checkpoint with MinGW Clang.
 
     python tools/build_windows.py --rom C:\\path\\to\\eltalemonsters.jp.z64
-    python tools/build_windows.py --build-only
+    python tools/build_windows.py --build-only --rom C:\\path\\to\\eltalemonsters.jp.z64
 
 The ROM is read in place and never copied into this repository.
 """
@@ -15,17 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out/p0-windows"
-SOURCES = [
-    "work/src/game/core/boot.c",
-    "work/src/game/core/dma.c",
-    "work/src/game/core/main.c",
-    "work/src/game/core/sched.c",
-    "work/src/game/input/input.c",
-    "work/src/game/text/text.c",
-    "port/p0/boot_probe.c",
-    "port/p0/host.c",
-    "port/p0/stubs.c",
-]
+HOST_SOURCES = ["port/p0/boot_probe.c", "port/p0/host.c", "port/p0/stubs.c",
+                "port/p0/unavailable.c"]
 
 
 def run(args: list[str]) -> None:
@@ -41,6 +32,8 @@ def main() -> None:
     args = parser.parse_args()
     if not (ROOT / "work/src/game/core/main.c").is_file():
         raise SystemExit("run `python tools/patches.py apply` first")
+    if not args.rom:
+        raise SystemExit("supply --rom to build the native game with local assets")
     cc = shutil.which("clang")
     if not cc:
         raise SystemExit("MinGW-targeting clang was not found on PATH")
@@ -52,8 +45,11 @@ def main() -> None:
     generated = OUT / "include/PR/gbi.h"
     run([sys.executable, "tools/gen_host_gbi.py", str(generated)])
     run([sys.executable, "tools/gen_addresses.py", str(OUT / "include/port/addresses.h")])
+    run([sys.executable, "tools/check_rom.py", str(args.rom)])
+    run([sys.executable, "decomp/tools/extract_assets.py", "decomp/assets.yaml",
+         str(args.rom), str(OUT / "assets")])
     includes = [
-        f"-I{OUT / 'include'}", "-Iport/include", "-I.", "-Iwork/src",
+        f"-I{OUT / 'include'}", f"-I{OUT}", "-Iport/include", "-I.", "-Iwork/src",
         "-Idecomp/include", "-Idecomp/src",
         "-idirafter", "decomp/include/ultra64",
         "-idirafter", "decomp/include/ultra64/PR",
@@ -61,7 +57,7 @@ def main() -> None:
         "-include", "game/actor/actor.h",
     ]
     flags = [
-        "-std=gnu11", "-O2", "-g", "-mcmodel=large",
+        "-std=gnu11", "-O2", "-g", "-mcmodel=large", "-ffp-contract=off",
         "-ffunction-sections", "-fdata-sections", "-fno-stack-protector",
         "-Wno-int-to-pointer-cast",
         "-Wno-pointer-to-int-cast", "-D_LANGUAGE_C", "-D_MIPS_SZLONG=32",
@@ -69,11 +65,18 @@ def main() -> None:
         "-DBUILD_VERSION=VERSION_J", "-DNON_MATCHING",
         "-DELTALE_P0_BOOT_PROBE",
     ]
+    boot_sources = sorted((ROOT / "work/src/game").rglob("*.c"))
+    boot_sources = [p for p in boot_sources if p.as_posix() != (ROOT / "work/src/game/audio/audio.c").as_posix()]
+    boot_sources += sorted((ROOT / "work/src/overlays/intro").rglob("*.c"))
+    sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
     objects: list[Path] = []
-    for index, source in enumerate(SOURCES):
+    for index, source in enumerate(sources):
         obj = OUT / f"source_{index}.o"
         print(f"compile {source}", flush=True)
-        run([cc, *flags, *includes, "-c", source, "-o", str(obj)])
+        if source == "port/p0/unavailable.c":
+            run([cc, "-std=gnu11", "-O2", "-c", source, "-o", str(obj)])
+        else:
+            run([cc, *flags, *includes, "-c", source, "-o", str(obj)])
         objects.append(obj)
 
     asm = OUT / "abs.s"
@@ -82,7 +85,7 @@ def main() -> None:
     abs_obj = OUT / "abs.o"
     run([cc, "-c", str(asm), "-o", str(abs_obj)])
     exe = OUT / "eltale-p0.exe"
-    run([cc, *(str(obj) for obj in objects), str(abs_obj), "-Wl,/OPT:REF", "-o", str(exe)])
+    run([cc, *(str(obj) for obj in objects), str(abs_obj), "-Wl,/OPT:REF", "-lm", "-o", str(exe)])
 
     abi_exe = OUT / "abi-test.exe"
     endian_exe = OUT / "endian-test.exe"
@@ -92,11 +95,6 @@ def main() -> None:
     run([str(abi_exe)])
     run([str(endian_exe)])
     if args.full_compile:
-        if not args.rom:
-            raise SystemExit("--full-compile requires --rom to extract local assets")
-        run([sys.executable, "tools/check_rom.py", str(args.rom)])
-        run([sys.executable, "decomp/tools/extract_assets.py", "decomp/assets.yaml",
-             str(args.rom), str(OUT / "assets")])
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))
         full_flags = [flag for flag in flags if flag != "-DELTALE_P0_BOOT_PROBE"]
@@ -115,9 +113,6 @@ def main() -> None:
     if args.build_only:
         print(f"Windows P0 build OK: {exe}")
         return
-    if not args.rom:
-        raise SystemExit("supply --rom path or use --build-only")
-    run([sys.executable, "tools/check_rom.py", str(args.rom)])
     run([str(exe), "--rom", str(args.rom), "--headless", "--fast"])
 
 

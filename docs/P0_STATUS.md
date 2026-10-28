@@ -1,22 +1,25 @@
 # P0 native build status
 
-## Boot checkpoint reached
+## First intro display list reached
 
 On native x64 Windows with MinGW Clang, `python tools/build_windows.py --rom ...`
 uses the user-supplied ROM and runs the same checkpoint as the Linux/WSL GCC
 `make p0-test ROM=...` path. Both use the retail ROM (SHA1
 `50ea6c3d4de4b68b3c9b77524d8177066b9f36e7`) and run
 the decomp's boot, scheduler setup, controller initialization, DMA, font load,
-graphics frame initialization and first display-list builder. The observed
-checkpoint is five threads created/started, two run synchronously, 24 DMA
-chunks (353,296 bytes), and 18 graphics commands ending in `G_ENDDL`.
-Four DMA spans are compared byte for byte against the input ROM.
+startup initialization, intro overlay load, `Intro_Init`, the first
+`Intro_Update`, and the display-list builder. The observed checkpoint is five
+threads created/started, two run synchronously, 56 DMA chunks (816,336
+bytes), and 18 graphics commands ending in `G_ENDDL`. Six DMA spans are
+compared byte for byte against the input ROM. Windows and Linux produce the
+same command hash, `0cf266fd815bb6a0`.
 
-This is an early P0 probe. A port-only patch takes the checkpoint after
-`Gfx_InitFrames` and skips the mode-specific draws in
-`Gfx_BuildFrameDisplayList`. The display list is the game's hardware clear
-prefix followed by its normal full-sync/end commands. It is not an intro
-picture or a playable game frame.
+The port-only patch takes the checkpoint immediately after the first intro
+display list. On that first update, the host's successful Pak scan causes
+`Intro_Update` to return before sprite drawing, so the list contains the
+game's clear/setup and full-sync/end commands. It is not a visible intro
+picture or a playable game frame. [The boot audit](P0_BOOT_AUDIT.md) records
+the exact path and data read before the checkpoint.
 
 ## Host design already in place
 
@@ -24,8 +27,8 @@ picture or a playable game frame.
   game changes into `patches/p0.patch` without modifying it.
 - Native Windows Clang now compiles all 47 game and overlay C modules, including
   `NON_MATCHING` drafts, into `out/p0-windows/eltale-game.a` with ROM assets
-  generated into the ignored build directory. This is a compile gate; those
-  objects are not all linked into the boot executable yet.
+  generated into the ignored build directory. The boot executable links the
+  game and intro modules it needs; the archive is a full-source compile gate.
 - The host uses fixed-width N64 scalar types. `tools/gen_host_gbi.py` generates
   an ignored SDK header with 32-bit `Gfx` and `Mtx` words (`sizeof` is checked
   at build time). The Windows build and `make abi-test` on Linux also check the
@@ -36,7 +39,7 @@ picture or a playable game frame.
   (linker flags on Linux, an absolute COFF symbol object on Windows).
   The enlarged graphics frames use host storage and a trace-only physical
   address; a real RDRAM mapping is still needed for rendering.
-- `port/endian.h` has big-endian scalar read/write helpers and a small test.
+- `port/include/port/endian.h` has big-endian scalar read/write helpers and a small test.
   DMA copies raw bytes; no multi-byte ROM record is interpreted before this
   checkpoint. `tools/port_census.py` lists candidate endian and pointer-width
   sites for the full port. Its output is a starting inventory, not an ABI
@@ -46,17 +49,15 @@ picture or a playable game frame.
   queues. Windows reserves RDRAM with `VirtualAlloc`, Linux with `mmap`.
   P1 will replace the stand-in with priority-scheduled fibers and events.
 
-## Next work to complete P0
+## Boundary after the first-list milestone
 
-1. Link and execute the required game/intro modules, replacing the probe's
-   mode-0 shortcut with the actual first intro display-list path.
-2. Audit every pointer-to-integer conversion and every ROM/save struct on a
-   64-bit host. Add strict compiler gates after the known conversions are
-   fixed. The P0 build currently suppresses these warnings for the copied
-   decomp code; it is not ABI clean yet.
-3. Review `out/p0/census.json` and convert multi-byte ROM/save fields at
-   their read sites. Validate against a reference emulator trace.
-4. Run the real intro overlay and scheduler to its full first display list,
-   then add the P1 renderer and input/save implementations.
+The first-list milestone is reproducible on native Windows and Linux. The
+later code paths still have pointer-width warnings and ROM/save records that
+need byte-order conversion before they can run correctly; the boot executable
+does not certify them. The build keeps later audio, Pak, math and graphics
+functions as fail-fast stand-ins. The next phase replaces those, runs the
+scheduler workers, and reaches visible intro frames with the reference
+renderer. The wider ABI and endian census, CPU edge-case checks and emulator
+comparison are tracked as prerequisites for those paths.
 
 The original byte-matching decomp build is unaffected by the port patch.

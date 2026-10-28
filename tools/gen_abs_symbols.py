@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-raw_address = re.compile(r"D_([0-9A-F]{5,8})$")
+raw_address = re.compile(r"D_([0-9A-F]{5,8})(?:_end)?$")
 asm = len(sys.argv) > 1 and sys.argv[1] == "--asm"
 args = sys.argv[2:] if asm else sys.argv[1:]
 dst = Path(args[0])

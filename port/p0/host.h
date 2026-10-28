@@ -10,6 +10,7 @@ size_t Port_HostDmaBytes(void);
 unsigned Port_HostThreadCount(void);
 unsigned Port_HostStartedThreadCount(void);
 unsigned Port_HostRunThreadCount(void);
+unsigned Port_HostIntroUpdateCount(void);
 int Port_HostRomSpanMatches(uint32_t rom_offset, uintptr_t ram_address, size_t length);
 __attribute__((noreturn)) void Port_HostFatal(const char *what);
 

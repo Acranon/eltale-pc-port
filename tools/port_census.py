@@ -21,13 +21,13 @@ patterns = {
 sites = []
 for subtree in ("game", "overlays"):
     for path in sorted((source / subtree).rglob("*.c")):
+        rel = path.relative_to(source).as_posix()
         for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
             for category, pattern in patterns.items():
                 if pattern.search(line):
                     sites.append({"category": category,
-                                  "file": path.relative_to(source).as_posix(),
+                                  "file": rel,
                                   "line": lineno,
-                                  "p0_compiled": path.relative_to(source).as_posix() in {
-                                      "game/core/boot.c", "game/core/dma.c", "game/core/main.c",
-                                      "game/core/sched.c", "game/input/input.c", "game/text/text.c"}})
+                                  "p0_linked": (rel.startswith("game/") and rel != "game/audio/audio.c")
+                                  or rel.startswith("overlays/intro/")})
 print(json.dumps({"source": source.relative_to(root).as_posix(), "sites": sites}, indent=2))

@@ -1,4 +1,6 @@
 #include "game/core/main.h"
+#include "game/map/map.h"
+#include "overlays/intro/intro_data.h"
 
 #include <stddef.h>
 
@@ -13,5 +15,9 @@ _Static_assert(offsetof(ActorBattle, attack_power) == 0x84,
                "expanded status handles must not shift live battle stats");
 _Static_assert(sizeof(ActorBattle) == 0x98,
                "actor battle record must keep its runtime size");
+_Static_assert(sizeof(((IntroSpriteCue *)0)->texture_addr) == sizeof(void *),
+               "C-defined cue pointers must survive a 64-bit host");
+_Static_assert(sizeof(((MapBackdropDef *)0)->dl_addr) == 4,
+               "segmented N64 display-list addresses stay 32-bit words");
 
 int main(void) { return 0; }
