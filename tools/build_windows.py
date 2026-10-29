@@ -94,7 +94,7 @@ def main() -> None:
                     "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "decomp/src/libultra/io/vitbl.c"]
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
         if args.audio:
-            sources += ["work/src/game/audio/audio.c"]
+            sources += ["work/src/game/audio/audio.c", "port/audio/bank.c"]
             sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "work/src/libultra/audio").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):

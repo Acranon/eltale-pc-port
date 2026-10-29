@@ -296,3 +296,21 @@ through the patch) instead of the stand-ins. Both compile and link; the ~16
 pointer/integer casts in libultra audio now go through `uptr`, and load.c's
 K0_TO_PHYS takes host addresses. It is off by default until it runs: at boot,
 Audio_InitSoundPlayer reads the bank alBnkfNew left in its N64 form (step 2).
+
+Sound step 2 done (with `--audio` / `AUDIO=1`): the audio thread runs and
+builds a command list every audio frame; the 700-frame New Game run finishes
+on Windows and Linux with the same final hash as without audio (6 threads, 416
+DMA chunks: the audio DMAs). What it took:
+- port/audio/bank.c decodes the bank files and the sequence file header into
+  native libultra structs (Port_BankFileNew / Port_SeqFileNew, called from
+  audio.c in place of alBnkfNew / alSeqFileNew); audio.c reads the sequence
+  count big-endian.
+- reverb.c indexed with negated u32 offsets (`&r->input[-d->output]`), which
+  wrap on the N64 but run off the end of a 64-bit address space: now s32.
+- cseq.c reads the compressed-MIDI header (track offsets, division) big-endian.
+- the audio heap is a 1 MiB buffer in the image (structs are bigger natively).
+- ALParam slots hold ALStartParamAlt and friends, which are bigger than ALParam
+  with 8-byte pointers: ALParam has room added, with static asserts.
+Audio tasks still only complete; nothing executes the command lists (step 3).
+The VI count per frame changed a little with the audio thread running (frame
+540 at VI 1099 instead of 1078); the frame hashes match.

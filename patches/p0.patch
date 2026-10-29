@@ -146,10 +146,32 @@ index 66c2ccd..624c42f 100644
  
  /* .bss 8008BFC0..8008C040 */
 diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
-index b78bc53..d050237 100644
+index b78bc53..a1cae2a 100644
 --- a/src/game/audio/audio.c
 +++ b/src/game/audio/audio.c
-@@ -259,7 +259,7 @@ void Audio_ThreadMain(void* arg) {
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_AUDIO
++#include "port/audio.h"
++#endif
+ #include "game/audio/audio.h"
+ #include "game/core/sched.h"
+ 
+@@ -77,7 +80,14 @@ void Audio_DmaReadRom(u32 devAddr, void* vAddr, s32 nbytes) {
+ 
+ 
+ void Audio_Init(void) {
++#ifdef ELTALE_P1_AUDIO
++    /* port: the synthesizer's structs are bigger natively (8-byte pointers); a bigger heap in the
++     * image, below 4 GiB like everything the command lists point at */
++    static _Alignas(16) u8 port_audio_heap[0x100000];
++    alHeapInit(&audio_heap, port_audio_heap, sizeof port_audio_heap);
++#else
+     alHeapInit(&audio_heap, D_80332DB0, 0x68000);
++#endif
+     audio_cmd_lists[0] = alHeapAlloc(&audio_heap, 1, 0x8000);
+     audio_cmd_lists[1] = alHeapAlloc(&audio_heap, 1, 0x8000);
+     D_8008F088[0] = alHeapAlloc(&audio_heap, 1, 0x40);
+@@ -259,7 +269,7 @@ void Audio_ThreadMain(void* arg) {
                  end = audio_cmd_lists[audio_task_index];
                  idx = audio_output_frame_index % 3;
                  Audio_FreeOldDmaBuffers();
@@ -158,7 +180,7 @@ index b78bc53..d050237 100644
                  audio_output_sample_counts[idx] = (frameSize - samplesLeft + 0x60) & ~0xF;
                  if (audio_output_sample_counts[idx] < frameSize - 16) {
                      audio_output_sample_counts[idx] = frameSize - 16;
-@@ -268,12 +268,12 @@ void Audio_ThreadMain(void* arg) {
+@@ -268,12 +278,12 @@ void Audio_ThreadMain(void* arg) {
                  task->next = NULL;
                  task->msgQ = &rtnQ;
                  task->msg = NULL;
@@ -173,21 +195,42 @@ index b78bc53..d050237 100644
                  task->list.t.ucode = (u64*) D_8004CE80;
                  task->list.t.ucode_data = (u64*) D_80070A60;
                  task->list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -434,11 +434,11 @@ void Audio_InitSeqPlayers(u8* bankStart, u8* bankEnd, u8* seqFile, u8* seqFileEn
+@@ -400,7 +410,11 @@ void Audio_LoadSeqFileHeader(u32 devAddr) {
+ 
+     audio_seq_file = alHeapAlloc(&audio_heap, 1, 4);
+     Audio_DmaReadRom(devAddr, audio_seq_file, 4);
++#ifdef ELTALE_P1_AUDIO
++    size = (((u8 *)audio_seq_file)[2] << 8 | ((u8 *)audio_seq_file)[3]) * 8 + 4; /* port: big-endian header */
++#else
+     size = audio_seq_file->seqCount * 8 + 4;
++#endif
+     audio_seq_file = alHeapAlloc(&audio_heap, 1, size);
+     Audio_DmaReadRom(devAddr, audio_seq_file, size);
+ }
+@@ -434,12 +448,20 @@ void Audio_InitSeqPlayers(u8* bankStart, u8* bankEnd, u8* seqFile, u8* seqFileEn
      audio_seq_slots[1].config.stopOsc = 0;
      audio_seq_slots[1].config.debugFlags = 0;
      alCSPNew(&audio_seq_slots[1].player, &audio_seq_slots[1].config);
 -    Audio_LoadSeqFileHeader((u32) seqFile);
 +    Audio_LoadSeqFileHeader((u32)(uptr) seqFile);
++#ifdef ELTALE_P1_AUDIO
++    audio_seq_file = Port_SeqFileNew(audio_seq_file, seqFile); /* port: a native copy */
++#else
      alSeqFileNew(audio_seq_file, seqFile);
++#endif
      size = bankEnd - bankStart;
      audio_seq_bank_file = alHeapAlloc(&audio_heap, 1, size);
 -    Audio_DmaReadRom((u32) bankStart, audio_seq_bank_file, size);
 +    Audio_DmaReadRom((u32)(uptr) bankStart, audio_seq_bank_file, size);
++#ifdef ELTALE_P1_AUDIO
++    audio_seq_bank_file = Port_BankFileNew(audio_seq_bank_file, table);
++#else
      alBnkfNew(audio_seq_bank_file, table);
++#endif
      bank = audio_seq_bank_file->bankArray[0];
      alSeqpSetBank((ALSeqPlayer*) &audio_seq_slots[0].player, bank);
-@@ -454,7 +454,7 @@ void Audio_LoadSeq(s32 slot, s32 seqNo) {
+     alSeqpSetBank((ALSeqPlayer*) &audio_seq_slots[1].player, bank);
+@@ -454,7 +476,7 @@ void Audio_LoadSeq(s32 slot, s32 seqNo) {
      if (len & 1) {
          len++;
      }
@@ -196,7 +239,7 @@ index b78bc53..d050237 100644
      audio_seq_slots[slot].seqNo = seqNo;
  }
  
-@@ -472,7 +472,7 @@ s32 Audio_PlaySeq(s32 slot) {
+@@ -472,7 +494,7 @@ s32 Audio_PlaySeq(s32 slot) {
      alCSPSetSeq(player, seq);
      alSeqpPlay((ALSeqPlayer*) player);
      for (i = 0; i < 16; i++) {
@@ -205,7 +248,7 @@ index b78bc53..d050237 100644
      }
      return 1;
  }
-@@ -491,7 +491,7 @@ void Audio_InitSoundPlayer(u8* start, u8* end, u8* table) {
+@@ -491,12 +513,16 @@ void Audio_InitSoundPlayer(u8* start, u8* end, u8* table) {
  
      size = end - start;
      audio_sound_bank_file = alHeapAlloc(&audio_heap, 1, size);
@@ -214,6 +257,15 @@ index b78bc53..d050237 100644
      audio_sound_player_config.maxSounds = 0x50;
      audio_sound_player_config.maxEvents = 0x20;
      audio_sound_player_config.heap = &audio_heap;
+     alSndpNew(&audio_sound_player, &audio_sound_player_config);
++#ifdef ELTALE_P1_AUDIO
++    audio_sound_bank_file = Port_BankFileNew(audio_sound_bank_file, table);
++#else
+     alBnkfNew(audio_sound_bank_file, table);
++#endif
+     audio_sound_bank = audio_sound_bank_file->bankArray[0];
+     audio_sound_inst = audio_sound_bank->instArray[0];
+     audio_sound_ids = alHeapAlloc(&audio_heap, 1, audio_sound_inst->soundCount * 2);
 diff --git a/src/game/core/dma.c b/src/game/core/dma.c
 index e7ec32e..bfc7333 100644
 --- a/src/game/core/dma.c
@@ -1477,10 +1529,30 @@ index a0cdcde..2e70135 100644
      s32 i;
      
 diff --git a/src/libultra/audio/cseq.c b/src/libultra/audio/cseq.c
-index b66b9d7..01d4ac4 100644
+index b66b9d7..9ebf677 100644
 --- a/src/libultra/audio/cseq.c
 +++ b/src/libultra/audio/cseq.c
-@@ -53,7 +53,7 @@ void alCSeqNew(ALCSeq *seq, u8 *ptr)
+@@ -27,6 +27,13 @@
+ #include <ultraerror.h>
+ #include "cseq.h"
+ 
++/* port: the compressed-MIDI header (track offsets, division) stays big-endian in the sequence data */
++#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
++#define CSEQ_HDR32(x) __builtin_bswap32(x)
++#else
++#define CSEQ_HDR32(x) (x)
++#endif
++
+ 
+ static u32 __readVarLen(ALCSeq *s,u32 track);
+ static u8  __getTrackByte(ALCSeq *s,u32 track);
+@@ -48,12 +55,12 @@ void alCSeqNew(ALCSeq *seq, u8 *ptr)
+         seq->lastStatus[i] = 0;
+         seq->curBUPtr[i] = 0;
+         seq->curBULen[i] = 0;
+-        tmpOff = seq->base->trackOffset[i];
++        tmpOff = CSEQ_HDR32(seq->base->trackOffset[i]);
+         if(tmpOff) /* if the track is valid */
          {
              flagTmp = 1 << i;
              seq->validTracks |= flagTmp;
@@ -1489,6 +1561,30 @@ index b66b9d7..01d4ac4 100644
              seq->evtDeltaTicks[i] = __readVarLen(seq,i);
              /*__alCSeqGetTrackEvent(seq,i); prime the event buffers  */
          }
+@@ -61,7 +68,7 @@ void alCSeqNew(ALCSeq *seq, u8 *ptr)
+             seq->curLoc[i] = 0;
+     }
+ 
+-    seq->qnpt = 1.0/(f32)seq->base->division;
++    seq->qnpt = 1.0/(f32)CSEQ_HDR32(seq->base->division);
+ }
+ 
+ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
+@@ -250,12 +257,12 @@ static u32 __alCSeqGetTrackEvent(ALCSeq *seq, u32 track, ALEvent *event)
+ f32 alCSeqTicksToSec(ALCSeq *seq, s32 ticks, u32 tempo)
+ {
+     return ((f32) (((f32)(ticks) * (f32)(tempo)) /
+-                     ((f32)(seq->base->division) * 1000000.0)));
++                     ((f32)(CSEQ_HDR32(seq->base->division)) * 1000000.0)));
+ }
+ 
+ u32 alCSeqSecToTicks(ALCSeq *seq, f32 sec, u32 tempo)
+ {
+-    return (u32)(((sec * 1000000.0) * seq->base->division) / tempo);
++    return (u32)(((sec * 1000000.0) * CSEQ_HDR32(seq->base->division)) / tempo);
+ }
+ 
+ 
 diff --git a/src/libultra/audio/env.c b/src/libultra/audio/env.c
 index 646c33e..dd69ecd 100644
 --- a/src/libultra/audio/env.c
@@ -1607,18 +1703,40 @@ index 899499a..5bf20c2 100644
              break;
              
 diff --git a/src/libultra/audio/reverb.c b/src/libultra/audio/reverb.c
-index 5611c21..d7e09a0 100644
+index 5611c21..3dcb996 100644
 --- a/src/libultra/audio/reverb.c
 +++ b/src/libultra/audio/reverb.c
-@@ -277,7 +277,7 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
+@@ -100,8 +100,8 @@ Acmd *alFxPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
+ 
+     for (i = 0; i < r->section_count; i++) {
+ 	d  = &r->delay[i];  /* get the ALDelay structure */
+-	in_ptr  = &r->input[-d->input];
+-	out_ptr = &r->input[-d->output];
++	in_ptr  = &r->input[-(s32)d->input]; /* port: u32 negated wraps on a 64-bit host */
++	out_ptr = &r->input[-(s32)d->output];
+ 	
+ 	if (in_ptr == prev_out_ptr) {
+ 	    SWAP(buff1, buff2);
+@@ -276,8 +276,8 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
+          * negative of that as an index into the delay buffer. loadBuffer that uses this
           * value then bumps it up if it is below the  delay buffer.
           */ 
-         out_ptr = &r->input[-(d->output - d->rsdelta)];
+-        out_ptr = &r->input[-(d->output - d->rsdelta)];
 -        ramalign = ((s32)out_ptr & 0x7) >> 1; /* calculate the number of samples needed 
++        out_ptr = &r->input[-(s32)(d->output - d->rsdelta)];
 +        ramalign = ((s32)(uptr)out_ptr & 0x7) >> 1; /* calculate the number of samples needed 
                                                 to align the buffer*/
  #ifdef _DEBUG
  #if 0
+@@ -306,7 +306,7 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
+         d->rs->first = 0; /* turn off first time flag */
+         d->rsdelta += count - incount; /* add the number of samples to d->rsdelta */
+     } else {
+-        out_ptr = &r->input[-d->output];
++        out_ptr = &r->input[-(s32)d->output];
+         ptr = _loadBuffer(r, out_ptr, buff, incount, ptr);
+     }
+ 
 diff --git a/src/libultra/audio/save.c b/src/libultra/audio/save.c
 index 59bd09b..fdb66f3 100644
 --- a/src/libultra/audio/save.c
@@ -1632,6 +1750,46 @@ index 59bd09b..fdb66f3 100644
  
      switch (paramID) {
          case (AL_FILTER_SET_SOURCE):
+diff --git a/src/libultra/audio/synthInternals.h b/src/libultra/audio/synthInternals.h
+index c6c476c..17d0a0e 100644
+--- a/src/libultra/audio/synthInternals.h
++++ b/src/libultra/audio/synthInternals.h
+@@ -103,6 +103,11 @@ typedef struct ALParam_s {
+         f32             f;
+         s32             i;
+     } yetstillmoredata;
++#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8
++    /* port: ALStartParamAlt and the other views are stored in ALParam slots; with 8-byte pointers
++     * they are bigger than ALParam, so make room (the static assert below checks) */
++    s32                 port_room[4];
++#endif
+ } ALParam;
+ 
+ typedef struct {
+@@ -117,6 +122,7 @@ typedef struct {
+     s32                         samples;
+     struct ALWaveTable_s        *wave;
+ } ALStartParamAlt;
++_Static_assert(sizeof(ALStartParamAlt) <= sizeof(ALParam), "ALParam slots must hold ALStartParamAlt");
+ 
+ typedef struct {
+     struct ALParam_s            *next;
+@@ -125,6 +131,7 @@ typedef struct {
+     s16                         unity;  /* disable resampler */
+     struct ALWaveTable_s        *wave;
+ } ALStartParam;
++_Static_assert(sizeof(ALStartParam) <= sizeof(ALParam), "ALParam slots must hold ALStartParam");
+ 
+ typedef struct {
+     struct ALParam_s    *next;
+@@ -132,6 +139,7 @@ typedef struct {
+     s16                 type;
+     struct PVoice_s     *pvoice;
+ } ALFreeParam;
++_Static_assert(sizeof(ALFreeParam) <= sizeof(ALParam), "ALParam slots must hold ALFreeParam");
+ 
+ typedef Acmd *(*ALCmdHandler)(void *, s16 *, s32, s32, Acmd *);
+ typedef s32   (*ALSetParam)(void *, s32, void *);
 diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
 index fe5a9e7..1860370 100644
 --- a/src/overlays/ending/ending_data.c
