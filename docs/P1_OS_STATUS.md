@@ -252,3 +252,32 @@ the opening dialogue draw correctly.
   made RT64 show that instead, and the window blinked black.
 - Not yet: Linux build of the DLL, controller input in the window (the scripted
   input still drives it), audio, frame pacing checks, fullscreen/config.
+
+## P1 step 3: sound (plan, 2026-10-28)
+
+The game's audio thread (game/audio/audio.c, now stubbed out in P1) drives
+libultra's synthesizer, which builds aspMain command lists (Acmd, ABI 1) each
+audio frame; the RSP runs them and the AI plays the output. Plan:
+
+1. **Build the real audio code natively**: game/audio/audio.c and
+   decomp/src/libultra/audio/*.c in the P1 build, dropping the Audio_* stubs
+   (port/p0/stubs.c, unavailable.c).
+2. **Bank and sequence files**: alBnkfNew and alSeqFileNew patch offsets into
+   pointers in place, in structs with 32-bit pointer fields (ALBankFile ->
+   ALBank -> ALInstrument -> ALSound -> ALWaveTable/ALEnvelope/ALKeyMap/ADPCM
+   book and loop; ALSeqFile). On the host they decode the big-endian file into
+   native structs instead (same approach as port/data/map_area.c). Sample data
+   (ADPCM bytes) and sequence bytes stay as they are.
+3. **aspMain HLE** (port/audio/aspmain.c): run each audio task's command list
+   natively when osSpTaskStartGo gets an M_AUDTASK. The list is built by
+   native code, so its words are host-order and its addresses host addresses
+   (below 4 GiB): no frame image needed. Commands: ADPCM, CLEARBUFF, ENVMIXER,
+   LOADBUFF, RESAMPLE, SAVEBUFF, SEGMENT, SETBUFF, SETVOL, DMEMMOVE, LOADADPCM,
+   MIXER, INTERLEAVE, POLEF, SETLOOP. Later: check it sample for sample
+   against an LLE run (the Quest 64 recomp's RSPRecomp output of the same
+   microcode, generated from the user's ROM, never committed).
+4. **Output**: osAiSetNextBuffer hands the interleaved 16-bit stereo buffer to
+   SDL audio in eltale_rt64 (a queue at the AI frequency the game sets); the
+   virtual AI timing stays as it is, so headless runs are unchanged.
+5. **Checks**: the US envelope bug from PLAN.md (1 µs releases; PAL values are
+   the fix), and a headless hash of each audio frame's output.
