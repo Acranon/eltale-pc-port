@@ -4,7 +4,7 @@ ROM ?= $(ELTALE_ROM)
 
 OUT ?= out/p0
 P1_OS ?= 0
-AUDIO ?= 0
+AUDIO ?= 1
 FRAMES ?= 1
 INPUT ?=
 PAK ?=
@@ -23,7 +23,7 @@ endif
 AUDIO_SRC :=
 ifeq ($(P1_OS)$(AUDIO),11)
 GAME_SRC += work/src/game/audio/audio.c
-OS_SRC += port/audio/bank.c
+OS_SRC += port/audio/bank.c port/audio/aspmain.c
 AUDIO_SRC += $(wildcard work/src/libultra/audio/*.c)
 CPPFLAGS_AUDIO := -DELTALE_P1_AUDIO
 endif

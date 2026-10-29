@@ -490,6 +490,11 @@ u32 osAiGetLength(void) {
     return (u32)((remaining * ai_transfers[0].bytes + duration - 1) / duration);
 }
 
+/* Set by the host: run an audio task's command list (port/audio/aspmain.c), and play an AI
+ * buffer (interleaved 16-bit stereo at `rate` Hz). */
+void (*Port_AudioTaskHook)(OSTask *task);
+void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
+
 s32 osAiSetFrequency(u32 requested) {
     if (!requested) return -1;
     u32 divisor = (u32)((double)osViClock / requested + 0.5);
@@ -499,8 +504,8 @@ s32 osAiSetFrequency(u32 requested) {
 }
 
 s32 osAiSetNextBuffer(void *buffer, u32 bytes) {
-    (void)buffer; /* P1c consumes PCM; P1a only schedules AI completion. */
     if (!ai_rate || !bytes || ai_count == 2) return -1;
+    if (Port_AiBufferHook) Port_AiBufferHook(buffer, bytes, ai_rate);
     uint64_t start = ai_count ? ai_transfers[ai_count - 1].deadline : clock_count;
     uint64_t samples = (bytes + 3) / 4;
     uint64_t ticks = (samples * UINT64_C(46875000) + ai_rate - 1) / ai_rate;
@@ -566,6 +571,7 @@ void osSpTaskStartGo(OSTask *task) {
         if (Port_GfxTaskHook) Port_GfxTaskHook(task, gfx_task_count);
         gfx_done_tick = next_vi_tick;
     } else if (task->t.type == M_AUDTASK) {
+        if (Port_AudioTaskHook) Port_AudioTaskHook(task);
         post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
     } else {
         Port_HostFatal("unknown RSP task type");

@@ -31,6 +31,8 @@ unsigned int VI_STATUS_REG, VI_ORIGIN_REG, VI_WIDTH_REG, VI_INTR_REG, VI_V_CURRE
 
 SDL_Window *window;
 SDL_GameController *pad;
+SDL_AudioDeviceID audio_dev;
+uint32_t audio_rate;
 struct { uint32_t start, end; } keep[8];
 unsigned keep_count;
 std::unique_ptr<RT64::Application> app;
@@ -40,7 +42,7 @@ void check_interrupts() {}
 } // namespace
 
 extern "C" int ElRt64_Init(const char *title, int width, int height) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         std::fprintf(stderr, "RT64: SDL_Init failed: %s\n", SDL_GetError());
         return -1;
     }
@@ -226,9 +228,30 @@ extern "C" void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_
     *stick_y = (int8_t)y;
 }
 
+extern "C" void ElRt64_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate) {
+    if (rate != audio_rate) {
+        if (audio_dev) SDL_CloseAudioDevice(audio_dev);
+        SDL_AudioSpec want{}, have{};
+        want.freq = (int)rate;
+        want.format = AUDIO_S16SYS;
+        want.channels = 2;
+        want.samples = 512;
+        audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        audio_rate = rate;
+        if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
+        else std::fprintf(stderr, "audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
+    }
+    if (!audio_dev) return;
+    // keep the latency bounded if the game runs ahead of the sound card
+    if (SDL_GetQueuedAudioSize(audio_dev) > rate * 4 / 4) SDL_ClearQueuedAudio(audio_dev);
+    SDL_QueueAudio(audio_dev, samples, bytes);
+}
+
 extern "C" void ElRt64_Shutdown(void) {
     if (app) app->end();
     app.reset();
+    if (audio_dev) SDL_CloseAudioDevice(audio_dev);
+    audio_dev = 0;
     if (pad) SDL_GameControllerClose(pad);
     pad = nullptr;
     if (window) SDL_DestroyWindow(window);

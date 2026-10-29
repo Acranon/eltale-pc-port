@@ -5,6 +5,10 @@
 #ifdef ELTALE_P1_OS
 #include "port/gfx.h"
 extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
+extern void (*Port_AudioTaskHook)(OSTask *task);
+#ifdef ELTALE_P1_AUDIO
+#include "port/audio.h"
+#endif
 #endif
 #include "port/p0/host.h"
 #ifdef ELTALE_P1_OS
@@ -55,6 +59,39 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
 #endif
 }
 
+#ifdef ELTALE_P1_AUDIO
+extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
+/* A hash of everything the game plays (headless audio check). */
+static uint64_t ai_hash = UINT64_C(0xCBF29CE484222325);
+static unsigned ai_buffers, ai_nonzero;
+static FILE *ai_wav;
+static u32 ai_wav_rate, ai_wav_bytes;
+static void hash_ai_buffer(void *buffer, u32 bytes, u32 rate) {
+    const u8 *p = buffer;
+    if (ai_wav) { /* ELTALE_AUDIO_WAV=path: the AI output as a WAV file (16-bit stereo) */
+        if (!ai_wav_rate) ai_wav_rate = rate;
+        fwrite(buffer, 1, bytes, ai_wav);
+        ai_wav_bytes += bytes;
+    }
+    for (u32 i = 0; i < bytes; i++) {
+        ai_hash = (ai_hash ^ p[i]) * UINT64_C(0x100000001B3);
+        ai_nonzero += p[i] != 0;
+    }
+    ai_buffers++;
+}
+static void put_le(FILE *f, u32 v, int n) { for (int i = 0; i < n; i++) fputc((int)(v >> (8 * i)) & 0xFF, f); }
+static void ai_wav_close(void) {
+    if (!ai_wav) return;
+    fseek(ai_wav, 0, SEEK_SET);
+    fwrite("RIFF", 1, 4, ai_wav); put_le(ai_wav, 36 + ai_wav_bytes, 4); fwrite("WAVEfmt ", 1, 8, ai_wav);
+    put_le(ai_wav, 16, 4); put_le(ai_wav, 1, 2); put_le(ai_wav, 2, 2); put_le(ai_wav, ai_wav_rate, 4);
+    put_le(ai_wav, ai_wav_rate * 4, 4); put_le(ai_wav, 4, 2); put_le(ai_wav, 16, 2);
+    fwrite("data", 1, 4, ai_wav); put_le(ai_wav, ai_wav_bytes, 4);
+    fclose(ai_wav);
+    ai_wav = NULL;
+}
+#endif
+
 int main(int argc, char **argv) {
     const char *rom = NULL;
 #ifdef ELTALE_P1_OS
@@ -100,12 +137,22 @@ int main(int argc, char **argv) {
     Port_OsSetFrameLimit(window && !frames_given ? 0 : requested_frames);
     Port_OsSetFast(fast);
     if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
+#ifdef ELTALE_P1_AUDIO
+    Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTask;
+    Port_AiBufferHook = hash_ai_buffer;
+    if (getenv("ELTALE_AUDIO_WAV") && (ai_wav = fopen(getenv("ELTALE_AUDIO_WAV"), "wb")))
+        fseek(ai_wav, 44, SEEK_SET);
+#endif
     if (window && Port_Rt64Start() != 0) return 1;
     Boot_Main(0);
     Port_OsRun();
     if (!window && (Port_OsFrameCount() != requested_frames ||
         Port_OsGfxTaskCount() < requested_frames || intro_pak_check_done != 1))
         Port_HostFatal("P1 OS did not complete the requested intro frames");
+#ifdef ELTALE_P1_AUDIO
+    ai_wav_close();
+    printf("P1_AUDIO buffers=%u nonzero_bytes=%u hash=%016llx\n", ai_buffers, ai_nonzero, (unsigned long long)ai_hash);
+#endif
     printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u mode=%u last_hash=%016llx\n",
            Port_OsFrameCount(), Port_OsGfxTaskCount(), Port_OsRunCount(),
            Port_HostDmaCount(), core_game_mode, (unsigned long long)Port_OsLastGfxHash());

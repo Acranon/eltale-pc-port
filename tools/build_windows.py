@@ -29,8 +29,8 @@ def main() -> None:
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--full-compile", action="store_true",
                         help="also compile every game and overlay C module into a native archive")
-    parser.add_argument("--audio", action="store_true",
-                        help="P1: build the real game audio and libultra audio instead of stand-ins")
+    parser.add_argument("--no-audio", dest="audio", action="store_false",
+                        help="P1: stand-ins instead of the game audio, libultra audio and aspMain HLE")
     parser.add_argument("--p1-os", action="store_true",
                         help="use the fiber scheduler instead of P0 synchronous threads")
     parser.add_argument("--frames", type=int, default=1,
@@ -94,7 +94,7 @@ def main() -> None:
                     "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "decomp/src/libultra/io/vitbl.c"]
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
         if args.audio:
-            sources += ["work/src/game/audio/audio.c", "port/audio/bank.c"]
+            sources += ["work/src/game/audio/audio.c", "port/audio/bank.c", "port/audio/aspmain.c"]
             sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "work/src/libultra/audio").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):

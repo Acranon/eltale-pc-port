@@ -314,3 +314,13 @@ DMA chunks: the audio DMAs). What it took:
 Audio tasks still only complete; nothing executes the command lists (step 3).
 The VI count per frame changed a little with the audio thread running (frame
 540 at VI 1099 instead of 1078); the frame hashes match.
+
+Sound steps 3 and 4 done: port/audio/aspmain.c runs each audio task's aspMain
+command list (ABI 1) on the CPU (ADPCM, resampler with the microcode's own
+filter table read from its data, envelope mixer, mixer, interleave, pole
+filter, buffer moves). With a window, eltale_rt64 plays each AI buffer through
+SDL audio. Audio is now on by default (`--no-audio` / `AUDIO=0` for the
+stand-ins). Headless: the 700-frame New Game run plays 1429 AI buffers (23.8 s at
+22047 Hz, no clipping) with output hash 65d1f0a0a39d3ea5 on Windows and Linux;
+`ELTALE_AUDIO_WAV=path` writes the output as a WAV. Not yet: a sample-for-sample
+check against the LLE microcode, and the US envelope bug check.

@@ -10,4 +10,7 @@
 ALBankFile *Port_BankFileNew(const void *file, const void *table);
 ALSeqFile *Port_SeqFileNew(const void *file, const void *base);
 
+/* port/audio/aspmain.c: run an audio task's aspMain command list (ABI 1) on the CPU. */
+void Port_RunAudioTask(const OSTask *task);
+
 #endif
