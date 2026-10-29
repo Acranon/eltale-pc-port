@@ -15,14 +15,16 @@ OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c port/gfx/vi.c port/gfx/rt64_bridge.c
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
+VI_SRC := decomp/src/libultra/io/vitbl.c
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
 OS_OBJ := $(patsubst port/%.c,$(OUT)/obj/port/%.o,$(OS_SRC))
 GU_OBJ := $(patsubst decomp/src/libultra/gu/%.c,$(OUT)/obj/gu/%.o,$(GU_SRC))
-BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ)
+VI_OBJ := $(patsubst decomp/src/libultra/io/%.c,$(OUT)/obj/io/%.o,$(VI_SRC))
+BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ) $(VI_OBJ)
 ifeq ($(P1_OS),1)
 MAP_OBJ := $(OUT)/host_address_map.o
 endif
@@ -39,7 +41,7 @@ endif
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasing -fwrapv -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
-LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm
+LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm -ldl
 
 .PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean
 p0: assets $(BIN)
@@ -70,6 +72,10 @@ $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/add
 $(OUT)/obj/port/%.o: port/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(OUT)/obj/io/%.o: decomp/src/libultra/io/%.c $(OUT)/include/PR/gbi.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -D_LANGUAGE_C -D_MIPS_SZLONG=32 -I$(OUT)/include -Iport/include -Idecomp/include -Idecomp/src 		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR 		-include port/include/PR/ultratypes.h -c $< -o $@
 
 $(OUT)/obj/gu/%.o: decomp/src/libultra/gu/%.c $(OUT)/include/PR/gbi.h
 	@mkdir -p $(dir $@)

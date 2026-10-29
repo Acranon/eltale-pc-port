@@ -86,7 +86,8 @@ def main() -> None:
     sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
     if args.p1_os:
         sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]
-        sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c"]
+        sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c",
+                    "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "decomp/src/libultra/io/vitbl.c"]
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):

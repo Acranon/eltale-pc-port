@@ -1,0 +1,73 @@
+/* Drawing with RT64 (eltale_rt64.dll / libeltale_rt64.so, port/rt64): each graphics task becomes
+ * a frame image (frame_image.c) that RT64 draws, and each retrace shows the framebuffer the VI
+ * points at. The library is loaded at run time, so the headless build needs no graphics. */
+#include "port/gfx.h"
+#include "port/rt64/eltale_rt64.h"
+
+#include <stdio.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
+extern void (*Port_ViHook)(u32 framebuffer);
+void Port_OsRequestStop(void);
+
+static int (*rt_init)(const char *, int, int);
+static void (*rt_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
+static void (*rt_present)(const ElRt64Vi *);
+static int (*rt_poll)(void);
+static void (*rt_keep)(uint32_t, uint32_t);
+
+static void draw_task(OSTask *task, unsigned frame) {
+    (void)frame;
+    PortFrameStats st;
+    u32 root;
+    const u8 *image = Port_BuildFrameImage((u32)(uptr)task->t.data_ptr, &root, &st);
+    rt_draw(image, (u32)(uptr)task->t.ucode, (u32)(uptr)task->t.ucode_data, root);
+}
+
+static void present(u32 framebuffer) {
+    PortViRegs r;
+    if (Port_ViRegs(framebuffer, &r)) {
+        ElRt64Vi vi = { r.status, r.origin, r.width, r.intr, r.v_current, r.timing, r.v_sync, r.h_sync, r.leap,
+                        r.h_start, r.v_start, r.v_burst, r.x_scale, r.y_scale };
+        rt_present(&vi);
+    }
+    if (!rt_poll()) Port_OsRequestStop();
+}
+
+int Port_Rt64Start(void) {
+#ifdef _WIN32
+    HMODULE lib = LoadLibraryA("eltale_rt64.dll");
+#define SYM(name) (void *)GetProcAddress(lib, name)
+#else
+    void *lib = dlopen("libeltale_rt64.so", RTLD_NOW);
+#define SYM(name) dlsym(lib, name)
+#endif
+    if (!lib) {
+        fprintf(stderr, "RT64: cannot load the eltale_rt64 library (tools/build_rt64.cmd)\n");
+        return -1;
+    }
+    rt_init = (int (*)(const char *, int, int))SYM("ElRt64_Init");
+    rt_draw = (void (*)(const uint8_t *, uint32_t, uint32_t, uint32_t))SYM("ElRt64_DrawTask");
+    rt_present = (void (*)(const ElRt64Vi *))SYM("ElRt64_Present");
+    rt_poll = (int (*)(void))SYM("ElRt64_Poll");
+    rt_keep = (void (*)(uint32_t, uint32_t))SYM("ElRt64_KeepRange");
+    if (!rt_init || !rt_draw || !rt_present || !rt_poll || rt_init("Eltale Monsters", 1280, 960) != 0) {
+        fprintf(stderr, "RT64: setup failed\n");
+        return -1;
+    }
+    /* the two framebuffers and the depth buffer (Gfx_InitFrames), 320x240 16-bit each */
+    if (rt_keep) {
+        rt_keep(0x003B5000, 0x25800);
+        rt_keep(0x003DA800, 0x25800);
+        rt_keep(0x002DA800, 0x25800);
+    }
+    Port_GfxTaskHook = draw_task;
+    Port_ViHook = present;
+    return 0;
+}

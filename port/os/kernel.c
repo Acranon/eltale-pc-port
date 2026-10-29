@@ -112,6 +112,9 @@ static void deliver_pending(void) {
     }
 }
 
+/* Set by the host: called at each retrace with the framebuffer being shown (a window shows it). */
+void (*Port_ViHook)(u32 framebuffer);
+
 static void advance_to_event(void) {
     uint64_t next = next_vi_tick;
     if (gfx_done_tick && gfx_done_tick < next)
@@ -134,6 +137,7 @@ static void advance_to_event(void) {
         }
         if (vi_queue && vi_fields && vi_count % vi_fields == 0)
             post_event(vi_queue, vi_message);
+        if (Port_ViHook) Port_ViHook((u32)(uptr)current_framebuffer);
     }
     if (gfx_done_tick && clock_count >= gfx_done_tick) {
         gfx_done_tick = 0;
@@ -254,6 +258,9 @@ void Port_OsRun(void) {
         current = NULL;
     }
 }
+
+/* Stop the scheduler loop from outside a game thread (the window was closed). */
+void Port_OsRequestStop(void) { stopping = 1; }
 
 void Port_OsStop(void) {
     stopping = 1;

@@ -17,4 +17,14 @@ const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *stats
 /* A Port_GfxTaskHook that builds each frame's image and logs its statistics. */
 void Port_FrameImageTrace(OSTask *task, unsigned frame);
 
+/* VI registers for a framebuffer (port/gfx/vi.c); 0 until the game has set a mode. */
+typedef struct PortViRegs {
+    u32 status, origin, width, intr, v_current, timing, v_sync, h_sync, leap, h_start, v_start, v_burst,
+        x_scale, y_scale;
+} PortViRegs;
+int Port_ViRegs(u32 framebuffer, PortViRegs *regs);
+
+/* port/gfx/rt64_bridge.c: draw with eltale_rt64 (a window). Returns 0 on success. */
+int Port_Rt64Start(void);
+
 #endif

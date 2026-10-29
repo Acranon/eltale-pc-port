@@ -1,3 +1,6 @@
 [submodule "decomp"]
 	path = decomp
 	url = https://github.com/Acranon/eltale-decomp.git
+[submodule "third_party/rt64"]
+	path = third_party/rt64
+	url = https://github.com/rt64/rt64

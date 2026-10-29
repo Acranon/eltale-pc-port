@@ -48,7 +48,9 @@ static HostThread threads[16];
 #endif
 
 s32 osTvType = OS_TV_NTSC;
+#ifndef ELTALE_P1_OS /* P1 links libultra's vitbl.c and port/gfx/vi.c */
 OSViMode osViModeTable[16];
+#endif
 
 static uint64_t monotonic_ns(void) {
 #ifdef _WIN32
@@ -279,9 +281,11 @@ void osWritebackDCache(void *addr, s32 len) { (void)addr; (void)len; }
 void osWritebackDCacheAll(void) { }
 
 void osCreateViManager(OSPri pri) { (void)pri; }
+#ifndef ELTALE_P1_OS
 void osViSetMode(OSViMode *mode) { (void)mode; }
 void osViBlack(u8 active) { (void)active; }
 void osViSetSpecialFeatures(u32 features) { (void)features; }
+#endif
 #ifndef ELTALE_P1_OS
 void osViSetEvent(OSMesgQueue *q, OSMesg msg, u32 fields) {
     (void)q; (void)msg; (void)fields;

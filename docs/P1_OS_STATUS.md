@@ -235,3 +235,20 @@ Update 3: the common block is closed.
   2300, attack lists back to back from 0x803AB670).
 - Renderer: RT64 first (it already draws this game in the Quest 64 recomp), then
   our own native renderer later, as for KF4.
+
+## P1 step 2: RT64 in a window (Claude, 2026-10-28)
+
+`--window` draws with RT64 (third_party/rt64, pinned to the Quest 64 recomp's
+commit aa047b8). RT64 is C++ built with clang-cl, so it lives in its own DLL with
+a C interface (port/rt64: eltale_rt64.h/.cpp, built by `tools/build_rt64.cmd`
+into out/rt64; copy its DLLs next to eltale-p1.exe). The game side
+(port/gfx/rt64_bridge.c) loads it at run time, draws each graphics task from its
+frame image, and presents at each retrace with VI registers computed from the
+game's OSViMode (port/gfx/vi.c; libultra's vitbl.c is now linked). The title and
+the opening dialogue draw correctly.
+
+- The framebuffers (0x803B5000, 0x803DA800) and depth buffer (0x802DA800) are
+  kept out of the per-frame RDRAM copy: copying the CPU's empty copy over them
+  made RT64 show that instead, and the window blinked black.
+- Not yet: Linux build of the DLL, controller input in the window (the scripted
+  input still drives it), audio, frame pacing checks, fullscreen/config.
