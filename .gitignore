@@ -6,3 +6,4 @@
 *.rom
 __pycache__/
 .venv/
+*.mpk

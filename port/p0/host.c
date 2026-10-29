@@ -27,6 +27,9 @@ static const uintptr_t RDRAM_BASE = 0x80000000u;
 static unsigned char *rom_bytes;
 static unsigned dma_count;
 static size_t dma_bytes;
+#ifdef ELTALE_P1_OS
+static uintptr_t image_start_address, image_end_address;
+#endif
 #ifndef ELTALE_P1_OS
 static unsigned thread_count;
 static unsigned started_count;
@@ -142,6 +145,10 @@ int Port_HostInit(const char *rom_path) {
                 (unsigned long long)image_start, (unsigned long long)image_end);
         return -1;
     }
+#ifdef ELTALE_P1_OS
+    image_start_address = image_start;
+    image_end_address = image_end;
+#endif
     return 0;
 }
 
@@ -223,11 +230,27 @@ s32 osRecvMesg(OSMesgQueue *q, OSMesg *out, s32 flag) {
 s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
                  void *dst, u32 size, OSMesgQueue *queue) {
     (void)pri;
-    if (direction != OS_READ || dev_addr > ROM_BYTES || size > ROM_BYTES - dev_addr)
+    if (direction != OS_READ || dev_addr > ROM_BYTES || size > ROM_BYTES - dev_addr) {
+        fprintf(stderr, "P0 DMA invalid source rom=%08x bytes=%u direction=%d\n",
+                dev_addr, size, direction);
         Port_HostFatal("ROM DMA outside input image");
+    }
     uintptr_t addr = (uintptr_t)dst;
-    if (addr < RDRAM_BASE || size > RDRAM_BYTES || addr - RDRAM_BASE > RDRAM_BYTES - size)
+    int in_rdram = addr >= RDRAM_BASE && size <= RDRAM_BYTES &&
+                   addr - RDRAM_BASE <= RDRAM_BYTES - size;
+#ifdef ELTALE_P1_OS
+    /* Native game globals also receive ROM DMA (for example, the clock TLUT).
+     * Their host storage lives in the executable image below the RDRAM map. */
+    int in_native_data = addr >= image_start_address && size <= image_end_address - image_start_address &&
+                         addr - image_start_address <= image_end_address - image_start_address - size;
+#else
+    int in_native_data = 0;
+#endif
+    if (!in_rdram && !in_native_data) {
+        fprintf(stderr, "P0 DMA invalid rom=%08x ram=%016llx bytes=%u\n",
+                dev_addr, (unsigned long long)addr, size);
         Port_HostFatal("ROM DMA destination outside mapped RDRAM");
+    }
     memcpy(dst, rom_bytes + dev_addr, size);
     dma_count++;
     dma_bytes += size;
@@ -266,6 +289,7 @@ void *osViGetCurrentFramebuffer(void) { return NULL; }
 void osViSwapBuffer(void *framebuffer) { (void)framebuffer; }
 #endif
 
+#ifndef ELTALE_P1_OS
 s32 osContInit(OSMesgQueue *q, u8 *pattern, OSContStatus *status) {
     (void)q;
     *pattern = 1;
@@ -278,6 +302,7 @@ s32 osContStartReadData(OSMesgQueue *queue) {
     return 0;
 }
 void osContGetReadData(OSContPad *pads) { memset(pads, 0, 4 * sizeof *pads); }
+#endif
 
 u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;

@@ -203,10 +203,18 @@ index db2ffb3..03cff35 100644
  }
 +#endif
 diff --git a/src/game/core/overlay_load.c b/src/game/core/overlay_load.c
-index a502109..fb962c0 100644
+index a502109..3d9c263 100644
 --- a/src/game/core/overlay_load.c
 +++ b/src/game/core/overlay_load.c
-@@ -20,7 +20,11 @@ void Overlay_LoadTitle(void) {
+@@ -16,13 +16,25 @@ extern u8 D_E420D0[];
+ void func_8020C0D0(void);
+ 
+ void Overlay_LoadTitle(void) {
++#ifdef ELTALE_P0_BOOT_PROBE
++    Dma_ReadRom(D_DAB5F0, (void *)(uintptr_t)0x8020C0D0u, D_DC62B0 - D_DAB5F0);
++#else
+     Dma_ReadRom(D_DAB5F0, func_8020C0D0, D_DC62B0 - D_DAB5F0);
++#endif
  }
  
  void Overlay_LoadIntro(void) {
@@ -218,6 +226,12 @@ index a502109..fb962c0 100644
  }
  
  void Overlay_LoadEnding(void) {
++#ifdef ELTALE_P0_BOOT_PROBE
++    Dma_ReadRom(D_E22690, (void *)(uintptr_t)0x8020C0D0u, D_E420D0 - D_E22690);
++#else
+     Dma_ReadRom(D_E22690, func_8020C0D0, D_E420D0 - D_E22690);
++#endif
+ }
 diff --git a/src/game/core/sched.c b/src/game/core/sched.c
 index 647c971..9c10f84 100644
 --- a/src/game/core/sched.c
@@ -335,7 +349,7 @@ index 300a0ba..16d5c60 100644
      {{ 0xB8000000, 0x00000000 }},
  };
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..cefd08a 100644
+index cc5330a..9080440 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
@@ -351,7 +365,7 @@ index cc5330a..cefd08a 100644
  }
  
 +#endif
-+#ifndef ELTALE_P0_BOOT_PROBE
++#if !defined(ELTALE_P0_BOOT_PROBE) || defined(ELTALE_P1_OS)
  s32 Pak_ScanGameFiles(s32 cont) {
      s32 i;
      s32 pad1;

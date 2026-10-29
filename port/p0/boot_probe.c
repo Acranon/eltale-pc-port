@@ -4,7 +4,9 @@
 #include "game/event/cutscene.h"
 #include "port/p0/host.h"
 #ifdef ELTALE_P1_OS
+#include "port/controller.h"
 #include "port/os.h"
+#include "port/pak.h"
 #endif
 
 #include <setjmp.h>
@@ -51,11 +53,16 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
 
 int main(int argc, char **argv) {
     const char *rom = NULL;
+#ifdef ELTALE_P1_OS
+    const char *input = NULL, *pak = NULL;
+#endif
     unsigned requested_frames = 1;
     int fast = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) rom = argv[++i];
 #ifdef ELTALE_P1_OS
+        else if (!strcmp(argv[i], "--input") && i + 1 < argc) input = argv[++i];
+        else if (!strcmp(argv[i], "--pak") && i + 1 < argc) pak = argv[++i];
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             requested_frames = (unsigned)strtoul(argv[++i], NULL, 10);
             if (!requested_frames || requested_frames > 10000)
@@ -65,7 +72,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--fast")) fast = 1;
         else if (!strcmp(argv[i], "--headless")) { }
         else {
+#ifdef ELTALE_P1_OS
+            fprintf(stderr, "usage: eltale-p1 --rom path [--headless --fast --frames N --input script --pak image.mpk]\n");
+#else
             fprintf(stderr, "usage: eltale-p0 --rom path [--headless --fast]\n");
+#endif
             return 2;
         }
     }
@@ -73,6 +84,7 @@ int main(int argc, char **argv) {
     if (!rom) Port_HostFatal("supply --rom or ELTALE_ROM");
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
+    if (Port_ControllerLoadScript(input) || Port_PakLoad(pak)) return 1;
     Port_OsInit();
     Port_OsSetFrameLimit(requested_frames);
     Port_OsSetFast(fast);
@@ -81,9 +93,9 @@ int main(int argc, char **argv) {
     if (Port_OsFrameCount() != requested_frames ||
         Port_OsGfxTaskCount() < requested_frames || intro_pak_check_done != 1)
         Port_HostFatal("P1 OS did not complete the requested intro frames");
-    printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u last_hash=%016llx\n",
+    printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u mode=%u last_hash=%016llx\n",
            Port_OsFrameCount(), Port_OsGfxTaskCount(), Port_OsRunCount(),
-           Port_HostDmaCount(), (unsigned long long)Port_OsLastGfxHash());
+           Port_HostDmaCount(), core_game_mode, (unsigned long long)Port_OsLastGfxHash());
     return 0;
 #else
     if (setjmp(boot_done) == 0) {

@@ -239,6 +239,7 @@ unsigned Port_OsRunCount(void) { return ran_count; }
 unsigned Port_OsFrameCount(void) { return frame_count; }
 unsigned Port_OsGfxTaskCount(void) { return gfx_task_count; }
 uint64_t Port_OsLastGfxHash(void) { return last_gfx_hash; }
+uint64_t Port_OsViCount(void) { return vi_count; }
 void Port_OsSetFrameLimit(unsigned frames) { frame_limit = frames; }
 void Port_OsSetFast(int fast) { fast_mode = fast != 0; }
 
@@ -402,8 +403,13 @@ void *osViGetCurrentFramebuffer(void) { return current_framebuffer; }
 
 void osViSwapBuffer(void *framebuffer) {
     current_framebuffer = framebuffer;
+    /* Graphics completion may happen before the next retrace. The host has
+     * no physical VI, so consume one virtual retrace per presented frame. */
+    uint64_t target_vi = vi_count + 1;
+    while (vi_count < target_vi) advance_to_event();
     frame_count++;
     if (frame_limit && frame_count >= frame_limit) Port_OsStop();
+    osYieldThread();
 }
 
 u32 osGetCount(void) { return (u32)clock_count; }

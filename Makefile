@@ -5,6 +5,8 @@ ROM ?= $(ELTALE_ROM)
 OUT ?= out/p0
 P1_OS ?= 0
 FRAMES ?= 1
+INPUT ?=
+PAK ?=
 BIN := $(OUT)/$(if $(filter 1,$(P1_OS)),eltale-p1,eltale-p0)
 GAME_SRC := $(filter-out work/src/game/audio/audio.c,$(shell find work/src/game -name '*.c')) \
   $(shell find work/src/overlays/intro -name '*.c')
@@ -12,7 +14,8 @@ HOST_SRC := port/p0/boot_probe.c port/p0/host.c port/p0/stubs.c port/p0/unavaila
 OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/math_glue.c
+GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
@@ -91,7 +94,7 @@ p0-test: p0 abi-test endian-test
 	$(BIN) --rom "$(ROM)" --headless --fast
 
 p1-os-run: p0 abi-test endian-test p1-os-test
-	$(BIN) --rom "$(ROM)" --headless --fast --frames $(FRAMES)
+	$(BIN) --rom "$(ROM)" --headless --fast --frames $(FRAMES) $(if $(INPUT),--input "$(INPUT)",) $(if $(PAK),--pak "$(PAK)",)
 
 endian-test: tests/endian_test.c port/include/port/endian.h
 	@mkdir -p $(OUT)
@@ -112,6 +115,8 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	$(OUT)/os-events-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/gu_test.c decomp/src/libultra/gu/mtxutil.c decomp/src/libultra/gu/sins.c -o $(OUT)/gu-test
 	$(OUT)/gu-test
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/pak_test.c port/os/pak.c -o $(OUT)/pak-test
+	$(OUT)/pak-test $(OUT)/test.mpk
 
 census:
 	@mkdir -p $(OUT)

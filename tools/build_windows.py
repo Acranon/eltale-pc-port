@@ -33,6 +33,8 @@ def main() -> None:
                         help="use the fiber scheduler instead of P0 synchronous threads")
     parser.add_argument("--frames", type=int, default=1,
                         help="P1 OS: stop after this many completed graphics frames")
+    parser.add_argument("--input", type=Path, help="P1 OS: scripted controller input")
+    parser.add_argument("--pak", type=Path, help="P1 OS: 32 KiB Controller Pak image")
     args = parser.parse_args()
     global OUT
     if args.p1_os:
@@ -77,9 +79,11 @@ def main() -> None:
     boot_sources = sorted((ROOT / "work/src/game").rglob("*.c"))
     boot_sources = [p for p in boot_sources if p.as_posix() != (ROOT / "work/src/game/audio/audio.c").as_posix()]
     boot_sources += sorted((ROOT / "work/src/overlays/intro").rglob("*.c"))
+    if args.p1_os:
+        boot_sources += sorted((ROOT / "work/src/overlays/title").rglob("*.c"))
     sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
     if args.p1_os:
-        sources += ["port/os/fiber.c", "port/os/kernel.c"]
+        sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]
         sources += ["port/os/math_glue.c"]
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
     objects: list[Path] = []
@@ -142,6 +146,9 @@ def main() -> None:
              "decomp/src/libultra/gu/mtxutil.c", "decomp/src/libultra/gu/sins.c",
              "-o", str(gu_test)])
         run([str(gu_test)])
+        pak_test = OUT / "pak-test.exe"
+        run([cc, *flags, *includes, "tests/pak_test.c", "port/os/pak.c", "-o", str(pak_test)])
+        run([str(pak_test), str(OUT / "test.mpk")])
     if args.full_compile:
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))
@@ -164,6 +171,10 @@ def main() -> None:
     command = [str(exe), "--rom", str(args.rom), "--headless", "--fast"]
     if args.p1_os:
         command += ["--frames", str(args.frames)]
+        if args.input:
+            command += ["--input", str(args.input)]
+        if args.pak:
+            command += ["--pak", str(args.pak)]
     run(command)
 
 

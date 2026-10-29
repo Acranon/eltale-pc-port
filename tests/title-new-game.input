@@ -1,0 +1,9 @@
+# Reaches title and selects New Game; the map asset endian pass is pending.
+5 0x1000 0 0
+7 0 0 0
+30 0x1000 0 0
+32 0 0 0
+120 0x1000 0 0
+122 0 0 0
+200 0x1000 0 0
+202 0 0 0

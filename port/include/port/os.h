@@ -17,6 +17,7 @@ unsigned Port_OsRunCount(void);
 unsigned Port_OsFrameCount(void);
 unsigned Port_OsGfxTaskCount(void);
 uint64_t Port_OsLastGfxHash(void);
+uint64_t Port_OsViCount(void);
 uint32_t Port_NormalizeDlAddress(uint32_t word);
 
 #endif
