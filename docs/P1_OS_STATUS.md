@@ -342,3 +342,15 @@ Also from this hunt:
 - `ELTALE_TRACE_COPIES=1` lists every native object the frame image converts.
 - Scene records (SceneEntry, SceneMessage) keep their N64 layout and are swapped
   in place when a scene starts; a scene's NPC table is decoded into native NpcDefs.
+
+## Open: title-screen music (2026-10-29)
+
+On the N64 (ares) the title screen has music; the port's title is silent. Trace
+(gdb, Audio_LoadSeq/Audio_StopSeq): the intro loads sequence 27 at about VI 787;
+pressing Start ends Core_RunIntroLoop, whose tail (Bgm_Play(-1); Bgm_Update())
+stops it, and Core_RunTitleLoop never calls Bgm_Update; the title overlay only
+plays cursor SFX. ALSeqPlayer and ALCSPlayer share their layout up to evtq, and
+both handle the stop the same way, so by the code the title is silent on hardware
+too. To check in ares next: is the title tune the intro's, continuing, or another
+song; does it play if Start is pressed before the intro music starts; and after
+the intro ends on its own. Record the port with ELTALE_AUDIO_WAV to compare.
