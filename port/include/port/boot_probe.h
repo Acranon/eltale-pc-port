@@ -8,4 +8,8 @@
 struct GfxFrame;
 __attribute__((noreturn)) void Port_P0DisplayListReady(struct GfxFrame *frame);
 
+/* ELTALE_START_MODE=n: the first game mode after boot (7 = the ending's camera tour), to test a
+ * mode without playing to it. Called after Core_ResetGameState. */
+void Port_OverrideStartMode(void);
+
 #endif

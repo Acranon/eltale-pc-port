@@ -99,7 +99,43 @@ void Port_HostFatal(const char *what) {
     _Exit(1);
 }
 
+#ifdef _WIN32
+/* A crash report: the exception, the faulting address and the unwound stack, as image addresses
+ * (llvm-symbolizer --obj=eltale-p1.exe 0x... turns them into functions). A vectored handler,
+ * because the game runs on fiber stacks that frame-based exception dispatch cannot walk. */
+static LONG WINAPI crash_report(EXCEPTION_POINTERS *info) {
+    const EXCEPTION_RECORD *er = info->ExceptionRecord;
+    /* vectored handlers see every exception first; only report the fatal ones */
+    if (er->ExceptionCode != EXCEPTION_ACCESS_VIOLATION && er->ExceptionCode != EXCEPTION_ILLEGAL_INSTRUCTION &&
+        er->ExceptionCode != EXCEPTION_INT_DIVIDE_BY_ZERO && er->ExceptionCode != EXCEPTION_STACK_OVERFLOW &&
+        er->ExceptionCode != EXCEPTION_PRIV_INSTRUCTION)
+        return EXCEPTION_CONTINUE_SEARCH;
+    fprintf(stderr, "P1 crash: exception %08lx at %p", er->ExceptionCode, er->ExceptionAddress);
+    if (er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
+        fprintf(stderr, " (%s %p)", er->ExceptionInformation[0] ? "writing" : "reading",
+                (void *)er->ExceptionInformation[1]);
+    fprintf(stderr, "\nP1 crash stack:");
+    CONTEXT ctx = *info->ContextRecord;
+    for (int i = 0; i < 24 && ctx.Rip; i++) {
+        fprintf(stderr, " %llx", (unsigned long long)ctx.Rip);
+        DWORD64 base;
+        PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(ctx.Rip, &base, NULL);
+        if (!fn) { ctx.Rip = *(DWORD64 *)ctx.Rsp; ctx.Rsp += 8; continue; }
+        void *handler_data;
+        DWORD64 frame;
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx.Rip, fn, &ctx, &handler_data, &frame, NULL);
+    }
+    fprintf(stderr, "\n");
+    fflush(stdout);
+    fflush(stderr);
+    _Exit(3);
+}
+#endif
+
 int Port_HostInit(const char *rom_path) {
+#ifdef _WIN32
+    AddVectoredExceptionHandler(1, crash_report);
+#endif
     if (fesetround(FE_TONEAREST) != 0)
         Port_HostFatal("cannot set N64 boot rounding mode");
     unsigned char header[4] = { 0x80, 0x37, 0x12, 0x40 };

@@ -280,20 +280,29 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..8549c94 100644
+index db2ffb3..26d540b 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
-@@ -1,3 +1,9 @@
+@@ -1,3 +1,10 @@
 +#ifdef ELTALE_P0_BOOT_PROBE
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
++#include "port/os.h"
 +#endif
 +#include "port/boot_probe.h"
 +#endif
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -181,6 +187,9 @@ void Core_MainThread(void *arg0) {
+@@ -176,11 +183,17 @@ void Core_MainThread(void *arg0) {
+         Bgm_Init();
+         Core_ResetGameState();
+         Menu_Init();
++#ifdef ELTALE_P1_OS
++        Port_OverrideStartMode(); /* ELTALE_START_MODE: test a mode without playing to it */
++#endif
+     loop:
+         core_flags &= ~3;
          if (core_game_mode == 0) {
              core_game_mode = 1;
          }
@@ -303,7 +312,7 @@ index db2ffb3..8549c94 100644
          switch (core_game_mode) {
              case 1:
                  Core_RunGameplayLoop();
-@@ -204,6 +213,7 @@ void Core_MainThread(void *arg0) {
+@@ -204,6 +217,7 @@ void Core_MainThread(void *arg0) {
                  Core_RunEndingLoop();
                  break;
          }
@@ -311,7 +320,7 @@ index db2ffb3..8549c94 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
-@@ -251,6 +261,9 @@ void Gfx_InitFrames(void) {
+@@ -251,6 +265,9 @@ void Gfx_InitFrames(void) {
      Dma_ReadRom(D_D490C0, D_800C0000, D_D74AC0 - D_D490C0);
      a = (u16 *)D_8039ADB0;
      Dma_ReadRom(D_D74AC0, a, D_D86170 - D_D74AC0);
@@ -321,7 +330,7 @@ index db2ffb3..8549c94 100644
      D_80301000[0].data.msg = 2;
      D_80301000[0].data.framebuffer = D_803B5000;
      Gfx_InitFrameTask(&D_80301000[0]);
-@@ -274,7 +287,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+@@ -274,7 +291,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
      arg0->task.list.t.type = M_GFXTASK;
      arg0->task.list.t.flags = 0;
      arg0->task.list.t.ucode_boot = D_8004B980;
@@ -330,7 +339,7 @@ index db2ffb3..8549c94 100644
      arg0->task.list.t.ucode = D_8004BA50;
      arg0->task.list.t.ucode_data = D_80070260;
      arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -324,6 +337,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,6 +341,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -342,7 +351,7 @@ index db2ffb3..8549c94 100644
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
          Camera_Update(sub);
          Env_PrepareFrameLighting();
-@@ -406,6 +424,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -406,6 +428,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
              core_game_mode = 7;
          }
      }
@@ -350,7 +359,7 @@ index db2ffb3..8549c94 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +439,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +443,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -358,7 +367,50 @@ index db2ffb3..8549c94 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -788,6 +808,7 @@ void Core_RunTitleLoop(void) {
+@@ -566,6 +590,9 @@ void Core_RunGameplayLoop(void) {
+     if (core_flags & 0x200) {
+         core_flags &= ~0x200;
+         while (Audio_GetSeqState(0) != 0) {
++#ifdef ELTALE_P1_OS
++            Port_OsSpinWait();
++#endif
+         }
+     }
+     if (core_flags & 0x400) {
+@@ -649,6 +676,9 @@ void Core_RunMessageCutsceneLoop(void) {
+     if (core_flags & 0x200) {
+         core_flags &= ~0x200;
+         while (Audio_GetSeqState(0) != 0) {
++#ifdef ELTALE_P1_OS
++            Port_OsSpinWait();
++#endif
+         }
+     }
+ }
+@@ -660,6 +690,12 @@ void Core_RunCameraCutsceneLoop(void) {
+ 
+     msg = NULL;
+     Dma_ReadRom(D_E43780, D_801C0000, D_E5BF60 - D_E43780);
++#ifdef ELTALE_P1_OS
++    {
++        extern u8 D_801D8620[];
++        Port_SwapCutsceneTable((u32)(uptr)D_801D8620, 14);
++    }
++#endif
+     core_transition_timer = 0;
+     fade_transition_style = 2;
+     sfx_master_volume = 0;
+@@ -722,6 +758,9 @@ void Core_RunCameraCutsceneLoop(void) {
+     if (core_flags & 0x200) {
+         core_flags &= ~0x200;
+         while (Audio_GetSeqState(0) != 0) {
++#ifdef ELTALE_P1_OS
++            Port_OsSpinWait();
++#endif
+         }
+     }
+     core_flags |= 0x20000;
+@@ -788,6 +827,7 @@ void Core_RunTitleLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -366,7 +418,7 @@ index db2ffb3..8549c94 100644
  void Core_RunIntroLoop(void) {
      GfxFrame *frame;
  
-@@ -799,6 +820,9 @@ void Core_RunIntroLoop(void) {
+@@ -799,6 +839,9 @@ void Core_RunIntroLoop(void) {
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
@@ -376,7 +428,7 @@ index db2ffb3..8549c94 100644
          frame = &D_80301000[gfx_frame_index];
          if (gfx_frame_sent == 0) {
              gfx_frame_sent++;
-@@ -814,6 +838,7 @@ void Core_RunIntroLoop(void) {
+@@ -814,6 +857,7 @@ void Core_RunIntroLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -384,7 +436,7 @@ index db2ffb3..8549c94 100644
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
-@@ -888,3 +913,4 @@ void Fade_StartTransitionOut(void) {
+@@ -888,3 +932,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
@@ -648,6 +700,63 @@ index fe11d2c..d4dca20 100644
  extern s32 env_fog_range[2];
  
  /* .data */
+diff --git a/src/game/event/cutscene.c b/src/game/event/cutscene.c
+index f0c85f6..7c93dec 100644
+--- a/src/game/event/cutscene.c
++++ b/src/game/event/cutscene.c
+@@ -581,7 +581,7 @@ void Cutscene_StartNextScene(void) {
+     CutsceneSequenceEntry *e = &D_801D8620[cutscene_sequence_index++];
+     s32 i;
+ 
+-    cutscene_camera_track = e->camera_track;
++    cutscene_camera_track = (KfAnim *)(uptr)e->camera_track;
+     cutscene_camera_frame = 0;
+     cutscene_camera_end_frame = cutscene_camera_track->last;
+     map_id = -1;
+@@ -609,7 +609,7 @@ void Cutscene_StartNextScene(void) {
+     npc_count = 0;
+     enemy_count = 0;
+     cutscene_image_frame = 0;
+-    cutscene_next_image_cue = e->image_cues;
++    cutscene_next_image_cue = (CutsceneImageCue *)(uptr)e->image_cues;
+     for (i = 0; i < 32; i++) {
+         cutscene_image_cue_slots[i].remaining_frames = 0;
+     }
+@@ -677,7 +677,7 @@ void Cutscene_UpdateAndDrawImageCues(void) {
+                 n--;
+                 slot++;
+             }
+-            cutscene_next_image_cue->tlut[0] = 0;
++            ((u16 *)(uptr)cutscene_next_image_cue->tlut)[0] = 0;
+             slot->remaining_frames = cutscene_next_image_cue->dur;
+             slot->cue = cutscene_next_image_cue;
+             cutscene_next_image_cue++;
+diff --git a/src/game/event/cutscene.h b/src/game/event/cutscene.h
+index 9033b8b..27ff0a6 100644
+--- a/src/game/event/cutscene.h
++++ b/src/game/event/cutscene.h
+@@ -11,8 +11,8 @@ typedef struct CutsceneImageCue {
+     /* 0x06 */ s16 y;
+     /* 0x08 */ s16 w;
+     /* 0x0A */ s16 h;
+-    /* 0x0C */ u16 *tlut;
+-    /* 0x10 */ u8 *img;
++    /* 0x0C */ u32 tlut; /* u16 *; port: N64 layout, swapped in place (Port_SwapCutsceneTable) */
++    /* 0x10 */ u32 img;  /* u8 * */
+ } CutsceneImageCue; /* 0x14 bytes */
+ 
+ typedef struct CutsceneSequenceEntry {
+@@ -22,8 +22,8 @@ typedef struct CutsceneSequenceEntry {
+     /* 0x0C */ f32 spawn_x;
+     /* 0x10 */ f32 spawn_z;
+     /* 0x14 */ f32 spawn_rot;
+-    /* 0x18 */ KfAnim *camera_track;
+-    /* 0x1C */ CutsceneImageCue *image_cues;
++    /* 0x18 */ u32 camera_track; /* KfAnim *; port: N64 layout, swapped in place */
++    /* 0x1C */ u32 image_cues;   /* CutsceneImageCue * */
+ } CutsceneSequenceEntry; /* 0x20 bytes */
+ 
+ typedef struct CutsceneImageCueSlot {
 diff --git a/src/game/event/scene.c b/src/game/event/scene.c
 index 4c00a3a..e0ffd78 100644
 --- a/src/game/event/scene.c
@@ -998,7 +1107,7 @@ index ad8d378..add0f4a 100644
          *dst++ = *src++;
      }
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..994f06e 100644
+index ebb5c68..6a8b57c 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -1029,7 +1138,20 @@ index ebb5c68..994f06e 100644
  
  /* This file's .bss starts here: 8007C280..80082030 in address order, then
   * D_80082030.. below. mapobj_billboard_list is a pointer table other files use.
-@@ -157,9 +166,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
+@@ -104,8 +113,10 @@ MapObjSplineOut mapobj_spline_out;
+  * (splat's D_80082030 is Map_LoadArea's loop end), so it is a placeholder. */
+ u8 D_80082030[0x18];
+ MapObjWavePhase mapobj_wave_phase[4];
+-u16 mapobj_opaque_list[0x200];
+-u16 mapobj_noanim_list[0x200];
++/* MapObj pointer lists; the matching build declares them u16[0x200] (0x100 N64 pointers). Natively
++ * a pointer is 8 bytes, so they are pointer arrays here, or a busy map runs off their end. */
++MapObj *mapobj_opaque_list[0x100];
++MapObj *mapobj_noanim_list[0x100];
+ 
+ /* The last part of this file's .bss, 80082860..800842F0. */
+ MapObj *mapobj_translucent_list[0x100];
+@@ -157,9 +168,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
  f32 mapobj_wave_z_div[4] = { 0.0f, 1000.0f, 5000.0f, 3000.0f };
  
  void Map_LoadArea(void) {
@@ -1040,7 +1162,19 @@ index ebb5c68..994f06e 100644
      u16 *src;
      u16 *dst;
      s32 i;
-@@ -210,10 +217,8 @@ void Map_LoadArea(void) {
+@@ -201,6 +210,11 @@ void Map_LoadArea(void) {
+         Dma_ReadRom(D_753F0, D_80100000, D_851F0_end - D_753F0);
+         Dma_ReadRom(D_D86170, map_clock_tlut_srcs, 0x600);
+         Dma_ReadRom(D_D86770, D_80081AB0, 0x200);
++#ifdef ELTALE_P1_OS
++        /* palettes the game blends and draws from native memory: host order */
++        Port_SwapHalfwords(map_clock_tlut_srcs, 0x600);
++        Port_SwapHalfwords(D_80081AB0, 0x200);
++#endif
+     }
+     if (map_id != map_next_id) {
+         D_800842CC = map_id;
+@@ -210,10 +224,8 @@ void Map_LoadArea(void) {
              if (map_flags & 2) {
                  Dma_ReadRom(D_851F0, D_8010FE00, D_C8DE0 - D_851F0);
              }
@@ -1053,7 +1187,7 @@ index ebb5c68..994f06e 100644
          }
          Dma_ReadRom(map_area_def->romStart, map_area_def->dst, map_area_def->romEnd - map_area_def->romStart);
          switch (map_id) {
-@@ -224,7 +229,13 @@ void Map_LoadArea(void) {
+@@ -224,7 +236,13 @@ void Map_LoadArea(void) {
                  Dma_ReadRom(D_3E1090, D_801E0000, D_3F1BA0 - D_3E1090);
                  break;
          }
@@ -1067,18 +1201,21 @@ index ebb5c68..994f06e 100644
      n = 0x65;
      src = D_80081B78;
      dst = D_80081B7A;
-@@ -244,8 +255,8 @@ void Map_LoadArea(void) {
+@@ -244,8 +262,11 @@ void Map_LoadArea(void) {
      map_env_flags = env_area_settings->mapFlags;
      if (map_backdrop_id != env_area_settings->backdropId) {
          map_backdrop_id = env_area_settings->backdropId;
 -        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
 -        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start + 0x800, map_backdrop_tex, 0x4000);
 +        Dma_ReadRom((u8 *)(uintptr_t)map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
++#ifdef ELTALE_P1_OS
++        Port_SwapHalfwords(map_backdrop_phase_tluts, 0x800);
++#endif
 +        Dma_ReadRom((u8 *)(uintptr_t)(map_backdrop_defs[map_backdrop_id].start + 0x800), map_backdrop_tex, 0x4000);
      }
      if (exit_destination.entry != -1) {
          sp = &map_subarea_def->entries[exit_destination.entry];
-@@ -645,7 +656,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +666,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
@@ -1087,7 +1224,7 @@ index ebb5c68..994f06e 100644
  }
  
  void MapObjAnim_ClearAll(void) {
-@@ -951,8 +962,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -951,8 +972,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
      MapObj *s;
  
      idx = type - 0x11;
@@ -1102,7 +1239,7 @@ index ebb5c68..994f06e 100644
      first = 0;
      for (; count != 0; count--) {
          s = *list++;
-@@ -1040,6 +1057,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -1040,6 +1067,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;
@@ -1115,7 +1252,7 @@ index ebb5c68..994f06e 100644
  void Map_RotateHalfwordBuffer(void) {
      s32 *cnt = &map_halfword_rotation_counter;
 diff --git a/src/game/map/map.h b/src/game/map/map.h
-index 98f7354..e8bbd56 100644
+index 98f7354..5238192 100644
 --- a/src/game/map/map.h
 +++ b/src/game/map/map.h
 @@ -140,7 +140,7 @@ typedef struct MapRomRange {
@@ -1127,6 +1264,28 @@ index 98f7354..e8bbd56 100644
  } MapBackdropDef; /* 0x8 bytes */
  
  /* mapobj_spline_out: the first four channels of a Math_EvalTcbSpline result. */
+@@ -149,7 +149,9 @@ typedef struct MapObjSplineOut {
+     /* 0x04 */ f32 y;
+     /* 0x08 */ f32 z;
+     /* 0x0C */ f32 w;
+-} MapObjSplineOut; /* 0x10 bytes */
++    /* 0x10 */ f32 rest[5]; /* port: Math_EvalTcbSpline writes 9 floats; on the N64 the rest ran into
++                             * the unnamed bytes after it (D_80082030), natively into other globals */
++} MapObjSplineOut; /* 0x10 bytes on the N64 */
+ 
+ typedef struct MapObjWaveBase {
+     /* 0x00 */ s32 v[6];
+@@ -231,8 +233,8 @@ extern MapObjSplineOut mapobj_spline_out;
+ /* .bss 80082030..80082860 */
+ extern u8 D_80082030[0x18];
+ extern MapObjWavePhase mapobj_wave_phase[4];
+-extern u16 mapobj_opaque_list[0x200];
+-extern u16 mapobj_noanim_list[0x200];
++extern MapObj *mapobj_opaque_list[0x100]; /* port: pointer arrays (u16[0x200] in the matching build) */
++extern MapObj *mapobj_noanim_list[0x100];
+ 
+ /* The types of the last .bss run are declared here, between the runs: the gap in declaration
+  * numbers is where map.c's function static map_clock_blend_len (80082858) sorts (IDO orders
 diff --git a/src/game/map/spirit.c b/src/game/map/spirit.c
 index eed5d97..bd810ea 100644
 --- a/src/game/map/spirit.c
@@ -1865,6 +2024,22 @@ index c6c476c..17d0a0e 100644
  
  typedef Acmd *(*ALCmdHandler)(void *, s16 *, s32, s32, Acmd *);
  typedef s32   (*ALSetParam)(void *, s32, void *);
+diff --git a/src/overlays/ending/ending.c b/src/overlays/ending/ending.c
+index 1afa21f..493a701 100644
+--- a/src/overlays/ending/ending.c
++++ b/src/overlays/ending/ending.c
+@@ -95,7 +95,11 @@ s32 Ending_Update(void) {
+     // D_8020F698 is a function static in the original: IDO does not keep its address
+     // in a register. Until D2 moves the data into C, write it through the neighbouring
+     // symbol so this extern's address is not CSE'd either.
++#ifdef ELTALE_P0_BOOT_PROBE
++    ending_display_buffer_index = idx; /* port: natively the next variable is not this one */
++#else
+     (&ending_wait_for_sprites)[1] = idx;
++#endif
+     ret = Ending_RunSpriteScript();
+     idx = ending_display_buffer_index;
+     gSPEndDisplayList(gfx_dl_head++);
 diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
 index fe5a9e7..1860370 100644
 --- a/src/overlays/ending/ending_data.c

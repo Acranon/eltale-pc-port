@@ -49,7 +49,9 @@ P0_UNAVAILABLE(Pak_WriteFile)
 #ifndef ELTALE_P1_OS
 P0_UNAVAILABLE(func_8020C11C)
 #endif
+#ifndef ELTALE_P1_OS
 P0_UNAVAILABLE(func_8020C15C)
+#endif
 #ifndef ELTALE_P1_OS
 P0_UNAVAILABLE(Sfx_StopAllChannels)
 #endif

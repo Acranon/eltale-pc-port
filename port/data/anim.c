@@ -63,6 +63,21 @@ static void swap_keyframes(u32 kfs, u32 count) {
     }
 }
 
+/* A native u16 array a ROM DMA filled with big-endian halfwords (palettes the game blends). */
+void Port_SwapHalfwords(void *p, u32 bytes) {
+    u8 *b = p;
+    for (u32 i = 0; i + 1 < bytes; i += 2) { u8 t = b[i]; b[i] = b[i + 1]; b[i + 1] = t; }
+}
+
+/* A KfAnim record (kfs, count, last) and its keyframes. */
+void Port_SwapKfAnim(u32 anim) {
+    if (!in_ram(anim, 8)) return;
+    Port_Swap32(anim);
+    Port_Swap16(anim + 4);
+    Port_Swap16(anim + 6);
+    swap_keyframes(rd32(anim), rd16(anim + 4));
+}
+
 static int valid_set(u32 a) {
     if (!in_ram(a, 0xC) || (a & 3)) return 0;
     s16 nodes = (s16)rd16(a);

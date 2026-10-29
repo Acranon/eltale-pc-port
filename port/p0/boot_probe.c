@@ -62,6 +62,18 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
 
 #ifdef ELTALE_P1_AUDIO
 extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
+void Port_OverrideStartMode(void) {
+#ifdef ELTALE_P1_OS
+    static int done;
+    const char *mode = getenv("ELTALE_START_MODE");
+    if (done++ || !mode) return;
+    core_game_mode = (u16)atoi(mode);
+    if (core_game_mode == 5 || core_game_mode == 7) D_8007A172 = 4; /* as after the last boss (boss.c): no HUD */
+    if (core_game_mode == 7) core_flags |= 0x40; /* start the tour's first scene */
+    fprintf(stderr, "P1_START_MODE %d\n", core_game_mode);
+#endif
+}
+
 /* A hash of everything the game plays (headless audio check). */
 static uint64_t ai_hash = UINT64_C(0xCBF29CE484222325);
 static unsigned ai_buffers, ai_nonzero;
@@ -152,7 +164,7 @@ int main(int argc, char **argv) {
     Boot_Main(0);
     Port_OsRun();
     if (!window && (Port_OsFrameCount() != requested_frames ||
-        Port_OsGfxTaskCount() < requested_frames || intro_pak_check_done != 1))
+        Port_OsGfxTaskCount() < requested_frames || (intro_pak_check_done != 1 && !getenv("ELTALE_START_MODE"))))
         Port_HostFatal("P1 OS did not complete the requested intro frames");
 #ifdef ELTALE_P1_AUDIO
     ai_wav_close();

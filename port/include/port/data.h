@@ -24,6 +24,10 @@ void Port_SwapAnimSet(uint32_t set);
 /* Swap the display-list table a native AnimSet copy points to (its nodes already swapped). */
 struct AnimSet;
 void Port_SwapAnimSetDls(const struct AnimSet *set);
+/* Byte-swap a native u16 array that a ROM DMA filled (palettes the game blends as numbers). */
+void Port_SwapHalfwords(void *p, uint32_t bytes);
+/* Swap a KfAnim record and its keyframes. */
+void Port_SwapKfAnim(uint32_t anim);
 /* Swap the keyframe tables the game's own AnimNodes use (after the boot copy). */
 void Port_SwapNativeKeyframes(void);
 /* port/data/common.c: swap the common block's pointer-free tables (after its boot DMA). */
@@ -34,6 +38,8 @@ void Port_SwapEnemyDefs(uint32_t defs, uint32_t count);
 void Port_SwapAreaEnemyDefs(const struct EnemyAreaSet *set);
 /* A SceneEntry and its messages (N64 layout), swapped in place. */
 void Port_SwapSceneEntry(void *entry);
+/* The ending's cutscene sequence table, its camera tracks and image cues. */
+void Port_SwapCutsceneTable(uint32_t table, uint32_t count);
 /* port/data/map_area.c: native copies of a scene's NPC table. */
 struct NpcDef;
 struct NpcDef *Port_NpcDefs(uint32_t addr, int32_t count);

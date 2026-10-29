@@ -440,3 +440,58 @@ It is now a ring that SDL's callback drains:
 
 Also: Port_HostFatal now flushes and `_Exit`s. On Windows, exit() from a game
 fiber never returned, so a fatal error hung the process.
+
+## The ending, its camera tour, and layout bugs (2026-10-29)
+
+`ELTALE_START_MODE=n` starts the game in mode n right after boot, so a mode can
+be tested without playing to it. Modes 5 and 7 also set `D_8007A172 = 4`, as
+the last boss does, which hides the HUD. `tests/p1_checks.sh exe rom` runs the
+three headless checks; Windows and Linux print the same lines:
+- New Game: mode=1, last_hash 74b8baf63f9c1889, audio be0b67b7b718648e.
+- Ending (mode 5, 10000 frames): reaches the tour, mode=7, last_hash
+  6b50454cc76480b3.
+- Tour (mode 7, 10000 frames): plays all 14 scenes, resets to the intro,
+  mode=4, last_hash 02b00a69b6c72d1a.
+
+The ending overlay (`overlays/ending`) is now in the native build: entries in
+stubs.c, Ending_Init when mode 5 loads it, func_8020C15C = Ending_Update.
+pakmenu (the Controller Pak manager at 0x80100000) is the one overlay left
+that is not built natively.
+
+Fixed on the way. Several of these were only visible on one platform, because
+the two linkers lay out globals differently, so the cross-platform check is
+the tool for them.
+- **Cutscene sequence table** (ending tour): it keeps the N64 layout and is
+  swapped in place after its DMA. That covers the entries, the camera-track
+  KfAnims with their keyframes, and the image cues up to the cue with frame 0
+  (`Port_SwapCutsceneTable`, `Port_SwapKfAnim`).
+- **Encounter tables** list entries only up to the last sub-area with
+  encounters, and other records follow in the block (map 11). The decoder now
+  stops at the first entry whose addresses are not in the block.
+- **`mapobj_opaque_list` / `mapobj_noanim_list`** hold MapObj pointers but are
+  `u16[0x200]` in the matching build. That is 128 native pointers, so they are
+  pointer arrays here.
+- **`mapobj_spline_out`** is 4 floats, but Math_EvalTcbSpline writes 9. On the
+  N64 the rest fell into unnamed bytes (D_80082030). Natively, the Windows
+  linker put `mapobj_translucent_count` there, which crashed map 11.
+- **Ending_Update** wrote `(&ending_wait_for_sprites)[1]` to reach
+  ending_display_buffer_index (a matching trick). On Linux that word is
+  ending_cue_group_index. The port writes the variable by name.
+- **Backdrop** (sky and far ground):
+  - Display lists in the ROM load the texture and palette from fixed N64
+    addresses (0x8007C6B0, 0x800806B0) of native globals.
+    `Port_N64ToNative` (gen_host_address_map.py) maps an address in the main
+    segment's .bss back to its native object, so the frame image converts it
+    like any native texture.
+  - The DMA'd palettes the game blends as numbers (backdrop phases, clock
+    palettes, D_80081AB0) are byte-swapped to host order after their DMA
+    (`Port_SwapHalfwords`).
+- **Busy waits**: `while (Audio_GetSeqState(0) != 0) {}` (three loops in
+  main.c) now calls `Port_OsSpinWait`. The thread waits for the next virtual
+  event and keeps the CPU from threads of its priority and below, as a
+  spinning N64 thread does. It used to hang the scheduler. The retrace waits
+  were already blocking receives.
+- **Windows crash reports**: a vectored exception handler prints the
+  exception, the faulting address and the unwound stack (fiber stacks defeat
+  the unhandled-exception filter). Symbolize with
+  `llvm-symbolizer --obj=out/p1-windows/eltale-p1.exe 0x...`.

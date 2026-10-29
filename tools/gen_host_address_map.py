@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Generate host-data-address -> N64-address normalization for DL task hashes.
+"""Generate host-data-address <-> N64-address maps for display lists.
 
 The game keeps host pointers in 32-bit Gfx words (the image is linked below
-4 GiB). This table maps those words back to pinned decomp symbol addresses
-for deterministic cross-platform hashes. It does not alter the display list.
+4 GiB). Port_NormalizeDlAddress maps those words back to pinned decomp symbol
+addresses (deterministic cross-platform hashes, and the frame image).
+Port_N64ToNative goes the other way, for display lists in the ROM that name a
+native object by its fixed N64 address (the backdrop's texture and palette): a
+symbol extends to the next symbol's N64 address.
 """
 
 import re
@@ -36,6 +39,14 @@ for name in sorted(defined):
     if address is not None:
         entries.append((name, address))
 
+# Port_N64ToNative covers the main segment's .bss only: what is there exists only at run time, so
+# RDRAM never holds it, while the rest of RDRAM (the IPL copy, DMA'd blocks) is N64 data that
+# display lists in the ROM read as it is.
+config = (ROOT / "decomp/eltale.jp.yaml").read_text()
+bss_start = int(re.search(r"type: \.bss, vram: (0x[0-9A-Fa-f]+)", config).group(1), 16)
+bss_end = bss_start + int(re.search(r"bss_size: (0x[0-9A-Fa-f]+)", config).group(1), 16)
+reverse = [(n, a) for n, a in entries if bss_start <= int(a, 16) < bss_end]
+
 lines = [
     "#include <stdint.h>",
     "#include <stdlib.h>",
@@ -67,6 +78,32 @@ lines += [
     "    uintptr_t delta = target - addresses[index].host;",
     "    if (delta > 0x200000u) return word;",
     "    return addresses[index].n64 + (uint32_t)delta;",
+    "}",
+    "static PortAddressEntry by_n64[] = {",
+] + [f"    {{ (uintptr_t){name}, {address}u }}," for name, address in reverse] + [
+    "};",
+    f"#define BSS_END 0x{bss_end:08X}u",
+    "static int compare_n64(const void *a, const void *b) {",
+    "    uint32_t x = ((const PortAddressEntry *)a)->n64, y = ((const PortAddressEntry *)b)->n64;",
+    "    return (x > y) - (x < y);",
+    "}",
+    "uintptr_t Port_N64ToNative(uint32_t n64) {",
+    "    static int sorted;",
+    "    const size_t count = sizeof by_n64 / sizeof by_n64[0];",
+    "    if (!sorted) {",
+    "        qsort(by_n64, count, sizeof by_n64[0], compare_n64);",
+    "        sorted = 1;",
+    "    }",
+    "    size_t lo = 0, hi = count;",
+    "    while (lo < hi) {",
+    "        size_t mid = lo + (hi - lo) / 2;",
+    "        if (by_n64[mid].n64 <= n64) lo = mid + 1; else hi = mid;",
+    "    }",
+    "    if (!lo) return 0;",
+    "    const PortAddressEntry *e = &by_n64[lo - 1];",
+    "    uint32_t end = lo < count ? by_n64[lo].n64 : BSS_END;",
+    "    if (e->host == e->n64 || n64 - e->n64 >= end - e->n64) return 0;",
+    "    return e->host + (n64 - e->n64);",
     "}",
 ]
 out.parent.mkdir(parents=True, exist_ok=True)

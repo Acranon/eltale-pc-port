@@ -16,6 +16,7 @@ OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
+GAME_SRC += $(shell find work/src/overlays/ending -name '*.c')
 OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c port/gfx/vi.c port/gfx/rt64_bridge.c
 # libultra's sinf/cosf keep their double constants as big-endian word pairs: the host libm's instead
 GU_SRC += $(filter-out %/sinf.c %/cosf.c,$(wildcard decomp/src/libultra/gu/*.c))

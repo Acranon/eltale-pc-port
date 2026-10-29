@@ -46,3 +46,20 @@ void Port_SwapSceneEntry(void *entry) {
     if (messages && count > 0 && count < 256)
         for (int32_t i = 0; i < count; i++) swap_shape(messages + (uint32_t)i * 0xC, "wwbbbb");
 }
+
+/* The ending's camera tour (Core_RunCameraCutsceneLoop): `count` CutsceneSequenceEntry records
+ * (N64 layout, game/event/cutscene.h) at `table`, each with a camera-track KfAnim and a list of
+ * image cues that ends at a cue with frame 0. Swapped in place after the block's DMA. */
+void Port_SwapCutsceneTable(uint32_t table, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t e = table + i * 0x20;
+        swap_shape(e, "wwwwwwww");
+        const uint32_t *w = (const uint32_t *)(uintptr_t)e;
+        Port_SwapKfAnim(w[6]);
+        for (uint32_t cue = w[7], n = 0;; cue += 0x14, n++) {
+            if (n > 64) Port_HostFatal("cutscene image cues: no end");
+            swap_shape(cue, "hhhhhhww");
+            if (*(const uint16_t *)(uintptr_t)cue == 0) break;
+        }
+    }
+}

@@ -24,6 +24,7 @@
 
 __attribute__((noreturn)) void Port_HostFatal(const char *what);
 uint32_t Port_NormalizeDlAddress(uint32_t word);
+uintptr_t Port_N64ToNative(uint32_t n64);
 extern GfxFrame port_gfx_frames[2];
 
 enum { RDRAM = 0x80000000u, RDRAM_BYTES = 8 << 20, FRAME_N64 = 0x80301000u, FRAME_SIZE = 0xDAD0, FRAME_DATA = 0x58,
@@ -54,15 +55,17 @@ static u32 native_to_n64(uintptr_t host) {
 }
 
 /* Where an address word points: *native is set when it is native memory. Returns the N64
- * address (0 if unknown). */
+ * address (0 if unknown). An RDRAM address can name a native object too: display lists in the
+ * ROM load the backdrop's texture and palette from their fixed N64 addresses, and the game keeps
+ * those natively (Port_N64ToNative). */
 static u32 resolve(u32 word, int *native) {
     *native = 0;
-    if (is_rdram(word)) return word;
+    if (is_rdram(word)) { *native = Port_N64ToNative(word) != 0; return word; }
     if (word < 0x10000000u) { /* segmented, or physical (segment 0) */
         u32 base = segments[word >> 24 & 0xF];
         u32 a = base + (word & 0x00FFFFFF);
         if (a < RDRAM_BYTES) a |= RDRAM;
-        if (is_rdram(a)) return a;
+        if (is_rdram(a)) { *native = Port_N64ToNative(a) != 0; return a; }
         word = a; /* a segment holding a native base */
     }
     *native = 1;
@@ -94,9 +97,14 @@ static void copy_native(uintptr_t host, u32 n64, u32 bytes, int unit) {
     stats.native_bytes += bytes;
 }
 
-/* The host address of a native word's target (segment-relative words included). */
+/* The host address of a native word's target (segment-relative words and N64 addresses of
+ * native objects included). */
 static uintptr_t native_host(u32 word) {
-    if (word < 0x10000000u) return segments[word >> 24 & 0xF] + (word & 0x00FFFFFF);
+    if (word < 0x10000000u) {
+        word = segments[word >> 24 & 0xF] + (word & 0x00FFFFFF);
+        if (word < RDRAM_BYTES) word |= RDRAM;
+    }
+    if (is_rdram(word)) return Port_N64ToNative(word);
     return word;
 }
 

@@ -17,6 +17,7 @@
 #include "game/npc/npc.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -201,11 +202,18 @@ static CollWalls *decode_walls(u32 a, unsigned count) {
     return w;
 }
 
+/* Encounter tables have an entry per sub-area up to the last one with encounters, and the block
+ * goes on with other records after that (map 11, the ending's tour). An entry belongs to the
+ * table only if its addresses are null or in the block; the rest are left empty. */
+static int valid_ptr(u32 v) { return !v || in_block(v); }
+
 static EncounterRegionList *decode_regions(u32 a, unsigned count) {
     if (!a) return NULL;
     EncounterRegionList *l = alloc(count * sizeof *l);
+    memset(l, 0, count * sizeof *l);
     for (unsigned i = 0; i < count; i++, a += 8) {
         u32 regions = r32(a);
+        if (!valid_ptr(regions) || (s32)r32(a + 4) < 0 || r32(a + 4) > 64) break;
         l[i].count = (s32)r32(a + 4);
         /* group_list is read as a u16 count and u16 group ids */
         l[i].regions = regions ? decode_flat(regions, l[i].count > 0 ? (unsigned)l[i].count : 0, 0x18,
@@ -217,8 +225,10 @@ static EncounterRegionList *decode_regions(u32 a, unsigned count) {
 static EncounterGroupTable *decode_groups(u32 a, unsigned count) {
     if (!a) return NULL;
     EncounterGroupTable *t = alloc(count * sizeof *t);
+    memset(t, 0, count * sizeof *t);
     for (unsigned i = 0; i < count; i++, a += 0x10) {
         u32 forms = r32(a), groups = r32(a + 4), points = r32(a + 8);
+        if (!valid_ptr(forms) || !valid_ptr(groups) || !valid_ptr(points) || r32(a + 0xC) > 256) break;
         t[i].point_count = (s32)r32(a + 0xC);
         t[i].points = decode_flat(points, t[i].point_count > 0 ? (unsigned)t[i].point_count : 0, 4, "hh");
         if (forms) {

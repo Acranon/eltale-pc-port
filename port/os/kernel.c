@@ -20,6 +20,7 @@ typedef enum ThreadState {
     THREAD_RECV,
     THREAD_SEND,
     THREAD_STOPPED,
+    THREAD_SPINNING, /* polling: runs again after the next event (Port_OsSpinWait) */
 } ThreadState;
 
 typedef struct HostThread {
@@ -180,6 +181,22 @@ static HostThread *best_ready(void) {
     return best;
 }
 
+/* The highest-priority thread spinning in a poll, if any. */
+static HostThread *best_spinning(void) {
+    HostThread *best = NULL;
+    for (unsigned i = 0; i < thread_count; i++)
+        if (threads[i].state == THREAD_SPINNING && (!best || threads[i].priority > best->priority)) best = &threads[i];
+    return best;
+}
+
+static void wake_spinning(void) {
+    for (unsigned i = 0; i < thread_count; i++) {
+        if (threads[i].state != THREAD_SPINNING) continue;
+        threads[i].state = THREAD_READY;
+        threads[i].n64->state = OS_STATE_RUNNABLE;
+    }
+}
+
 static void switch_to_host(void) {
     if (!current) Port_HostFatal("OS switch without a running thread");
     port_fiber_switch(current->fiber, host_fiber);
@@ -236,7 +253,15 @@ void Port_OsRun(void) {
     if (!fast_mode) Port_HostPace(0);
     while (!stopping) {
         deliver_pending();
-        HostThread *next = best_ready();
+        HostThread *next = best_ready(), *spinner = best_spinning();
+        /* a spinning thread keeps the CPU from threads of its priority and below, as on the N64:
+         * only an event (a higher-priority thread waking) comes before its next poll */
+        if (spinner && (!next || next->priority <= spinner->priority)) {
+            advance_to_event();
+            deliver_pending();
+            wake_spinning();
+            continue;
+        }
         if (!next) {
             if (!vi_queue) {
                 int has_timer = 0;
@@ -319,6 +344,15 @@ void osYieldThread(void) {
     if (!current) Port_HostFatal("yield outside an OS thread");
     current->state = THREAD_READY;
     current->n64->state = OS_STATE_RUNNABLE;
+    current->ready_order = ++order_counter;
+    switch_to_host();
+}
+
+/* A game loop that polls without an OS call (while (Audio_GetSeqState(0) != 0) {}): on the N64
+ * other threads preempt it and time passes; here it waits for the next virtual event. */
+void Port_OsSpinWait(void) {
+    if (!current) Port_HostFatal("spin outside an OS thread");
+    current->state = THREAD_SPINNING;
     current->ready_order = ++order_counter;
     switch_to_host();
 }

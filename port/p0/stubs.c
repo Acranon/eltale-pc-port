@@ -4,6 +4,9 @@
 #include "overlays/intro/intro.h"
 #ifdef ELTALE_P1_OS
 #include "overlays/title/title.h"
+#ifdef ELTALE_P1_OS
+#include "overlays/ending/ending.h"
+#endif
 #endif
 
 /* P0 starts the actual game boot and DMA path. Audio synthesis, PakMenu,
@@ -35,11 +38,14 @@ s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) { (void)a; (void)b; return 0; 
 void func_8020C0D0(void) {
 #ifdef ELTALE_P1_OS
     if (core_game_mode == 3) { Title_Init(); return; }
+    if (core_game_mode == 5) { Ending_Init(); return; }
 #endif
     Intro_Init();
 }
 #ifdef ELTALE_P1_OS
+/* the overlays' updates are at different addresses (title, ending; the intro's is below) */
 s32 func_8020C11C(void) { return Title_Update(); }
+s32 func_8020C15C(void) { return Ending_Update(); }
 #endif
 static unsigned intro_update_count;
 s32 func_8020C16C(void) {

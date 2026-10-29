@@ -19,5 +19,7 @@ unsigned Port_OsGfxTaskCount(void);
 uint64_t Port_OsLastGfxHash(void);
 uint64_t Port_OsViCount(void);
 uint32_t Port_NormalizeDlAddress(uint32_t word);
+/* The body of a game loop that polls without an OS call: let virtual time reach the next event. */
+void Port_OsSpinWait(void);
 
 #endif
