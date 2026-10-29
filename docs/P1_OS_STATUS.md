@@ -199,3 +199,16 @@ matrices, vertices, texture loads, native bytes converted, unresolved addresses.
 Next: fix that read; choose the backend (paraLLEl-RDP + an LLE RSP running the
 ROM's F3DEX, the plan's reference, or RT64 first for a quick picture) and add
 the SDL window; then frame tests against an emulator.
+
+### Next data job: the common block at 0x803A0000 (found 2026-10-28)
+
+The game reads ~20 tables at fixed RDRAM addresses in the common data block (HUD,
+items, magic visuals, enemy effects, boss data) through native types: big-endian
+bytes, and pointer tables read with 8-byte strides. The texture pointer above is
+one (`D_803A8778[pal]`, Hud). Indexed uses (game/): D_803AB36C (8), D_803AAAA0
+(5), D_803AAA40 (5), D_803AC418, D_803AB390, D_803AB358, D_803AB288 (2 each),
+D_803AC438, D_803ABA58, D_803AB820, D_803AB4B0, D_803AB48C, D_803AB3D0,
+D_803AB2F0, D_803AA6C4, D_803AA690, D_803AA628, D_803A8778 (1 each). Find the
+DMA that loads the block, give each table an N64-layout type (u32 for
+pointers), and swap the block in place after the DMA as port/data/anim.c does,
+or decode the tables into native copies.
