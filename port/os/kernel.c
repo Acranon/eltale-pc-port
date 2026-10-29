@@ -59,6 +59,10 @@ static uint64_t clock_count;
 static uint64_t next_vi_tick;
 static uint64_t vi_count;
 static void *current_framebuffer;
+/* A graphics task's SP and DP done are due at the next retrace: the RSP and RDP take real
+ * time on the N64, and that time is what lets a retrace come between two frames. */
+static uint64_t gfx_done_tick;
+static void *next_framebuffer; /* swapped in at the next retrace, as libultra's VI does */
 static unsigned frame_limit;
 static int fast_mode;
 static unsigned frame_count;
@@ -110,6 +114,8 @@ static void deliver_pending(void) {
 
 static void advance_to_event(void) {
     uint64_t next = next_vi_tick;
+    if (gfx_done_tick && gfx_done_tick < next)
+        next = gfx_done_tick;
     if (ai_count && ai_transfers[0].deadline < next)
         next = ai_transfers[0].deadline;
     for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
@@ -122,8 +128,17 @@ static void advance_to_event(void) {
     if (clock_count == next_vi_tick) {
         vi_count++;
         next_vi_tick += COUNTS_PER_VI;
+        if (next_framebuffer) {
+            current_framebuffer = next_framebuffer;
+            next_framebuffer = NULL;
+        }
         if (vi_queue && vi_fields && vi_count % vi_fields == 0)
             post_event(vi_queue, vi_message);
+    }
+    if (gfx_done_tick && clock_count >= gfx_done_tick) {
+        gfx_done_tick = 0;
+        post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
+        post_event(events[OS_EVENT_DP].queue, events[OS_EVENT_DP].message);
     }
     if (ai_count && clock_count >= ai_transfers[0].deadline) {
         post_event(events[OS_EVENT_AI].queue, events[OS_EVENT_AI].message);
@@ -198,7 +213,8 @@ void Port_OsInit(void) {
     vi_message = NULL;
     clock_count = vi_count = 0;
     next_vi_tick = COUNTS_PER_VI;
-    current_framebuffer = NULL;
+    current_framebuffer = next_framebuffer = NULL;
+    gfx_done_tick = 0;
     frame_limit = frame_count = gfx_task_count = 0;
     fast_mode = 1;
     last_gfx_hash = 0;
@@ -415,14 +431,11 @@ void osViSetEvent(OSMesgQueue *queue, OSMesg message, u32 fields) {
 void *osViGetCurrentFramebuffer(void) { return current_framebuffer; }
 
 void osViSwapBuffer(void *framebuffer) {
-    current_framebuffer = framebuffer;
-    /* Graphics completion may happen before the next retrace. The host has
-     * no physical VI, so consume one virtual retrace per presented frame. */
-    uint64_t target_vi = vi_count + 1;
-    while (vi_count < target_vi) advance_to_event();
+    /* The buffer is shown from the next retrace on; until then osViGetCurrentFramebuffer
+     * still returns the old one (nnScWaitTaskReady relies on that). */
+    next_framebuffer = framebuffer;
     frame_count++;
     if (frame_limit && frame_count >= frame_limit) Port_OsStop();
-    osYieldThread();
 }
 
 u32 osGetCount(void) { return (u32)clock_count; }
@@ -538,10 +551,9 @@ void osSpTaskStartGo(OSTask *task) {
                         dl[i].words.w0, dl[i].words.w1,
                         normalized_second_word(&dl[i]));
         }
-        printf("P1_GFX_TASK frame=%u words=%u hash=%016llx\n", gfx_task_count,
-               words, (unsigned long long)last_gfx_hash);
-        post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
-        post_event(events[OS_EVENT_DP].queue, events[OS_EVENT_DP].message);
+        printf("P1_GFX_TASK frame=%u vi=%llu words=%u hash=%016llx\n", gfx_task_count,
+               (unsigned long long)vi_count, words, (unsigned long long)last_gfx_hash);
+        gfx_done_tick = next_vi_tick;
     } else if (task->t.type == M_AUDTASK) {
         post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
     } else {

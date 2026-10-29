@@ -95,10 +95,15 @@ make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/baserom.jp.z64 FRAMES=100 INPUT=t
 - `osPfs*` file operations use the Pak's big-endian ID, inode and directory
   layout. The game now calls these functions through its actual input module.
   Motor calls are harmless success; the GB Pak probe reports a device error.
-- VI time now advances at each presented frame. Before that correction, SP
-  tasks could complete hundreds of frames while the VI count stayed at zero,
-  leaving scripted inputs unconsumed. The 60-frame intro hash matches on
-  Windows and Linux after the correction.
+- Frame pacing (Claude's review): `osViSwapBuffer` only queues the buffer, which
+  becomes current at the next retrace as in libultra's VI, and a graphics
+  task's SP/DP done events are due at the next retrace (the RSP/RDP take real
+  time on the N64). Virtual time then advances only through the scheduler, and
+  the intro runs at 2 VIs per frame (frame 60 at VI 118) with the same
+  display-list hashes as before. An earlier version advanced one VI inside
+  `osViSwapBuffer`, which ran the game at 1 VI per frame. The task duration sets
+  the frame rate, so it must be calibrated against an emulator's frames-per-VI
+  for the intro and gameplay before P1's picture comparisons.
 - `tests/intro-to-title.input` reaches the title through the game's own
   intro/title loops. Windows and Linux both finish a 100-frame run with
   `mode=3`, 63 DMA chunks and hash `9945f9cc1c2b7a5e`. Both create a
