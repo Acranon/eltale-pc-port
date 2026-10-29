@@ -8,6 +8,7 @@
 
 /* P0 starts the actual game boot and DMA path. Audio synthesis, PakMenu,
  * gameplay rendering and overlay execution are later port milestones. */
+#ifndef ELTALE_P1_AUDIO /* the real game/audio/audio.c and libultra audio (P1 --audio) */
 void Audio_Init(void) { }
 void Audio_InitSeqPlayers(u8 *a, u8 *b, u8 *c, u8 *d, u8 *e) {
     (void)a; (void)b; (void)c; (void)d; (void)e;
@@ -16,7 +17,8 @@ void Audio_InitSoundPlayer(u8 *a, u8 *b, u8 *c) {
     (void)a; (void)b; (void)c;
 }
 void Audio_StartThread(NNSched *sc) { (void)sc; }
-#ifdef ELTALE_P1_OS
+#endif
+#if defined(ELTALE_P1_OS) && !defined(ELTALE_P1_AUDIO)
 /* Audio synthesis belongs to P1c; keep sequence state quiescent while the
  * OS/title path runs. */
 s32 Audio_GetSeqState(s32 slot) { (void)slot; return 0; }

@@ -289,3 +289,10 @@ the in-place offset patching that the bank/sequence decoder replaces. Build them
 from work/src/libultra/audio (so fixes go through patches.py). The audio heap
 (alHeapInit at 0x80332DB0, 0x68000 bytes) will need more room natively: its
 structs carry 8-byte pointers.
+
+Sound step 1 done: `--audio` (Windows) / `AUDIO=1` (Make) builds the real
+game/audio/audio.c and libultra's audio library (from work/src, so fixes go
+through the patch) instead of the stand-ins. Both compile and link; the ~16
+pointer/integer casts in libultra audio now go through `uptr`, and load.c's
+K0_TO_PHYS takes host addresses. It is off by default until it runs: at boot,
+Audio_InitSoundPlayer reads the bank alBnkfNew left in its N64 form (step 2).

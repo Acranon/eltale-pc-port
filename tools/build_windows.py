@@ -29,6 +29,8 @@ def main() -> None:
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--full-compile", action="store_true",
                         help="also compile every game and overlay C module into a native archive")
+    parser.add_argument("--audio", action="store_true",
+                        help="P1: build the real game audio and libultra audio instead of stand-ins")
     parser.add_argument("--p1-os", action="store_true",
                         help="use the fiber scheduler instead of P0 synchronous threads")
     parser.add_argument("--frames", type=int, default=1,
@@ -78,6 +80,8 @@ def main() -> None:
     ]
     if args.p1_os:
         flags.append("-DELTALE_P1_OS")
+        if args.audio:
+            flags.append("-DELTALE_P1_AUDIO")
     boot_sources = sorted((ROOT / "work/src/game").rglob("*.c"))
     boot_sources = [p for p in boot_sources if p.as_posix() != (ROOT / "work/src/game/audio/audio.c").as_posix()]
     boot_sources += sorted((ROOT / "work/src/overlays/intro").rglob("*.c"))
@@ -89,6 +93,9 @@ def main() -> None:
         sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c",
                     "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "decomp/src/libultra/io/vitbl.c"]
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
+        if args.audio:
+            sources += ["work/src/game/audio/audio.c"]
+            sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "work/src/libultra/audio").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):
         obj = OUT / f"source_{index}.o"
@@ -96,8 +103,8 @@ def main() -> None:
         if source == "port/p0/unavailable.c":
             extra = ["-DELTALE_P1_OS"] if args.p1_os else []
             run([cc, "-std=gnu11", "-O2", *extra, "-c", source, "-o", str(obj)])
-        elif source.startswith("decomp\\src\\libultra\\gu\\") or source.startswith("decomp/src/libultra/gu/"):
-            run([cc, *flags, f"-I{OUT / 'include'}", "-Iport/include", "-Idecomp/include",
+        elif source.replace("\\", "/").startswith(("decomp/src/libultra/gu/", "work/src/libultra/audio/")):
+            run([cc, *flags, f"-I{OUT / 'include'}", "-Iport/include", "-Idecomp/include", "-Iwork/src",
                  "-Idecomp/src", "-idirafter", "decomp/include/ultra64",
                  "-idirafter", "decomp/include/ultra64/PR", "-include",
                  "port/include/PR/ultratypes.h", "-c", source, "-o", str(obj)])

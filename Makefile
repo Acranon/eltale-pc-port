@@ -4,6 +4,7 @@ ROM ?= $(ELTALE_ROM)
 
 OUT ?= out/p0
 P1_OS ?= 0
+AUDIO ?= 0
 FRAMES ?= 1
 INPUT ?=
 PAK ?=
@@ -19,12 +20,19 @@ OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c po
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 VI_SRC := decomp/src/libultra/io/vitbl.c
 endif
+AUDIO_SRC :=
+ifeq ($(P1_OS)$(AUDIO),11)
+GAME_SRC += work/src/game/audio/audio.c
+AUDIO_SRC += $(wildcard work/src/libultra/audio/*.c)
+CPPFLAGS_AUDIO := -DELTALE_P1_AUDIO
+endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
 OS_OBJ := $(patsubst port/%.c,$(OUT)/obj/port/%.o,$(OS_SRC))
 GU_OBJ := $(patsubst decomp/src/libultra/gu/%.c,$(OUT)/obj/gu/%.o,$(GU_SRC))
 VI_OBJ := $(patsubst decomp/src/libultra/io/%.c,$(OUT)/obj/io/%.o,$(VI_SRC))
-BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ) $(VI_OBJ)
+AUDIO_OBJ := $(patsubst work/src/libultra/audio/%.c,$(OUT)/obj/audio/%.o,$(AUDIO_SRC))
+BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ) $(VI_OBJ) $(AUDIO_OBJ)
 ifeq ($(P1_OS),1)
 MAP_OBJ := $(OUT)/host_address_map.o
 endif
@@ -36,7 +44,7 @@ CPPFLAGS := -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI -DNDEBUG -D_FINALROM \
   -idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR \
   -include port/addresses.h -include game/actor/actor.h
 ifeq ($(P1_OS),1)
-CPPFLAGS += -DELTALE_P1_OS
+CPPFLAGS += -DELTALE_P1_OS $(CPPFLAGS_AUDIO)
 endif
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasing -fwrapv -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
@@ -72,6 +80,10 @@ $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/add
 $(OUT)/obj/port/%.o: port/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(OUT)/obj/audio/%.o: work/src/libultra/audio/%.c $(OUT)/include/PR/gbi.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI -I$(OUT)/include -Iport/include -Idecomp/include -Iwork/src 		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR 		-include port/include/PR/ultratypes.h -c $< -o $@
 
 $(OUT)/obj/io/%.o: decomp/src/libultra/io/%.c $(OUT)/include/PR/gbi.h
 	@mkdir -p $(dir $@)

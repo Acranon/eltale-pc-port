@@ -1452,6 +1452,186 @@ index a56b278..4f08d5e 100644
  extern s32 D_80056878[2];
  extern MenuRomRange npc_area_set_rom_ranges[7];
  extern u8 npc_area_entry_message[0x2F8];
+diff --git a/src/libultra/audio/bnkf.c b/src/libultra/audio/bnkf.c
+index a0cdcde..2e70135 100644
+--- a/src/libultra/audio/bnkf.c
++++ b/src/libultra/audio/bnkf.c
+@@ -34,7 +34,7 @@ static  void _bnkfPatchWaveTable(ALWaveTable *w, s32 offset, s32 table);
+ 
+ void alSeqFileNew(ALSeqFile *file, u8 *base)
+ {
+-    s32 offset = (s32) base;
++    s32 offset = (s32)(uptr) base;
+     s32 i;
+     
+     /*
+@@ -47,8 +47,8 @@ void alSeqFileNew(ALSeqFile *file, u8 *base)
+ 
+ void alBnkfNew(ALBankFile *file, u8 *table)
+ {
+-    s32 offset = (s32) file;
+-    s32 woffset = (s32) table;
++    s32 offset = (s32)(uptr) file;
++    s32 woffset = (s32)(uptr) table;
+     
+     s32 i;
+     
+diff --git a/src/libultra/audio/cseq.c b/src/libultra/audio/cseq.c
+index b66b9d7..01d4ac4 100644
+--- a/src/libultra/audio/cseq.c
++++ b/src/libultra/audio/cseq.c
+@@ -53,7 +53,7 @@ void alCSeqNew(ALCSeq *seq, u8 *ptr)
+         {
+             flagTmp = 1 << i;
+             seq->validTracks |= flagTmp;
+-            seq->curLoc[i] = (u8*)((u32)ptr + tmpOff);
++            seq->curLoc[i] = (u8*)(uptr)((u32)(uptr)ptr + tmpOff);
+             seq->evtDeltaTicks[i] = __readVarLen(seq,i);
+             /*__alCSeqGetTrackEvent(seq,i); prime the event buffers  */
+         }
+diff --git a/src/libultra/audio/env.c b/src/libultra/audio/env.c
+index 646c33e..dd69ecd 100644
+--- a/src/libultra/audio/env.c
++++ b/src/libultra/audio/env.c
+@@ -156,7 +156,7 @@ Acmd *alEnvmixerPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
+                       } data;                    
+                       data.f = param->pitch;
+                       (*f->source->setParam)(f->source, AL_FILTER_SET_PITCH,
+-                                            (void *)data.i);
++                                            (void *)(uptr)(u32)data.i);
+                   }
+                   
+               }
+@@ -278,7 +278,7 @@ Acmd *alEnvmixerPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
+                */
+ 	      ptr = _pullSubFrame(e, &inp, &loutp, samples, sampleOffset, ptr);
+               (*e->filter.setParam)(&e->filter, e->ctrlList->type,
+-                                    (void *) e->ctrlList->data.i);
++                                    (void *)(uptr)(u32) e->ctrlList->data.i);
+               break;
+         }
+         loutp  += (samples<<1);
+diff --git a/src/libultra/audio/heapinit.c b/src/libultra/audio/heapinit.c
+index 9053375..6952fcb 100644
+--- a/src/libultra/audio/heapinit.c
++++ b/src/libultra/audio/heapinit.c
+@@ -23,7 +23,7 @@
+ 
+ void alHeapInit(ALHeap *hp, u8 *base, s32 len)
+ {
+-    s32 extraAlign = (AL_CACHE_ALIGN+1) - ((s32) base & AL_CACHE_ALIGN);
++    s32 extraAlign = (AL_CACHE_ALIGN+1) - ((s32)(uptr) base & AL_CACHE_ALIGN);
+     
+     if (extraAlign != AL_CACHE_ALIGN+1)
+         hp->base = base + extraAlign;
+diff --git a/src/libultra/audio/load.c b/src/libultra/audio/load.c
+index 6e58bb5..034258a 100644
+--- a/src/libultra/audio/load.c
++++ b/src/libultra/audio/load.c
+@@ -27,6 +27,10 @@
+ #include <os.h>
+ #include <R4300.h>
+ 
++/* port: host addresses are below 4 GiB; KSEG0 RDRAM addresses become physical */
++#undef K0_TO_PHYS
++#define K0_TO_PHYS(x) ((u32)(uptr)(x) & 0x1FFFFFFF)
++
+ #ifndef MIN
+ #   define MIN(a,b) (((a)<(b))?(a):(b))
+ #endif
+@@ -104,7 +108,7 @@ Acmd *alAdpcmPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset, Acmd
+          * Now fix up state info to reflect the loop start point
+          */
+         f->lastsam = f->loop.start &0xf;
+-        f->memin = (s32) f->table->base + ADPCMFBYTES *
++        f->memin = (s32)(uptr) f->table->base + ADPCMFBYTES *
+             ((s32) (f->loop.start>>LFSAMPLES) + 1);
+         f->sample = f->loop.start;
+ 
+@@ -166,7 +170,7 @@ Acmd *alAdpcmPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset, Acmd
+      * overFlow is the number of bytes past the end
+      * of the bitstream I try to generate
+      */
+-    overFlow = f->memin + nbytes - ((s32) f->table->base + f->table->len);
++    overFlow = f->memin + nbytes - ((s32)(uptr) f->table->base + f->table->len);
+     if (overFlow < 0)
+         overFlow = 0;
+     nOver = (overFlow/ADPCMFBYTES)<<LFSAMPLES;
+@@ -251,7 +255,7 @@ Acmd *alRaw16Pull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset, Acmd
+          */
+         *outp += dramAlign;
+         
+-        f->memin = (s32) f->table->base + (f->loop.start<<1);
++        f->memin = (s32)(uptr) f->table->base + (f->loop.start<<1);
+         f->sample = f->loop.start;
+         op = *outp;
+         
+@@ -312,7 +316,7 @@ Acmd *alRaw16Pull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset, Acmd
+      */
+ 
+     nbytes = outCount<<1;
+-    overFlow = f->memin + nbytes - ((s32) f->table->base + f->table->len);
++    overFlow = f->memin + nbytes - ((s32)(uptr) f->table->base + f->table->len);
+     if (overFlow < 0)
+         overFlow = 0;
+     if (overFlow > nbytes)
+@@ -363,7 +367,7 @@ alLoadParam(void *filter, s32 paramID, void *param)
+     switch (paramID) {
+         case (AL_FILTER_SET_WAVETABLE):
+             a->table = (ALWaveTable *) param;
+-            a->memin = (s32) a->table->base;
++            a->memin = (s32)(uptr) a->table->base;
+             a->sample = 0;
+             switch (a->table->type){
+                 case (AL_ADPCM_WAVE):
+@@ -419,7 +423,7 @@ alLoadParam(void *filter, s32 paramID, void *param)
+ 	    /* Get loop info according to table type. */
+ 	    if (a->table)
+ 	    {
+-		a->memin  = (s32) a->table->base;
++		a->memin  = (s32)(uptr) a->table->base;
+ 		if (a->table->type == AL_ADPCM_WAVE)
+ 		{
+ 		    if (a->table->waveInfo.adpcmWave.loop)
+diff --git a/src/libultra/audio/resample.c b/src/libultra/audio/resample.c
+index 899499a..5bf20c2 100644
+--- a/src/libultra/audio/resample.c
++++ b/src/libultra/audio/resample.c
+@@ -136,7 +136,7 @@ s32 alResampleParam(void *filter, s32 paramID, void *param)
+             break;
+             
+         case (AL_FILTER_SET_PITCH):
+-            data.i = (s32) param;
++            data.i = (s32)(uptr) param;
+             r->ratio = data.f;
+             break;
+             
+diff --git a/src/libultra/audio/reverb.c b/src/libultra/audio/reverb.c
+index 5611c21..d7e09a0 100644
+--- a/src/libultra/audio/reverb.c
++++ b/src/libultra/audio/reverb.c
+@@ -277,7 +277,7 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
+          * value then bumps it up if it is below the  delay buffer.
+          */ 
+         out_ptr = &r->input[-(d->output - d->rsdelta)];
+-        ramalign = ((s32)out_ptr & 0x7) >> 1; /* calculate the number of samples needed 
++        ramalign = ((s32)(uptr)out_ptr & 0x7) >> 1; /* calculate the number of samples needed 
+                                                to align the buffer*/
+ #ifdef _DEBUG
+ #if 0
+diff --git a/src/libultra/audio/save.c b/src/libultra/audio/save.c
+index 59bd09b..fdb66f3 100644
+--- a/src/libultra/audio/save.c
++++ b/src/libultra/audio/save.c
+@@ -48,7 +48,7 @@ s32 alSaveParam(void *filter, s32 paramID, void *param)
+ {
+     ALSave *a = (ALSave *) filter;
+     ALFilter *f = (ALFilter *) filter;
+-    s32 pp = (s32) param;
++    s32 pp = (s32)(uptr) param;
+ 
+     switch (paramID) {
+         case (AL_FILTER_SET_SOURCE):
 diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
 index fe5a9e7..1860370 100644
 --- a/src/overlays/ending/ending_data.c
