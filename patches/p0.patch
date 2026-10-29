@@ -512,7 +512,7 @@ index 792d4bc..9fa8731 100644
                  }
                  gDPSetEnvColor(gfx_dl_head++, effect_stat_up_marker_colors[i / 1][0], effect_stat_up_marker_colors[i / 1][1], effect_stat_up_marker_colors[i / 1][2], alpha);
 diff --git a/src/game/gfx/fade.c b/src/game/gfx/fade.c
-index 300a0ba..16d5c60 100644
+index cd2cb83..fe71868 100644
 --- a/src/game/gfx/fade.c
 +++ b/src/game/gfx/fade.c
 @@ -26,7 +26,7 @@ Gfx fade_quad_dl[8] = {
@@ -524,6 +524,23 @@ index 300a0ba..16d5c60 100644
      {{ 0xB1020400, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
+diff --git a/src/game/gfx/fade.h b/src/game/gfx/fade.h
+index b10f0fe..c7821f6 100644
+--- a/src/game/gfx/fade.h
++++ b/src/game/gfx/fade.h
+@@ -32,6 +32,12 @@ extern ColorRGBA8 fade_black_ramp_end[];  /* &fade_black_ramp[15] */
+ extern ColorRGBA8 fade_grey_ramp_end[];  /* &fade_grey_ramp[15] */
+ extern ColorRGBA8 fade_black_ramp_slow_end[];  /* &fade_black_ramp_slow[31] */
+ extern ColorRGBA8 fade_grey_ramp_slow_end[];  /* &fade_grey_ramp_slow[31] */
++/* Port: the aliases are those entries (a native build has no N64 labels for them). */
++#define fade_black_ramp_dim (&fade_black_ramp[5])
++#define fade_black_ramp_end (&fade_black_ramp[15])
++#define fade_grey_ramp_end (&fade_grey_ramp[15])
++#define fade_black_ramp_slow_end (&fade_black_ramp_slow[31])
++#define fade_grey_ramp_slow_end (&fade_grey_ramp_slow[31])
+ extern ColorRGBA8 fade_damage_flash[4];
+ 
+ void Fade_Init(void);
 diff --git a/src/game/input/input.c b/src/game/input/input.c
 index cc5330a..9080440 100644
 --- a/src/game/input/input.c

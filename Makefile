@@ -36,7 +36,7 @@ CPPFLAGS := -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI -DNDEBUG -D_FINALROM \
 ifeq ($(P1_OS),1)
 CPPFLAGS += -DELTALE_P1_OS
 endif
-CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
+CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasing -fwrapv -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
 LDFLAGS := -no-pie -Wl,--gc-sections -lm

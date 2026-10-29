@@ -67,6 +67,8 @@ def main() -> None:
     ]
     flags = [
         "-std=gnu11", "-O2", "-g", "-mcmodel=large", "-ffp-contract=off",
+        # the decomp reads objects through other types and relies on wrapping signed math
+        "-fno-strict-aliasing", "-fwrapv",
         "-ffunction-sections", "-fdata-sections", "-fno-stack-protector",
         "-Werror=int-to-pointer-cast", "-Werror=pointer-to-int-cast",
         "-Werror=int-to-void-pointer-cast", "-Werror=void-pointer-to-int-cast", "-D_LANGUAGE_C", "-D_MIPS_SZLONG=32",

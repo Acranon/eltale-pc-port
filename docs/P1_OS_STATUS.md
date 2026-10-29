@@ -157,10 +157,13 @@ display lists, on Windows and Linux, with no crash. What it took:
 
 Open after step 1:
 
-- **Windows and Linux diverge from frame 10** (the title, right after the first
-  Start): a fade's prim alpha is 0xF2 on Windows and 0 on Linux. Each platform
-  is deterministic on its own. Not yet traced; likely undefined behaviour or a
-  host library difference in title/fade code.
+- ~~Windows and Linux diverged from frame 10.~~ Fixed: all 700 frames of the
+  New Game run now hash the same on both. Two causes: GCC's strict aliasing
+  (the title fade is read through a second struct type; both builds now use
+  `-fno-strict-aliasing -fwrapv`, as holyland does), and the fade colour ramps
+  being split at their labels, so Fade_Start walked into whatever the linker
+  put next (eltale-decomp e92a411 merges them; the labels are aliases, macros
+  in the port).
 - Other N64-pointer tables in native data still read RDRAM through native types
   (enemy area sets and EnemyDefs, boss data, scenes, cutscene camera tracks,
   map-object animations): they crash or misbehave when reached. Same two tools
