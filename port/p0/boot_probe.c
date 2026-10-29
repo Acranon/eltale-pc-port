@@ -3,6 +3,9 @@
 #include "game/core/main.h"
 #include "game/event/cutscene.h"
 #include "port/p0/host.h"
+#ifdef ELTALE_P1_OS
+#include "port/os.h"
+#endif
 
 #include <setjmp.h>
 #include <stdint.h>
@@ -39,7 +42,11 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
             }
         }
     }
+#ifdef ELTALE_P1_OS
+    Port_OsStop();
+#else
     longjmp(boot_done, 1);
+#endif
 }
 
 int main(int argc, char **argv) {
@@ -55,11 +62,24 @@ int main(int argc, char **argv) {
     if (!rom) rom = getenv("ELTALE_ROM");
     if (!rom) Port_HostFatal("supply --rom or ELTALE_ROM");
     if (Port_HostInit(rom) != 0) return 1;
+#ifdef ELTALE_P1_OS
+    Port_OsInit();
+    Boot_Main(0);
+    Port_OsRun();
+#else
     if (setjmp(boot_done) == 0) {
         Boot_Main(0);
         Port_HostFatal("Boot_Main returned before a display list");
     }
-    if (Port_HostDmaCount() < 3 || Port_HostThreadCount() < 5 || Port_HostRunThreadCount() != 2)
+#endif
+    if (Port_HostDmaCount() < 3 || Port_HostThreadCount() < 5 ||
+        Port_HostRunThreadCount() !=
+#ifdef ELTALE_P1_OS
+            5
+#else
+            2
+#endif
+        )
         Port_HostFatal("boot skipped DMA or thread creation");
     if (core_game_mode != 4 || intro_pak_check_done != 1 || Port_HostIntroUpdateCount() != 1)
         Port_HostFatal("the first intro update did not complete");

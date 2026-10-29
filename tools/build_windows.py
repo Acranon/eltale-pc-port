@@ -29,7 +29,12 @@ def main() -> None:
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--full-compile", action="store_true",
                         help="also compile every game and overlay C module into a native archive")
+    parser.add_argument("--p1-os", action="store_true",
+                        help="use the fiber scheduler instead of P0 synchronous threads")
     args = parser.parse_args()
+    global OUT
+    if args.p1_os:
+        OUT = ROOT / "out/p1-windows"
     if not (ROOT / "work/src/game/core/main.c").is_file():
         raise SystemExit("run `python tools/patches.py apply` first")
     if not args.rom:
@@ -65,10 +70,14 @@ def main() -> None:
         "-DBUILD_VERSION=VERSION_J", "-DNON_MATCHING",
         "-DELTALE_P0_BOOT_PROBE",
     ]
+    if args.p1_os:
+        flags.append("-DELTALE_P1_OS")
     boot_sources = sorted((ROOT / "work/src/game").rglob("*.c"))
     boot_sources = [p for p in boot_sources if p.as_posix() != (ROOT / "work/src/game/audio/audio.c").as_posix()]
     boot_sources += sorted((ROOT / "work/src/overlays/intro").rglob("*.c"))
     sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
+    if args.p1_os:
+        sources += ["port/os/fiber.c", "port/os/kernel.c"]
     objects: list[Path] = []
     for index, source in enumerate(sources):
         obj = OUT / f"source_{index}.o"
@@ -84,7 +93,7 @@ def main() -> None:
          *(str(obj) for obj in objects)])
     abs_obj = OUT / "abs.o"
     run([cc, "-c", str(asm), "-o", str(abs_obj)])
-    exe = OUT / "eltale-p0.exe"
+    exe = OUT / ("eltale-p1.exe" if args.p1_os else "eltale-p0.exe")
     run([cc, *(str(obj) for obj in objects), str(abs_obj), "-Wl,/OPT:REF",
          # display-list words are 32-bit: keep the image below 4 GiB and below RDRAM
          "-Wl,--image-base=0x10000000", "-Wl,--disable-dynamicbase", "-Wl,--disable-high-entropy-va",
@@ -97,6 +106,15 @@ def main() -> None:
          "-o", str(endian_exe)])
     run([str(abi_exe)])
     run([str(endian_exe)])
+    if args.p1_os:
+        fiber_test = OUT / "fiber-test.exe"
+        scheduler_test = OUT / "os-scheduler-test.exe"
+        run([cc, "-std=gnu11", "-O2", "-Iport/include", "-I.",
+             "tests/fiber_test.c", "port/os/fiber.c", "-o", str(fiber_test)])
+        run([cc, *flags, *includes, "tests/os_scheduler_test.c",
+             "port/os/kernel.c", "port/os/fiber.c", "-o", str(scheduler_test)])
+        run([str(fiber_test)])
+        run([str(scheduler_test)])
     if args.full_compile:
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))
@@ -114,7 +132,7 @@ def main() -> None:
         run([ar, "rcs", str(archive), *(str(obj) for obj in full_objects)])
         print(f"FULL_COMPILE_OK sources={len(all_sources)} archive={archive}")
     if args.build_only:
-        print(f"Windows P0 build OK: {exe}")
+        print(f"Windows {'P1 OS' if args.p1_os else 'P0'} build OK: {exe}")
         return
     run([str(exe), "--rom", str(args.rom), "--headless", "--fast"])
 

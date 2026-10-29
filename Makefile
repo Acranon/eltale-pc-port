@@ -20,7 +20,7 @@ CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -MMD -MP -ffunction
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast
 LDFLAGS := -no-pie -Wl,--gc-sections -lm
 
-.PHONY: p0 p0-test endian-test abi-test census assets clean
+.PHONY: p0 p0-test p1-os-test endian-test abi-test census assets clean
 p0: assets $(OUT)/eltale-p0
 
 assets:
@@ -64,6 +64,12 @@ abi-test: tests/abi_test.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses
 	@mkdir -p $(OUT)
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/abi_test.c -o $(OUT)/abi-test
 	$(OUT)/abi-test
+
+p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
+	$(CC) -std=gnu11 -O2 -Iport/include -I. tests/fiber_test.c port/os/fiber.c -o $(OUT)/fiber-test
+	$(OUT)/fiber-test
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/os_scheduler_test.c port/os/kernel.c port/os/fiber.c -o $(OUT)/os-scheduler-test
+	$(OUT)/os-scheduler-test
 
 census:
 	@mkdir -p $(OUT)

@@ -4,6 +4,9 @@
 #include "port/p0/host.h"
 #include "port/boot_probe.h"
 #include "game/core/main.h"
+#ifdef ELTALE_P1_OS
+#include "port/os.h"
+#endif
 
 #include <errno.h>
 #include <fenv.h>
@@ -23,6 +26,7 @@ static const uintptr_t RDRAM_BASE = 0x80000000u;
 static unsigned char *rom_bytes;
 static unsigned dma_count;
 static size_t dma_bytes;
+#ifndef ELTALE_P1_OS
 static unsigned thread_count;
 static unsigned started_count;
 static unsigned run_count;
@@ -34,6 +38,7 @@ typedef struct HostThread {
     OSId id;
 } HostThread;
 static HostThread threads[16];
+#endif
 
 s32 osTvType = OS_TV_NTSC;
 OSViMode osViModeTable[16];
@@ -107,9 +112,15 @@ int Port_HostInit(const char *rom_path) {
 
 unsigned Port_HostDmaCount(void) { return dma_count; }
 size_t Port_HostDmaBytes(void) { return dma_bytes; }
+#ifdef ELTALE_P1_OS
+unsigned Port_HostThreadCount(void) { return Port_OsThreadCount(); }
+unsigned Port_HostStartedThreadCount(void) { return Port_OsStartedCount(); }
+unsigned Port_HostRunThreadCount(void) { return Port_OsRunCount(); }
+#else
 unsigned Port_HostThreadCount(void) { return thread_count; }
 unsigned Port_HostStartedThreadCount(void) { return started_count; }
 unsigned Port_HostRunThreadCount(void) { return run_count; }
+#endif
 int Port_HostRomSpanMatches(uint32_t rom_offset, uintptr_t ram_address, size_t length) {
     if (rom_offset > ROM_BYTES || length > ROM_BYTES - rom_offset ||
         ram_address < RDRAM_BASE || length > RDRAM_BYTES ||
@@ -123,6 +134,7 @@ void osCreatePiManager(OSPri pri, OSMesgQueue *q, OSMesg *msgs, s32 n) {
     osCreateMesgQueue(q, msgs, n);
 }
 
+#ifndef ELTALE_P1_OS
 void osCreateThread(OSThread *t, OSId id, void (*entry)(void *), void *arg,
                     void *stack, OSPri pri) {
     (void)stack;
@@ -171,6 +183,7 @@ s32 osRecvMesg(OSMesgQueue *q, OSMesg *out, s32 flag) {
     q->validCount--;
     return 0;
 }
+#endif
 
 s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
                  void *dst, u32 size, OSMesgQueue *queue) {
@@ -201,10 +214,12 @@ void osViSetSpecialFeatures(u32 features) { (void)features; }
 void osViSetEvent(OSMesgQueue *q, OSMesg msg, u32 fields) {
     (void)q; (void)msg; (void)fields;
 }
+#ifndef ELTALE_P1_OS
 void osSetEventMesg(OSEvent event, OSMesgQueue *q, OSMesg msg) {
     (void)event; (void)q; (void)msg;
 }
 OSIntMask osSetIntMask(OSIntMask mask) { return mask; }
+#endif
 void *osViGetCurrentFramebuffer(void) { return NULL; }
 void osViSwapBuffer(void *framebuffer) { (void)framebuffer; }
 
