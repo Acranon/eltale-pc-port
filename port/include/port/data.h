@@ -26,6 +26,8 @@ struct AnimSet;
 void Port_SwapAnimSetDls(const struct AnimSet *set);
 /* Swap the keyframe tables the game's own AnimNodes use (after the boot copy). */
 void Port_SwapNativeKeyframes(void);
+/* port/data/common.c: swap the common block's pointer-free tables (after its boot DMA). */
+void Port_SwapCommonBlock(void);
 
 /* Entry i of an N64 pointer table in RDRAM (big-endian 32-bit addresses), as a pointer. */
 static inline void *Port_N64Ptr(const void *table, int i) {

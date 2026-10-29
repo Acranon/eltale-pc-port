@@ -228,17 +228,20 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..03cff35 100644
+index db2ffb3..8549c94 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
-@@ -1,3 +1,6 @@
+@@ -1,3 +1,9 @@
 +#ifdef ELTALE_P0_BOOT_PROBE
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
 +#include "port/boot_probe.h"
 +#endif
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -181,6 +184,9 @@ void Core_MainThread(void *arg0) {
+@@ -181,6 +187,9 @@ void Core_MainThread(void *arg0) {
          if (core_game_mode == 0) {
              core_game_mode = 1;
          }
@@ -248,7 +251,7 @@ index db2ffb3..03cff35 100644
          switch (core_game_mode) {
              case 1:
                  Core_RunGameplayLoop();
-@@ -204,6 +210,7 @@ void Core_MainThread(void *arg0) {
+@@ -204,6 +213,7 @@ void Core_MainThread(void *arg0) {
                  Core_RunEndingLoop();
                  break;
          }
@@ -256,7 +259,17 @@ index db2ffb3..03cff35 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
-@@ -274,7 +281,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+@@ -251,6 +261,9 @@ void Gfx_InitFrames(void) {
+     Dma_ReadRom(D_D490C0, D_800C0000, D_D74AC0 - D_D490C0);
+     a = (u16 *)D_8039ADB0;
+     Dma_ReadRom(D_D74AC0, a, D_D86170 - D_D74AC0);
++#ifdef ELTALE_P1_OS
++    Port_SwapCommonBlock();
++#endif
+     D_80301000[0].data.msg = 2;
+     D_80301000[0].data.framebuffer = D_803B5000;
+     Gfx_InitFrameTask(&D_80301000[0]);
+@@ -274,7 +287,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
      arg0->task.list.t.type = M_GFXTASK;
      arg0->task.list.t.flags = 0;
      arg0->task.list.t.ucode_boot = D_8004B980;
@@ -265,7 +278,7 @@ index db2ffb3..03cff35 100644
      arg0->task.list.t.ucode = D_8004BA50;
      arg0->task.list.t.ucode_data = D_80070260;
      arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -324,6 +331,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,6 +337,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -277,7 +290,7 @@ index db2ffb3..03cff35 100644
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
          Camera_Update(sub);
          Env_PrepareFrameLighting();
-@@ -406,6 +418,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -406,6 +424,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
              core_game_mode = 7;
          }
      }
@@ -285,7 +298,7 @@ index db2ffb3..03cff35 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +433,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +439,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -293,7 +306,7 @@ index db2ffb3..03cff35 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -788,6 +802,7 @@ void Core_RunTitleLoop(void) {
+@@ -788,6 +808,7 @@ void Core_RunTitleLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -301,7 +314,7 @@ index db2ffb3..03cff35 100644
  void Core_RunIntroLoop(void) {
      GfxFrame *frame;
  
-@@ -799,6 +814,9 @@ void Core_RunIntroLoop(void) {
+@@ -799,6 +820,9 @@ void Core_RunIntroLoop(void) {
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
@@ -311,7 +324,7 @@ index db2ffb3..03cff35 100644
          frame = &D_80301000[gfx_frame_index];
          if (gfx_frame_sent == 0) {
              gfx_frame_sent++;
-@@ -814,6 +832,7 @@ void Core_RunIntroLoop(void) {
+@@ -814,6 +838,7 @@ void Core_RunIntroLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -319,7 +332,7 @@ index db2ffb3..03cff35 100644
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
-@@ -888,3 +907,4 @@ void Fade_StartTransitionOut(void) {
+@@ -888,3 +913,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
@@ -367,6 +380,78 @@ index 647c971..9c10f84 100644
              case VIDEO_MSG:
                  nnsc_retrace_count++;
                  nnScEventBroadcast(sc, &sc->retraceMsg);
+diff --git a/src/game/enemy/boss.c b/src/game/enemy/boss.c
+index 8b0df2f..e72d3e6 100644
+--- a/src/game/enemy/boss.c
++++ b/src/game/enemy/boss.c
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "common.h"
+ #include "game/enemy/boss.h"
+ #include "game/actor/anim.h"
+@@ -76,8 +79,14 @@ void Boss_LoadForArea(void) {
+         p = &D_803AB3D0[i];
+         if (map_id == p->map_id && map_subarea == p->subarea) {
+             if (Boss_IsDefeated(i) == 0) {
++#ifdef ELTALE_P1_OS
++                /* port: MenuRomRange records in the common block, N64 data */
++                start = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8);
++                end = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8 + 4);
++#else
+                 start = D_803AB390[p->rom_range_index].start;
+                 end = D_803AB390[p->rom_range_index].end;
++#endif
+                 size = end - start;
+                 Dma_ReadRom(start, D_802A7BC0, size);
+                 Boss_Spawn(i, p->x, p->z, p->angle, &boss_field_record);
+@@ -94,7 +103,11 @@ void Boss_Draw(struct GfxFrameData *arg0) {
+     AnimSet *temp;
+ 
+     if (boss_field_index != 0) {
++#ifdef ELTALE_P1_OS
++        temp = Port_N64Ptr(D_803ABA58, boss_field_record.actor.animSetIndex);
++#else
+         temp = D_803ABA58[boss_field_record.actor.animSetIndex];
++#endif
+         gDPSetTextureFilter(gfx_dl_head++, G_TF_BILERP);
+         Anim_DrawModel(1, &p->actor, &temp[boss_field_record.actor.animIndex], arg0);
+         Anim_AdvanceFrame(p->actor.animStep, &p->actor, &temp[p->actor.animIndex]);
+@@ -174,12 +187,20 @@ void Boss_BeginEncounter(s32 arg0) {
+     u8 *dst;
+     s32 i;
+ 
++#ifdef ELTALE_P1_OS
++    src = Port_N64Ptr(D_803AC418, arg0);
++#else
+     src = D_803AC418[arg0];
++#endif
+     dst = text_speaker_name;
+     for (i = 0x20; i != 0; i--) {
+         *dst++ = *src++;
+     }
++#ifdef ELTALE_P1_OS
++    src = Port_N64Ptr(D_803AC438, arg0);
++#else
+     src = D_803AC438[arg0];
++#endif
+     dst = text_message_buf;
+     for (i = 0x4B0; i != 0; i--) {
+         *dst++ = *src++;
+@@ -199,7 +220,11 @@ void Boss_HandleDefeat(s32 arg0) {
+     s32 i;
+ 
+     if (arg0 == 7) {
+-        src = D_803AC418[arg0];
++    #ifdef ELTALE_P1_OS
++    src = Port_N64Ptr(D_803AC418, arg0);
++#else
++    src = D_803AC418[arg0];
++#endif
+         dst = text_speaker_name;
+         for (i = 0x20; i != 0; i--) {
+             *dst++ = *src++;
 diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
 index 481f713..7f9294a 100644
 --- a/src/game/enemy/enemy.c
@@ -586,10 +671,31 @@ index cc5330a..9080440 100644
  }
 +#endif
 diff --git a/src/game/item/item.c b/src/game/item/item.c
-index 5e43dc3..f60ad8e 100644
+index 5e43dc3..4a76b2f 100644
 --- a/src/game/item/item.c
 +++ b/src/game/item/item.c
-@@ -475,7 +475,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/item/item.h"
+ #include "game/audio/sound.h"
+ #include "game/battle/battle.h"
+@@ -354,8 +357,13 @@ void Item_UpdateInventoryMenu(void) {
+             }
+         }
+         gSPDisplayList(gfx_dl_head++, D_1000388);
++#ifdef ELTALE_P1_OS
++        Text_DrawEncodedString(0x77, 0x48, Port_N64Ptr(D_803AB288, item_inventory[item_menu_scroll + item_menu_cursor]));
++        Text_DrawEncodedString(0x4E, 0x5A, Port_N64Ptr(D_803AB2F0, item_inventory[item_menu_scroll + item_menu_cursor]));
++#else
+         Text_DrawEncodedString(0x77, 0x48, D_803AB288[item_inventory[item_menu_scroll + item_menu_cursor]]);
+         Text_DrawEncodedString(0x4E, 0x5A, D_803AB2F0[item_inventory[item_menu_scroll + item_menu_cursor]]);
++#endif
+         if ((input_pressed_buttons & 0xA000) && Item_TryUse(item_inventory[item_menu_scroll + item_menu_cursor])) {
+             p = &item_inventory[item_menu_scroll + item_menu_cursor];
+             for (n = 0x95 - item_menu_scroll - item_menu_cursor; n != 0; n--) {
+@@ -475,7 +483,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
      Sfx_Play(0, 0x3B, 0xFF);
  }
  
@@ -651,7 +757,7 @@ index 1922075..64304e1 100644
  void Magic_SelectFirstActiveTarget(MagicEffect *arg0);
  void Magic_TargetCaster(MagicEffect *arg0);
 diff --git a/src/game/map/chest.c b/src/game/map/chest.c
-index ad8d378..e01bbb4 100644
+index ad8d378..add0f4a 100644
 --- a/src/game/map/chest.c
 +++ b/src/game/map/chest.c
 @@ -1,3 +1,6 @@
@@ -673,6 +779,18 @@ index ad8d378..e01bbb4 100644
          chest_count = group->count;
          i = chest_count;
          def = group->defs;
+@@ -206,7 +213,11 @@ void Item_BuildMessage(s32 arg0) {
+     while (*src != 0xFF) {
+         *dst++ = *src++;
+     }
++#ifdef ELTALE_P1_OS
++    src = Port_N64Ptr(D_803AB288, arg0);
++#else
+     src = D_803AB288[arg0];
++#endif
+     while (*src != 0xFF) {
+         *dst++ = *src++;
+     }
 diff --git a/src/game/map/map.c b/src/game/map/map.c
 index ebb5c68..994f06e 100644
 --- a/src/game/map/map.c
@@ -1041,7 +1159,7 @@ index 4f9f215..e6d9cce 100644
      { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
      ;
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..d2589b7 100644
+index e6f79b4..ef6a378 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
 @@ -1,3 +1,6 @@
@@ -1069,7 +1187,21 @@ index e6f79b4..d2589b7 100644
      s32 x;
      f32 fx;
      f32 fy;
-@@ -984,7 +987,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -895,7 +898,12 @@ void Hud_DrawEnemyInfoPanel(void) {
+         Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
+         Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
+     }
+-    Hud_DrawGlyphString(4, 0x11, 0, ((u8 **)enemy_names)[enemy_turn_current->def->anim_set_index]); /* enemy_names stores a pointer table in one s32 slot */
++#ifdef ELTALE_P1_OS
++    Hud_DrawGlyphString(4, 0x11, 0, Port_N64Ptr(enemy_names, enemy_turn_current->def->anim_set_index));
++#else
++    Hud_DrawGlyphString(4, 0x11, 0, ((u8 **)enemy_names)[enemy_turn_current->def->anim_set_index]);
++#endif
++    /* enemy_names stores a pointer table in one s32 slot */
+     Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
+     gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
+     if (enemy_turn_current->battle.status_bits & 0x80) {
+@@ -984,7 +992,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -1078,7 +1210,7 @@ index e6f79b4..d2589b7 100644
      flags = Magic_GetSpellRestrictionFlags(id, arg4);
      tmp = (id >> 8) & 0xF;
      id &= 0xFF;
-@@ -1003,7 +1006,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1003,7 +1011,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 row;
  
      gDPPipeSync(gfx_dl_head++);
@@ -1090,7 +1222,7 @@ index e6f79b4..d2589b7 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1065,6 +1072,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1077,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
