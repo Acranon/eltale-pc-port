@@ -335,4 +335,3 @@ void port_fiber_switch(PortFiber *from, PortFiber *to) {
     port_fiber_swap(&from->sp, to->sp);
 #endif
 }
-

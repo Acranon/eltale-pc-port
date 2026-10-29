@@ -80,6 +80,8 @@ def main() -> None:
     sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
     if args.p1_os:
         sources += ["port/os/fiber.c", "port/os/kernel.c"]
+        sources += ["port/os/math_glue.c"]
+        sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):
         obj = OUT / f"source_{index}.o"
@@ -87,6 +89,11 @@ def main() -> None:
         if source == "port/p0/unavailable.c":
             extra = ["-DELTALE_P1_OS"] if args.p1_os else []
             run([cc, "-std=gnu11", "-O2", *extra, "-c", source, "-o", str(obj)])
+        elif source.startswith("decomp\\src\\libultra\\gu\\") or source.startswith("decomp/src/libultra/gu/"):
+            run([cc, *flags, f"-I{OUT / 'include'}", "-Iport/include", "-Idecomp/include",
+                 "-Idecomp/src", "-idirafter", "decomp/include/ultra64",
+                 "-idirafter", "decomp/include/ultra64/PR", "-include",
+                 "port/include/PR/ultratypes.h", "-c", source, "-o", str(obj)])
         else:
             run([cc, *flags, *includes, "-c", source, "-o", str(obj)])
         objects.append(obj)
@@ -130,6 +137,11 @@ def main() -> None:
         run([str(fiber_test)])
         run([str(scheduler_test)])
         run([str(events_test)])
+        gu_test = OUT / "gu-test.exe"
+        run([cc, *flags, *includes, "tests/gu_test.c",
+             "decomp/src/libultra/gu/mtxutil.c", "decomp/src/libultra/gu/sins.c",
+             "-o", str(gu_test)])
+        run([str(gu_test)])
     if args.full_compile:
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))

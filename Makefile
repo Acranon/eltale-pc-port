@@ -10,13 +10,16 @@ GAME_SRC := $(filter-out work/src/game/audio/audio.c,$(shell find work/src/game 
   $(shell find work/src/overlays/intro -name '*.c')
 HOST_SRC := port/p0/boot_probe.c port/p0/host.c port/p0/stubs.c port/p0/unavailable.c
 OS_SRC :=
+GU_SRC :=
 ifeq ($(P1_OS),1)
-OS_SRC += port/os/fiber.c port/os/kernel.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/math_glue.c
+GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
 OS_OBJ := $(patsubst port/os/%.c,$(OUT)/obj/os/%.o,$(OS_SRC))
-BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ)
+GU_OBJ := $(patsubst decomp/src/libultra/gu/%.c,$(OUT)/obj/gu/%.o,$(GU_SRC))
+BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ)
 ifeq ($(P1_OS),1)
 MAP_OBJ := $(OUT)/host_address_map.o
 endif
@@ -65,6 +68,13 @@ $(OUT)/obj/os/%.o: port/os/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addre
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
+$(OUT)/obj/gu/%.o: decomp/src/libultra/gu/%.c $(OUT)/include/PR/gbi.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -ffp-contract=off -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI \
+		-I$(OUT)/include -Iport/include -Idecomp/include -Idecomp/src \
+		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR \
+		-include port/include/PR/ultratypes.h -c $< -o $@
+
 $(OUT)/host_address_map.c: $(GAME_OBJ) tools/gen_host_address_map.py
 	$(PYTHON) tools/gen_host_address_map.py $@ $(GAME_OBJ)
 
@@ -100,6 +110,8 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	$(OUT)/os-scheduler-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/os_events_test.c port/os/kernel.c port/os/fiber.c -o $(OUT)/os-events-test
 	$(OUT)/os-events-test
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/gu_test.c decomp/src/libultra/gu/mtxutil.c decomp/src/libultra/gu/sins.c -o $(OUT)/gu-test
+	$(OUT)/gu-test
 
 census:
 	@mkdir -p $(OUT)

@@ -41,6 +41,15 @@ regression target while the P1 OS replaces its synchronous host stand-in.
   deferred PI completion and SP/DP event delivery. Fiber and scheduler tests
   continue to pass on Windows and Linux.
 
+## OS3: pure-C libultra math
+
+- The P1 executable compiles and links all ten `decomp/src/libultra/gu/*.c`
+  sources natively. The matching `gu*` and `sins` fail-fast stand-ins are gone.
+- `tests/gu_test.c` checks `guMtxF2L`/`guMtxIdent` packet words, including
+  truncation of ±0.75 fixed-point units toward zero, and checks sine-table
+  quadrants. It passes with native Windows Clang and Linux GCC. No other
+  libultra/libc pure-C object is needed by the current intro task path.
+
 ## Busy-wait audit
 
 `Core_RunGameplayLoop`, `Core_RunMessageCutsceneLoop` and
@@ -56,7 +65,5 @@ of running that spin again.
 
 ## Next slices
 
-- OS3: native pure-C libultra `gu/` and math, with fixed-point conversion
-  checks; remove the matching fail-fast stubs.
 - OS4: scripted input and Controller Pak `.mpk` HLE, then boot through title
   to a new game and save/load.
