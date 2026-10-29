@@ -65,6 +65,10 @@ static unsigned frame_count;
 static unsigned gfx_task_count;
 static uint64_t last_gfx_hash;
 static OSTask *loaded_task;
+static uint32_t ai_rate;
+typedef struct AiTransfer { uint64_t start, deadline; u32 bytes; } AiTransfer;
+static AiTransfer ai_transfers[2];
+static unsigned ai_count;
 
 typedef struct PendingEvent {
     OSMesgQueue *queue;
@@ -106,6 +110,8 @@ static void deliver_pending(void) {
 
 static void advance_to_event(void) {
     uint64_t next = next_vi_tick;
+    if (ai_count && ai_transfers[0].deadline < next)
+        next = ai_transfers[0].deadline;
     for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
         if (timers[i].active && timers[i].deadline < next)
             next = timers[i].deadline;
@@ -118,6 +124,11 @@ static void advance_to_event(void) {
         next_vi_tick += COUNTS_PER_VI;
         if (vi_queue && vi_fields && vi_count % vi_fields == 0)
             post_event(vi_queue, vi_message);
+    }
+    if (ai_count && clock_count >= ai_transfers[0].deadline) {
+        post_event(events[OS_EVENT_AI].queue, events[OS_EVENT_AI].message);
+        ai_count--;
+        if (ai_count) ai_transfers[0] = ai_transfers[1];
     }
     for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
         HostTimer *timer = &timers[i];
@@ -192,6 +203,8 @@ void Port_OsInit(void) {
     fast_mode = 1;
     last_gfx_hash = 0;
     loaded_task = NULL;
+    ai_rate = 0;
+    ai_count = 0;
     pending_first = pending_count = 0;
     memset(timers, 0, sizeof timers);
     host_fiber = port_fiber_main();
@@ -441,6 +454,40 @@ int osStopTimer(OSTimer *n64) {
 }
 
 void osSpTaskLoad(OSTask *task) { loaded_task = task; }
+
+u32 osAiGetStatus(void) {
+    return ai_count == 2 ? 0x80000000u : ai_count ? 0x40000000u : 0;
+}
+
+u32 osAiGetLength(void) {
+    if (!ai_count) return 0;
+    /* The audio worker may poll this register without blocking. Give the
+     * cooperative scheduler a virtual event and an interrupt switch point. */
+    if (current) { advance_to_event(); osYieldThread(); }
+    if (!ai_count) return 0;
+    uint64_t remaining = ai_transfers[0].deadline - clock_count;
+    uint64_t duration = ai_transfers[0].deadline - ai_transfers[0].start;
+    return (u32)((remaining * ai_transfers[0].bytes + duration - 1) / duration);
+}
+
+s32 osAiSetFrequency(u32 requested) {
+    if (!requested) return -1;
+    u32 divisor = (u32)((double)osViClock / requested + 0.5);
+    if (divisor < 132 || divisor > 65536) return -1;
+    ai_rate = (u32)osViClock / divisor;
+    return (s32)ai_rate;
+}
+
+s32 osAiSetNextBuffer(void *buffer, u32 bytes) {
+    (void)buffer; /* P1c consumes PCM; P1a only schedules AI completion. */
+    if (!ai_rate || !bytes || ai_count == 2) return -1;
+    uint64_t start = ai_count ? ai_transfers[ai_count - 1].deadline : clock_count;
+    uint64_t samples = (bytes + 3) / 4;
+    uint64_t ticks = (samples * UINT64_C(46875000) + ai_rate - 1) / ai_rate;
+    if (!ticks) ticks = 1;
+    ai_transfers[ai_count++] = (AiTransfer){ start, start + ticks, bytes };
+    return 0;
+}
 
 static u32 normalized_second_word(const Gfx *command) {
     u8 opcode = (u8)(command->words.w0 >> 24);

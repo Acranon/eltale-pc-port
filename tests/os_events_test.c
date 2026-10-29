@@ -5,8 +5,8 @@
 #include <stdlib.h>
 
 static OSThread worker;
-static OSMesgQueue vi_queue, timer_queue, pi_queue, sp_queue, dp_queue;
-static OSMesg vi_buffer[2], timer_buffer[2], pi_buffer[2], sp_buffer[2], dp_buffer[2];
+static OSMesgQueue vi_queue, timer_queue, pi_queue, sp_queue, dp_queue, ai_queue;
+static OSMesg vi_buffer[2], timer_buffer[2], pi_buffer[2], sp_buffer[2], dp_buffer[2], ai_buffer[2];
 static OSTimer timer;
 
 uint32_t Port_NormalizeDlAddress(uint32_t word) { return word; }
@@ -30,6 +30,7 @@ static void run_events(void *arg) {
     osCreateMesgQueue(&pi_queue, pi_buffer, 2);
     osCreateMesgQueue(&sp_queue, sp_buffer, 2);
     osCreateMesgQueue(&dp_queue, dp_buffer, 2);
+    osCreateMesgQueue(&ai_queue, ai_buffer, 2);
     osViSetEvent(&vi_queue, (OSMesg)0x11, 1);
     osSetTimer(&timer, 390625, 0, &timer_queue, (OSMesg)0x22);
     require_message(&timer_queue, (OSMesg)0x22);
@@ -55,6 +56,15 @@ static void run_events(void *arg) {
     require_message(&dp_queue, (OSMesg)0x55);
     if (Port_OsGfxTaskCount() != 1 || Port_OsFrameCount() != 0)
         Port_HostFatal("task completion count is wrong");
+    osSetEventMesg(OS_EVENT_AI, &ai_queue, (OSMesg)0x66);
+    if (osAiSetFrequency(22050) < 21000 ||
+        osAiSetNextBuffer(NULL, 256) || osAiSetNextBuffer(NULL, 256) ||
+        osAiSetNextBuffer(NULL, 256) != -1)
+        Port_HostFatal("AI transfer queue is wrong");
+    require_message(&ai_queue, (OSMesg)0x66);
+    require_message(&ai_queue, (OSMesg)0x66);
+    if (osAiGetLength() != 0 || osAiGetStatus() != 0)
+        Port_HostFatal("AI transfer did not drain");
     Port_OsStop();
 }
 

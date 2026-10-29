@@ -30,6 +30,10 @@ regression target while the P1 OS replaces its synchronous host stand-in.
   switch. VI retraces, SP and DP completion use registered OS event queues.
   The game scheduler thread handles those messages and graphics worker
   finishes tasks through `osViSwapBuffer`.
+- AI accepts up to two virtual PCM transfers, derives their completion times
+  from the programmed sample rate, reports remaining bytes/status and posts
+  AI events. PCM output itself is reserved for P1c. SP yield reports that the
+  headless task has already completed.
 - `osSpTaskStartGo` hashes each game's display list and posts SP/DP events.
   The hash normalizes address-bearing words through a generated host-symbol
   to pinned-N64-address map; the actual 32-bit Gfx words stay unchanged.
@@ -41,7 +45,8 @@ regression target while the P1 OS replaces its synchronous host stand-in.
   repeated Windows runs matched exactly. After the P1 address-model correction,
   frame 60 has 120 commands and hash `3ec25a41519e00b0`.
 - `tests/os_events_test.c` checks a timer at half a VI, retrace timing,
-  deferred PI completion and SP/DP event delivery. Fiber and scheduler tests
+  deferred PI completion, SP/DP event delivery, and the two-entry AI FIFO.
+  Fiber and scheduler tests
   continue to pass on Windows and Linux.
 
 ## OS3: pure-C libultra math

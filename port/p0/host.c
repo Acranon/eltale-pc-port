@@ -338,5 +338,10 @@ OSTime osGetTime(void) { return 0; }
 void osSpTaskLoad(OSTask *task) { (void)task; Port_HostFatal("RSP task before P1"); }
 void osSpTaskStartGo(OSTask *task) { (void)task; Port_HostFatal("RSP task before P1"); }
 #endif
+#ifdef ELTALE_P1_OS
+void osSpTaskYield(void) { /* SP tasks complete at the next scheduler switch. */ }
+OSYieldResult osSpTaskYielded(OSTask *task) { (void)task; return 0; }
+#else
 void osSpTaskYield(void) { Port_HostFatal("RSP yield before P1"); }
 OSYieldResult osSpTaskYielded(OSTask *task) { (void)task; Port_HostFatal("RSP yield before P1"); }
+#endif
