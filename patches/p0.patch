@@ -300,7 +300,7 @@ index 4c00a3a..8705a34 100644
      camera_state.atY = camera_state.atY + camera_state.eyeY;
      camera_state.atZ = camera_state.eyeZ - camera_state.atZ;
 diff --git a/src/game/gfx/effect.c b/src/game/gfx/effect.c
-index 4d66344..f092eff 100644
+index 792d4bc..758809c 100644
 --- a/src/game/gfx/effect.c
 +++ b/src/game/gfx/effect.c
 @@ -297,7 +297,7 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
