@@ -42,6 +42,10 @@ ELRT64_API void ElRt64_Present(const ElRt64Vi *vi);
 /* Handle window events. Returns 0 once the window was closed. */
 ELRT64_API int ElRt64_Poll(void);
 
+/* The pad from the keyboard and the first game controller, in N64 terms: button bits as
+ * OSContPad.button, stick -80..80 (y up). Call after ElRt64_Poll. */
+ELRT64_API void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
+
 ELRT64_API void ElRt64_Shutdown(void);
 
 #ifdef __cplusplus

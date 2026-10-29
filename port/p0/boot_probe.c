@@ -61,6 +61,7 @@ int main(int argc, char **argv) {
     const char *input = NULL, *pak = NULL;
 #endif
     unsigned requested_frames = 1;
+    int frames_given = 0;
     int fast = 0;
     int window = 0;
     for (int i = 1; i < argc; i++) {
@@ -70,6 +71,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--pak") && i + 1 < argc) pak = argv[++i];
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             requested_frames = (unsigned)strtoul(argv[++i], NULL, 10);
+            frames_given = 1;
             if (!requested_frames || requested_frames > 10000)
                 Port_HostFatal("--frames must be between 1 and 10000");
         }
@@ -94,7 +96,8 @@ int main(int argc, char **argv) {
 #ifdef ELTALE_P1_OS
     if (Port_ControllerLoadScript(input) || Port_PakLoad(pak)) return 1;
     Port_OsInit();
-    Port_OsSetFrameLimit(requested_frames);
+    /* a window runs until it is closed, unless --frames was given */
+    Port_OsSetFrameLimit(window && !frames_given ? 0 : requested_frames);
     Port_OsSetFast(fast);
     if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
     if (window && Port_Rt64Start() != 0) return 1;

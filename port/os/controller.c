@@ -50,7 +50,19 @@ int Port_ControllerLoadScript(const char *path) {
     return 0;
 }
 
+/* Set by the host when a window gives live input (port/gfx/rt64_bridge.c). Used when no script
+ * was loaded. */
+void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
+
 static void update_pad(void) {
+    if (Port_LivePad && row_count == 0) {
+        u16 before = current_pad.button;
+        Port_LivePad(&current_pad.button, &current_pad.stick_x, &current_pad.stick_y);
+        if (current_pad.button != before)
+            fprintf(stderr, "P1_INPUT live vi=%llu buttons=%04x\n", (unsigned long long)Port_OsViCount(),
+                    current_pad.button);
+        return;
+    }
     uint64_t now = Port_OsViCount();
     while (next_row < row_count && rows[next_row].vi <= now) {
         fprintf(stderr, "P1_INPUT vi=%llu buttons=%04x stick=%d,%d\n",

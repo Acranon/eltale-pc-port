@@ -21,6 +21,8 @@ static void (*rt_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
 static void (*rt_present)(const ElRt64Vi *);
 static int (*rt_poll)(void);
 static void (*rt_keep)(uint32_t, uint32_t);
+static void (*rt_pad)(uint16_t *, int8_t *, int8_t *);
+extern void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 
 static void draw_task(OSTask *task, unsigned frame) {
     (void)frame;
@@ -57,6 +59,7 @@ int Port_Rt64Start(void) {
     rt_present = (void (*)(const ElRt64Vi *))SYM("ElRt64_Present");
     rt_poll = (int (*)(void))SYM("ElRt64_Poll");
     rt_keep = (void (*)(uint32_t, uint32_t))SYM("ElRt64_KeepRange");
+    rt_pad = (void (*)(uint16_t *, int8_t *, int8_t *))SYM("ElRt64_GetPad");
     if (!rt_init || !rt_draw || !rt_present || !rt_poll || rt_init("Eltale Monsters", 1280, 960) != 0) {
         fprintf(stderr, "RT64: setup failed\n");
         return -1;
@@ -67,6 +70,7 @@ int Port_Rt64Start(void) {
         rt_keep(0x003DA800, 0x25800);
         rt_keep(0x002DA800, 0x25800);
     }
+    if (rt_pad) Port_LivePad = (void (*)(u16 *, s8 *, s8 *))rt_pad;
     Port_GfxTaskHook = draw_task;
     Port_ViHook = present;
     return 0;
