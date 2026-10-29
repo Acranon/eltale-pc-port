@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 __attribute__((noreturn)) void Port_HostFatal(const char *what);
@@ -79,7 +80,11 @@ static void put32(u8 *p, u32 v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8;
 
 /* Copy a native object into the image at its N64 address: `unit` 1 keeps bytes, 2 and 4 write
  * big-endian halfwords/words. The native object is at `host`. */
+static int trace_copies;
+
 static void copy_native(uintptr_t host, u32 n64, u32 bytes, int unit) {
+    if (trace_copies) printf("COPY host=%08llx n64=%08x bytes=%u unit=%d first=%08x\n", (unsigned long long)host, n64, bytes, unit,
+                             *(const u32 *)host);
     u8 *dst = at(n64, bytes);
     if (!dst) { stats.unknown++; return; }
     const u8 *src = (const u8 *)host;
@@ -197,6 +202,7 @@ const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *out) 
     memset(segments, 0, sizeof segments);
     memset(&timg, 0, sizeof timg);
     memcpy(image, (const void *)(uintptr_t)RDRAM, RDRAM_BYTES);
+    trace_copies = getenv("ELTALE_TRACE_COPIES") != NULL && getenv("ELTALE_DUMP_IMAGE") != NULL;
     int native;
     *root_n64 = resolve(dl_word, &native);
     walk(dl_word, 0);
@@ -209,6 +215,20 @@ void Port_FrameImageTrace(OSTask *task, unsigned frame) {
     PortFrameStats st;
     u32 root;
     Port_BuildFrameImage((u32)(uptr)task->t.data_ptr, &root, &st);
+    /* ELTALE_DUMP_IMAGE=<frame>: write that frame's image to out/frame_<frame>.bin (8 MiB, then the
+     * root display list's address as 4 big-endian bytes), for offline display-list tools */
+    const char *dump = getenv("ELTALE_DUMP_IMAGE");
+    if (dump && (unsigned)atoi(dump) == frame) {
+        char name[64];
+        snprintf(name, sizeof name, "out/frame_%u.bin", frame);
+        FILE *f = fopen(name, "wb");
+        if (f) {
+            u8 r[4] = { root >> 24, root >> 16, root >> 8, root };
+            fwrite(image, 1, RDRAM_BYTES, f);
+            fwrite(r, 1, 4, f);
+            fclose(f);
+        }
+    }
     printf("P1_FRAME_IMAGE frame=%u root=%08x cmds=%u mtx=%u vtx=%u tex=%u native_bytes=%u unknown=%u", frame,
            root, st.commands, st.matrices, st.vertices, st.textures, st.native_bytes, st.unknown);
     for (u32 i = 0; i < st.unknown && i < 4; i++) printf(" %02x:%08x", st.unknown_ops[i], st.unknown_words[i]);

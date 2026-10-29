@@ -92,7 +92,9 @@ def main() -> None:
         sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]
         sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c",
                     "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "decomp/src/libultra/io/vitbl.c"]
-        sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))]
+        # libultra's sinf/cosf keep their double constants as big-endian word pairs: the host libm's instead
+        sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))
+                    if p.name not in ("sinf.c", "cosf.c")]
         if args.audio:
             sources += ["work/src/game/audio/audio.c", "port/audio/bank.c", "port/audio/aspmain.c"]
             sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "work/src/libultra/audio").glob("*.c"))]

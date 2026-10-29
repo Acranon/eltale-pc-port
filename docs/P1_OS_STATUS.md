@@ -324,3 +324,21 @@ stand-ins). Headless: the 700-frame New Game run plays 1429 AI buffers (23.8 s a
 22047 Hz, no clipping) with output hash 65d1f0a0a39d3ea5 on Windows and Linux;
 `ELTALE_AUDIO_WAV=path` writes the output as a WAV. Not yet: a sample-for-sample
 check against the LLE microcode, and the US envelope bug check.
+
+## In-game rendering (2026-10-29)
+
+Gameplay drew nothing but the clear colour on Windows: every matrix the game
+built had NaN in it. libultra's `sinf`/`cosf` (gu/sinf.c, cosf.c) keep their
+polynomial constants as `{hi, lo}` word pairs, which are wrong doubles on a
+little-endian host, so guPerspectiveF and every rotation came out NaN. Linux had
+been linking glibc's sinf/cosf instead and was fine. Both builds now leave those
+two files out and use the host libm. The opening scene (throne room, Spirit King,
+the hero) now draws in the RT64 window.
+
+Also from this hunt:
+- `ELTALE_DUMP_IMAGE=<frame>` (with ELTALE_FRAME_IMAGE=1) writes the frame image
+  to out/frame_<frame>.bin, and `tools/dl_dump.py` walks it like the RSP and prints
+  the display-list tree with matrices decoded and vertex ranges.
+- `ELTALE_TRACE_COPIES=1` lists every native object the frame image converts.
+- Scene records (SceneEntry, SceneMessage) keep their N64 layout and are swapped
+  in place when a scene starts; a scene's NPC table is decoded into native NpcDefs.

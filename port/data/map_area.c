@@ -245,13 +245,19 @@ static EncounterGroupTable *decode_groups(u32 a, unsigned count) {
     return t;
 }
 
+static NpcDef *decode_npc_defs(u32 defs, unsigned count);
+
 static NpcList *decode_npcs(u32 a) {
     if (!a) return NULL;
     NpcList *l = alloc(sizeof *l);
     l->count = r16(a);
-    u32 defs = r32(a + 4);
-    NpcDef *d = alloc(l->count * sizeof *d);
-    for (unsigned i = 0; i < l->count; i++, defs += 0x2C) {
+    l->defs = decode_npc_defs(r32(a + 4), l->count);
+    return l;
+}
+
+static NpcDef *decode_npc_defs(u32 defs, unsigned count) {
+    NpcDef *d = alloc(count * sizeof *d);
+    for (unsigned i = 0; i < count; i++, defs += 0x2C) {
         d[i].area = r16(defs); d[i].talk_kind = r16(defs + 2);
         d[i].movement_kind = ram(defs)[4]; d[i].flags = ram(defs)[5];
         d[i].u6.boss_index = r16(defs + 6); /* the u8 view is ordered for the host (npc.h) */
@@ -262,8 +268,7 @@ static NpcList *decode_npcs(u32 a) {
         d[i].x = rf32(defs + 0x1C); d[i].z = rf32(defs + 0x20);
         d[i].angle = rf32(defs + 0x24); d[i].scale = rf32(defs + 0x28);
     }
-    l->defs = d;
-    return l;
+    return d;
 }
 
 static MapAreaDef *decode_area(const MapAreaDef *def) {
@@ -307,4 +312,9 @@ ChestGroup *Port_ChestGroup(const ChestGroup *groups, s32 subarea) {
     g->count = r16(a);
     g->defs = decode_flat(r32(a + 4), g->count, 0x24, "wwwwwwwwbbbb");
     return g;
+}
+
+/* A scene's NPC table (SceneEntry.npc_defs_addr): native copies, in the current area's arena. */
+NpcDef *Port_NpcDefs(u32 addr, s32 count) {
+    return count > 0 ? decode_npc_defs(addr, (unsigned)count) : NULL;
 }

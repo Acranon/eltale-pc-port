@@ -32,6 +32,11 @@ void Port_SwapCommonBlock(void);
 struct EnemyAreaSet;
 void Port_SwapEnemyDefs(uint32_t defs, uint32_t count);
 void Port_SwapAreaEnemyDefs(const struct EnemyAreaSet *set);
+/* A SceneEntry and its messages (N64 layout), swapped in place. */
+void Port_SwapSceneEntry(void *entry);
+/* port/data/map_area.c: native copies of a scene's NPC table. */
+struct NpcDef;
+struct NpcDef *Port_NpcDefs(uint32_t addr, int32_t count);
 
 /* Entry i of an N64 pointer table in RDRAM (big-endian 32-bit addresses), as a pointer. */
 static inline void *Port_N64Ptr(const void *table, int i) {

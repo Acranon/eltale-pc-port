@@ -35,3 +35,14 @@ void Port_SwapAreaEnemyDefs(const struct EnemyAreaSet *set) {
     if (anims <= defs || (anims - defs) % 0x38) Port_HostFatal("enemy area set: defs do not end at the anim tables");
     Port_SwapEnemyDefs(defs, (anims - defs) / 0x38);
 }
+
+/* A SceneEntry (N64 layout, game/event/scene.h) and its messages, swapped in place. */
+void Port_SwapSceneEntry(void *entry) {
+    uint32_t e = (uint32_t)(uintptr_t)entry;
+    swap_shape(e, "wwwwwwwwwwwwwwwhh");
+    const uint32_t *w = (const uint32_t *)entry;
+    uint32_t messages = w[0x34 / 4];
+    int32_t count = (int32_t)w[0x38 / 4];
+    if (messages && count > 0 && count < 256)
+        for (int32_t i = 0; i < count; i++) swap_shape(messages + (uint32_t)i * 0xC, "wwbbbb");
+}
