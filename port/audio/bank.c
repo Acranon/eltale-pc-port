@@ -10,6 +10,8 @@
 #include "port/audio.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 __attribute__((noreturn)) void Port_HostFatal(const char *what);
@@ -58,6 +60,9 @@ static ALEnvelope *envelope(const u8 *p) {
     e->releaseTime = (s32)be32(p + 8);
     e->attackVolume = p[12];
     e->decayVolume = p[13];
+    if (getenv("ELTALE_DUMP_ENVELOPES"))
+        fprintf(stderr, "ENV attack=%d decay=%d release=%d vol=%d/%d\n", e->attackTime, e->decayTime,
+                e->releaseTime, e->attackVolume, e->decayVolume);
     return e;
 }
 

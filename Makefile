@@ -24,7 +24,7 @@ endif
 AUDIO_SRC :=
 ifeq ($(P1_OS)$(AUDIO),11)
 GAME_SRC += work/src/game/audio/audio.c
-OS_SRC += port/audio/bank.c port/audio/aspmain.c
+OS_SRC += port/audio/bank.c port/audio/aspmain.c port/audio/rsp_lle.c
 AUDIO_SRC += $(wildcard work/src/libultra/audio/*.c)
 CPPFLAGS_AUDIO := -DELTALE_P1_AUDIO
 endif

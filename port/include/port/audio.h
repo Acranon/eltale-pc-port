@@ -12,5 +12,14 @@ ALSeqFile *Port_SeqFileNew(const void *file, const void *base);
 
 /* port/audio/aspmain.c: run an audio task's aspMain command list (ABI 1) on the CPU. */
 void Port_RunAudioTask(const OSTask *task);
+void Port_AspCommand(const OSTask *task, u32 w0, u32 w1);
+u8 *Port_AspDmem(void); /* its DMEM: host order, buffers at the command lists' offsets */
+
+/* port/audio/rsp_lle.c: the reference, the game's aspMain microcode on an RSP interpreter.
+ * Port_CheckAudioTask runs both and reports bytes where they differ (the HLE's result stays). */
+void Port_RunAudioTaskLle(const OSTask *task);
+void Port_CheckAudioTask(const OSTask *task);
+void Port_CheckAudioReport(void);
+void Port_LleNotePiDma(void *dst, u32 size);
 
 #endif

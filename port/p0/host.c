@@ -68,6 +68,11 @@ static uint64_t monotonic_ns(void) {
 #endif
 }
 
+#ifdef ELTALE_P1_OS
+/* sees every ROM DMA (the audio reference uses it to know which memory holds ROM bytes) */
+void (*Port_PiDmaHook)(void *dst, u32 size);
+#endif
+
 void Port_HostPace(uint64_t virtual_ticks) {
     static uint64_t start_ns;
     if (!start_ns) start_ns = monotonic_ns();
@@ -88,7 +93,10 @@ void Port_HostPace(uint64_t virtual_ticks) {
 
 void Port_HostFatal(const char *what) {
     fprintf(stderr, "P0 error: %s\n", what);
-    exit(1);
+    /* not exit(): on Windows, exit() from a game fiber never returns */
+    fflush(stdout);
+    fflush(stderr);
+    _Exit(1);
 }
 
 int Port_HostInit(const char *rom_path) {
@@ -261,6 +269,7 @@ s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
     }
 #ifdef ELTALE_P1_OS
     Port_DataForget((u32)(uptr)dst, size);
+    if (Port_PiDmaHook) Port_PiDmaHook(dst, size);
 #endif
     memcpy(dst, rom_bytes + dev_addr, size);
     dma_count++;

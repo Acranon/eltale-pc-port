@@ -6,6 +6,7 @@
 #include "port/gfx.h"
 extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
 extern void (*Port_AudioTaskHook)(OSTask *task);
+extern void (*Port_PiDmaHook)(void *dst, u32 size);
 #ifdef ELTALE_P1_AUDIO
 #include "port/audio.h"
 #endif
@@ -139,6 +140,10 @@ int main(int argc, char **argv) {
     if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
 #ifdef ELTALE_P1_AUDIO
     Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTask;
+    /* the reference microcode: play with it, or check the HLE against it on every task */
+    if (getenv("ELTALE_AUDIO_LLE")) Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTaskLle;
+    if (getenv("ELTALE_AUDIO_CHECK")) Port_AudioTaskHook = (void (*)(OSTask *))Port_CheckAudioTask;
+    Port_PiDmaHook = Port_LleNotePiDma;
     Port_AiBufferHook = hash_ai_buffer;
     if (getenv("ELTALE_AUDIO_WAV") && (ai_wav = fopen(getenv("ELTALE_AUDIO_WAV"), "wb")))
         fseek(ai_wav, 44, SEEK_SET);
@@ -151,6 +156,7 @@ int main(int argc, char **argv) {
         Port_HostFatal("P1 OS did not complete the requested intro frames");
 #ifdef ELTALE_P1_AUDIO
     ai_wav_close();
+    Port_CheckAudioReport();
     printf("P1_AUDIO buffers=%u nonzero_bytes=%u hash=%016llx\n", ai_buffers, ai_nonzero, (unsigned long long)ai_hash);
 #endif
     printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u mode=%u last_hash=%016llx\n",

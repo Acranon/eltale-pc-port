@@ -354,3 +354,89 @@ both handle the stop the same way, so by the code the title is silent on hardwar
 too. To check in ares next: is the title tune the intro's, continuing, or another
 song; does it play if Start is pressed before the intro music starts; and after
 the intro ends on its own. Record the port with ELTALE_AUDIO_WAV to compare.
+
+## Title screen: not a bug (2026-10-29)
+
+The "title music" is the intro: an attract sequence that starts on a picture
+identical to the title screen, with music (sequence 27), then moves on to other
+scenes. Pressing Start skips it, which is why the earlier tests heard nothing.
+Left alone, the port plays the intro and its music as the N64 does.
+
+## Sound checked against the microcode (2026-10-29)
+
+`port/audio/rsp_lle.c` is an RSP interpreter (scalar unit, COP0 DMA, and the
+vector unit with ares' accumulator, clamp and flag rules) that runs the game's
+own aspMain, text and data from the user's ROM in RDRAM.
+- `ELTALE_AUDIO_CHECK=1` runs every command twice, once on the microcode and
+  once on our HLE, starting from the same DMEM and DRAM. It compares the
+  buffers (DMEM 0x5C0 onwards; the HLE keeps them at the command lists' own
+  offsets) and every DRAM byte the microcode writes, then reports each command
+  that differs and a count per command type. The microcode's DRAM writes are
+  undone, so the game always hears the HLE.
+- `ELTALE_AUDIO_LLE=1` plays the microcode instead of the HLE.
+
+DMA type rules: the microcode sees big-endian memory and the native game keeps
+host order. So the DMA converts by what the memory holds: bytes the PI copied
+from the ROM (sample data, tracked through `Port_PiDmaHook`) as bytes, the
+command list as 32-bit words, everything else as 16-bit samples.
+
+Address rules:
+- aspMain takes an address's whole top byte as the segment number. The
+  reference therefore gets a copy of the command list with its addresses
+  rebased to 24 bits (the audio heap and arenas sit in the image's first
+  16 MiB).
+- rspboot leaves the task's DMEM address in `$1`.
+
+It found six differences, all fixed. aspmain.c now matches bit for bit over
+about 5 million commands: the 4000-frame intro (all of its music) and 2500
+frames of New Game.
+- **POLEF** filtered in place (in == out for the reverb's filter) while still
+  reading inputs it had overwritten. The reverb was fed wrong samples, a
+  likely source of the clicks heard in the window.
+- **POLEF INIT**:
+  - it clears only half of the scratch it takes its history from (DMEM
+    0xF90), so it starts from the history of the last state that passed
+    through there;
+  - it scales the coefficient table's second row in place.
+- **MIXER** rounds (vmulf then vmacf: `out*0x7FFF*2 + 0x8000 + in*gain*2`) and
+  works in 32-byte blocks.
+- **RESAMPLE** rounds each of its four products, then adds them in saturating
+  pairs. Its 0x20-byte state passes through the scratch.
+- **ENVMIXER** is the microcode's own envelope:
+  - 8 lanes of 16.16 volume per side;
+  - INIT interpolates from the volume to volume × rate;
+  - each block multiplies by the rate;
+  - the integer part is held at the target (unsigned min rising, signed max
+    falling);
+  - gains are vmulf;
+  - the state is 0x50 bytes in the microcode's layout.
+- **DMEMMOVE** copies 16 bytes at a time.
+
+The HLE also keeps the scratch at DMEM 0xF90 (`dmem[SCRATCH]`) the way the
+microcode does, because POLEF INIT reads it stale.
+
+New-Game run audio hash: **be0b67b7b718648e** (was 65d1f0a0a39d3ea5),
+identical on Windows and Linux.
+
+Envelope check (PLAN's "US envelope bug"):
+- `ELTALE_DUMP_ENVELOPES=1` lists the bank's 29 envelopes. None has Quest 64
+  US's 1 µs release on a sounding note.
+- Releases are 500 µs on the melodic instruments, 100 µs on one sustained
+  instrument, and 1 µs only on percussion that has already decayed to silence.
+- That is the retail data, so it is left as is. A gentler release could be a
+  modern option later.
+
+Window sound output (eltale_rt64): the old code queued buffers to SDL with no
+cushion and cleared the whole queue when it passed 1 s. Both are audible:
+- the queue running dry on a frame hitch;
+- the jump when it was cleared.
+
+It is now a ring that SDL's callback drains:
+- playback starts once about 67 ms is buffered;
+- the read rate is steered by up to 0.5% towards that fill, to follow the
+  drift between the host clock and the sound card;
+- an underrun fades out over a few ms and waits to refill;
+- a ring that is far too full drops its oldest samples down to the target.
+
+Also: Port_HostFatal now flushes and `_Exit`s. On Windows, exit() from a game
+fiber never returned, so a fatal error hung the process.

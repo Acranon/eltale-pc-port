@@ -4,6 +4,7 @@
 #define NOMINMAX // windows.h (via SDL_syswm.h) min/max macros break RT64 headers
 #include "eltale_rt64.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -228,6 +229,56 @@ extern "C" void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_
     *stick_y = (int8_t)y;
 }
 
+// Sound output. The game's AI buffers go into a ring that SDL's callback drains. Playback starts once
+// the ring holds AUDIO_TARGET frames, and the callback steps through the ring a little faster or slower
+// (at most 0.5%, inaudible) to keep it near that fill: the game is paced by the host clock and the
+// sound card by its own, and a hitch on either side is absorbed instead of heard as a click. If the
+// ring runs dry anyway, the output fades the last frame out and waits to refill.
+namespace {
+
+constexpr uint32_t AUDIO_RING = 1 << 15; // stereo frames (about 1.5 s at 22 kHz)
+constexpr double AUDIO_MAX_STEP = 0.005;
+
+struct AudioRing {
+    int16_t frames[AUDIO_RING][2];
+    uint64_t read_pos, write_pos; // in frames; read_pos is advanced by the callback
+    double frac;                  // position between read_pos and read_pos + 1
+    uint32_t target;              // fill to start at and to steer towards
+    bool playing;
+    float last[2];
+} ring;
+
+void audio_callback(void *, Uint8 *stream, int len) {
+    int16_t *out = (int16_t *)stream;
+    int count = len / 4;
+    uint64_t avail = ring.write_pos - ring.read_pos;
+    if (!ring.playing && avail >= ring.target) ring.playing = true;
+    double step = 1.0;
+    if (ring.playing) {
+        double error = ((double)avail - ring.target) / ring.target;
+        step = 1.0 + std::max(-AUDIO_MAX_STEP, std::min(AUDIO_MAX_STEP, error * AUDIO_MAX_STEP));
+    }
+    for (int i = 0; i < count; i++) {
+        if (ring.playing && ring.write_pos - ring.read_pos >= 2) {
+            const int16_t *a = ring.frames[ring.read_pos % AUDIO_RING], *b = ring.frames[(ring.read_pos + 1) % AUDIO_RING];
+            for (int c = 0; c < 2; c++) {
+                ring.last[c] = (float)(a[c] + (b[c] - a[c]) * ring.frac);
+                out[i * 2 + c] = (int16_t)ring.last[c];
+            }
+            ring.frac += step;
+            while (ring.frac >= 1.0) { ring.frac -= 1.0; ring.read_pos++; }
+        } else {
+            ring.playing = false; // underrun: fade out over a few ms and refill
+            for (int c = 0; c < 2; c++) {
+                ring.last[c] *= 0.97f;
+                out[i * 2 + c] = (int16_t)ring.last[c];
+            }
+        }
+    }
+}
+
+} // namespace
+
 extern "C" void ElRt64_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate) {
     if (rate != audio_rate) {
         if (audio_dev) SDL_CloseAudioDevice(audio_dev);
@@ -236,15 +287,25 @@ extern "C" void ElRt64_QueueAudio(const int16_t *samples, uint32_t bytes, uint32
         want.format = AUDIO_S16SYS;
         want.channels = 2;
         want.samples = 512;
+        want.callback = audio_callback;
         audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
         audio_rate = rate;
+        ring = {};
+        ring.target = rate / 15; // about 67 ms: four game frames of sound
         if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
         else std::fprintf(stderr, "audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
     }
     if (!audio_dev) return;
-    // keep the latency bounded if the game runs ahead of the sound card
-    if (SDL_GetQueuedAudioSize(audio_dev) > rate * 4 / 4) SDL_ClearQueuedAudio(audio_dev);
-    SDL_QueueAudio(audio_dev, samples, bytes);
+    uint32_t count = bytes / 4;
+    SDL_LockAudioDevice(audio_dev);
+    // far too much queued (the game ran ahead after a stall): drop the oldest down to the target
+    if (ring.write_pos - ring.read_pos + count > AUDIO_RING / 2) ring.read_pos = ring.write_pos + count - ring.target;
+    for (uint32_t i = 0; i < count; i++) {
+        ring.frames[ring.write_pos % AUDIO_RING][0] = samples[i * 2];
+        ring.frames[ring.write_pos % AUDIO_RING][1] = samples[i * 2 + 1];
+        ring.write_pos++;
+    }
+    SDL_UnlockAudioDevice(audio_dev);
 }
 
 extern "C" void ElRt64_Shutdown(void) {

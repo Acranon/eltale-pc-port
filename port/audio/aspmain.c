@@ -5,10 +5,12 @@
  * addresses (port/os K0_TO_PHYS). All the buffers it reads and writes (ADPCM and resampler states,
  * envelope states, sample and output buffers) are native too, so DMEM is kept in host order.
  *
- * The algorithms follow the RSP microcode's behaviour as documented by the HLE in
- * mupen64plus-rsp-hle (alist.c, alist_audio.c). The resampler's filter table is the microcode's
- * own, read from the task's ucode data in RDRAM (from the user's ROM). The envelope state layout
- * is our own: only this file reads it. */
+ * Every command gives the microcode's results bit for bit, checked against the microcode itself
+ * (port/audio/rsp_lle.c, ELTALE_AUDIO_CHECK=1): its rounding (each vmulf rounds), its 8- and
+ * 16-sample blocks, its state layouts, and its scratch area at DMEM 0xF90 (here dmem[SCRATCH]),
+ * which states pass through and which POLEF's INIT reads stale. Buffer offsets are the command
+ * lists' own; the microcode adds 0x5C0. The resampler's filter table is the microcode's own, read
+ * from the task's ucode data in RDRAM (from the user's ROM). */
 #include "port/audio.h"
 
 #include <stdint.h>
@@ -31,7 +33,21 @@ static struct {
     u32 loop;
 } st;
 
+#define SCRATCH (0xF90 - 0x5C0)
+
 static s16 *s16_at(u32 off) { return (s16 *)(dmem + (off & 0xFFE)); }
+
+/* the RSP's accumulator results: 48 bits, read back as a clamped middle or low slice */
+static int64_t sext48(int64_t a) { return (int64_t)((uint64_t)a << 16) >> 16; }
+static s16 sat_mid(int64_t acc) { int64_t v = sext48(acc) >> 16; return v < -32768 ? -32768 : v > 32767 ? 32767 : (s16)v; }
+static u16 sat_lo(int64_t acc) {
+    int64_t v = sext48(acc) >> 16;
+    return v < -32768 ? 0 : v > 32767 ? 0xFFFF : (u16)acc;
+}
+static s16 vmulf(s16 a, s16 b) { return sat_mid((int64_t)a * b * 2 + 0x8000); }
+static s16 vadd(s16 a, s16 b) { s32 v = a + b; return v < -32768 ? -32768 : v > 32767 ? 32767 : (s16)v; }
+/* out = out * 0x7FFF + in * gain, as vmulf then vmacf */
+static s16 mix(s16 out, s16 in, s16 gain) { return sat_mid((int64_t)out * 0x7FFF * 2 + 0x8000 + (int64_t)in * gain * 2); }
 static s16 clamp16(s32 v) { return v < -32768 ? -32768 : v > 32767 ? 32767 : (s16)v; }
 static u32 align(u32 v, u32 a) { return (v + a - 1) & ~(a - 1); }
 
@@ -90,120 +106,155 @@ static void adpcm(int init, int loop, u16 out, u16 in, u32 count, u32 state) {
     memcpy(state_p, last, sizeof last);
 }
 
+/* The state (0x20 bytes, through the scratch): the 4 samples before the next position, its
+ * fraction, then (for A_LOOP, unused by libultra) an alignment and 8 samples. Each output is
+ * sat(sat(f0 + f1) + sat(f2 + f3)), each f a rounded vmulf; 8 outputs per block. */
 static void resample(int init, u16 out, u16 in, u32 count, u32 pitch, u32 state) {
-    s16 *sp = dram(state);
-    u32 ipos = (in >> 1) - 4, opos = out >> 1, accu;
-    s16 *d = (s16 *)dmem;
-    if (init) {
-        for (int k = 0; k < 4; k++) d[(ipos + k) & 0x7FF] = 0;
-        accu = 0;
-    } else {
-        for (int k = 0; k < 4; k++) d[(ipos + k) & 0x7FF] = sp[k];
-        accu = (u16)sp[4];
+    s16 *sc = s16_at(SCRATCH), *d = (s16 *)dmem;
+    if (init) { memset(sc, 0, 8); sc[4] = 0; }
+    else memcpy(sc, dram(state), 0x20);
+    u32 base = (in >> 1) - 4; /* the 4 state samples go just before the input */
+    for (int k = 0; k < 4; k++) d[(base + k) & 0x7FF] = sc[k];
+    u32 pos = (u16)sc[4], step = pitch;
+    u32 blocks = count ? (count + 15) / 16 : 1, n;
+    for (n = 0; n < blocks * 8; n++, pos += step) {
+        u32 ip = base + (pos >> 16);
+        const s16 *lut = resample_lut + ((pos >> 10) & 0x3F) * 4;
+        s16 f0 = vmulf(d[ip & 0x7FF], lut[0]), f1 = vmulf(d[(ip + 1) & 0x7FF], lut[1]);
+        s16 f2 = vmulf(d[(ip + 2) & 0x7FF], lut[2]), f3 = vmulf(d[(ip + 3) & 0x7FF], lut[3]);
+        d[((out >> 1) + n) & 0x7FF] = vadd(vadd(f0, f1), vadd(f2, f3));
     }
-    for (count >>= 1; count; count--) {
-        const s16 *lut = resample_lut + ((accu & 0xFC00) >> 8);
-        s32 v = d[ipos & 0x7FF] * lut[0] + d[(ipos + 1) & 0x7FF] * lut[1] + d[(ipos + 2) & 0x7FF] * lut[2] +
-                d[(ipos + 3) & 0x7FF] * lut[3];
-        d[opos++ & 0x7FF] = clamp16(v >> 15);
-        accu += pitch;
-        ipos += accu >> 16;
-        accu &= 0xFFFF;
+    /* what the last block leaves in the scratch: the next block's sample and table addresses */
+    for (int i = 0; i < 8; i++) {
+        u32 p = pos + i * step;
+        sc[0x10 + i] = (s16)(0x5C0 + in - 8 + 2 * (p >> 16));
+        sc[0x18 + i] = (s16)(0xC0 + ((p >> 10) & 0x3F) * 8);
     }
-    for (int k = 0; k < 4; k++) sp[k] = d[(ipos + k) & 0x7FF];
-    sp[4] = (s16)accu;
+    u32 ip = base + (pos >> 16);
+    for (int k = 0; k < 4; k++) sc[k] = d[(ip + k) & 0x7FF];
+    sc[4] = (s16)pos;
+    u32 at = (ip + 4) * 2, mis = (at - in) & 0xF;
+    at -= mis;
+    sc[5] = (s16)(mis ? 16 - mis : 0);
+    memcpy(sc + 8, dmem + (at & 0xFFE), 16);
+    memcpy(dram(state), sc, 0x20);
 }
 
-typedef struct { s32 value, target, step; } Ramp;
-typedef struct { s16 wet, dry; s32 target[2], rates[2], seq[2], value[2]; } EnvState; /* ours */
+/* The envelope mixer. Each side's volume is 8 lanes of 16.16 (one per sample of a block): INIT
+ * spreads them from the volume to volume * rate across the first block; each later block
+ * multiplies every lane by the rate. The integer part is held at the target (unsigned min when
+ * rising, signed max when falling). The state (0x50 bytes, through the scratch) is the left lanes
+ * (integer, fraction), the right lanes, then target, rate and gain parameters. */
+typedef struct { s16 hi[8]; u16 lo[8]; } Ramp;
 
-static s16 ramp_step(Ramp *r) {
-    r->value += r->step;
-    int reached = r->step <= 0 ? r->value <= r->target : r->value >= r->target;
-    if (reached) { r->value = r->target; r->step = 0; }
-    return (s16)(r->value >> 16);
+static void ramp_init(Ramp *r, s16 vol, s16 rate_hi, u16 rate_lo) {
+    static const u16 frac[8] = { 0x2000, 0x4000, 0x6000, 0x8000, 0xA000, 0xC000, 0xE000, 0xFFFF };
+    int64_t acc = (int64_t)vol * rate_lo + (int64_t)vol * rate_hi * 65536;
+    s32 diff = sat_mid(acc) - vol; /* vsub */
+    s16 d_hi = diff < -32768 ? -32768 : diff > 32767 ? 32767 : (s16)diff;
+    u16 d_lo = sat_lo(acc);
+    for (int i = 0; i < 8; i++) {
+        int64_t a = (((uint32_t)frac[i] * d_lo) >> 16) + (int64_t)frac[i] * d_hi + (int64_t)vol * 65536;
+        r->hi[i] = sat_mid(a);
+        r->lo[i] = sat_lo(a);
+    }
+}
+
+static void ramp_next(Ramp *r, s16 rate_hi, u16 rate_lo) {
+    for (int i = 0; i < 8; i++) {
+        int64_t a = (((uint32_t)r->lo[i] * rate_lo) >> 16) + (int64_t)r->hi[i] * rate_lo +
+                    (int64_t)r->lo[i] * rate_hi + (int64_t)r->hi[i] * rate_hi * 65536;
+        r->hi[i] = sat_mid(a);
+        r->lo[i] = sat_lo(a);
+    }
+}
+
+static void ramp_clamp(Ramp *r, s16 rate_hi, s16 target) {
+    for (int i = 0; i < 8; i++) {
+        if (rate_hi > 0) { if ((u16)r->hi[i] >= (u16)target) r->hi[i] = target; } /* vcl */
+        else if (r->hi[i] < target) r->hi[i] = target;                              /* vge */
+    }
+}
+
+static void env_block(const Ramp *r, s16 dry, s16 wet, const s16 *in, s16 *dry_out, s16 *wet_out) {
+    for (int i = 0; i < 8; i++) {
+        s16 gd = vmulf(r->hi[i], dry), gw = vmulf(r->hi[i], wet);
+        dry_out[i] = mix(dry_out[i], in[i], gd);
+        if (wet_out) wet_out[i] = mix(wet_out[i], in[i], gw);
+    }
 }
 
 static void envmixer(int init, int aux, u32 state) {
-    EnvState *sp = dram(state);
-    Ramp ramps[2];
-    s32 seq[2], rates[2];
-    s16 dry = st.dry, wet = st.wet;
+    s16 *sc = s16_at(SCRATCH);
+    Ramp left, right;
+    s16 p[8]; /* target L, rate L hi, rate L lo, target R, rate R hi, rate R lo, dry, wet */
     if (init) {
-        for (int i = 0; i < 2; i++) {
-            ramps[i].value = st.vol[i] << 16;
-            ramps[i].target = st.target[i] << 16;
-            rates[i] = st.rate[i];
-            seq[i] = st.vol[i] * st.rate[i];
-        }
+        p[0] = st.target[0]; p[1] = (s16)(st.rate[0] >> 16); p[2] = (s16)st.rate[0];
+        p[3] = st.target[1]; p[4] = (s16)(st.rate[1] >> 16); p[5] = (s16)st.rate[1];
+        p[6] = st.dry; p[7] = st.wet;
     } else {
-        wet = sp->wet;
-        dry = sp->dry;
-        for (int i = 0; i < 2; i++) {
-            ramps[i].target = sp->target[i];
-            rates[i] = sp->rates[i];
-            seq[i] = sp->seq[i];
-            ramps[i].value = sp->value[i];
-        }
+        memcpy(sc, dram(state), 0x50);
+        memcpy(&left, sc, 32);
+        memcpy(&right, sc + 16, 32);
+        memcpy(p, sc + 32, 16);
     }
-    for (int i = 0; i < 2; i++) ramps[i].step = ramps[i].target - ramps[i].value;
     const s16 *in = s16_at(st.in);
-    s16 *dst[4] = { s16_at(st.out), s16_at(st.dry_right), s16_at(st.wet_left), s16_at(st.wet_right) };
-    unsigned n = aux ? 4 : 2;
-    for (u32 y = 0, ptr = 0; y < st.count; y += 16) {
-        for (int i = 0; i < 2; i++) {
-            if (ramps[i].step) {
-                seq[i] = (s32)(((int64_t)seq[i] * rates[i]) >> 16);
-                ramps[i].step = (seq[i] - ramps[i].value) >> 3;
-            }
+    s16 *dl = s16_at(st.out), *dr = s16_at(st.dry_right);
+    s16 *wl = aux ? s16_at(st.wet_left) : NULL, *wr = aux ? s16_at(st.wet_right) : NULL;
+    u32 blocks = (st.count + 15) / 16;
+    if (blocks < 1) blocks = 1;
+    if (init && blocks < 2) blocks = 2;
+    for (u32 b = 0; b < blocks; b++) {
+        if (b == 0 && init) {
+            ramp_init(&left, st.vol[0], p[1], (u16)p[2]);
+            ramp_init(&right, st.vol[1], p[4], (u16)p[5]);
+        } else {
+            ramp_next(&left, p[1], (u16)p[2]);
+            ramp_next(&right, p[4], (u16)p[5]);
         }
-        for (int x = 0; x < 8; x++, ptr++) {
-            s16 l = ramp_step(&ramps[0]), r = ramp_step(&ramps[1]);
-            s16 g[4] = { clamp16((l * dry + 0x4000) >> 15), clamp16((r * dry + 0x4000) >> 15),
-                         clamp16((l * wet + 0x4000) >> 15), clamp16((r * wet + 0x4000) >> 15) };
-            for (unsigned k = 0; k < n; k++) dst[k][ptr] = clamp16(dst[k][ptr] + ((in[ptr] * g[k]) >> 15));
-        }
+        ramp_clamp(&left, p[1], p[0]);
+        ramp_clamp(&right, p[4], p[3]);
+        env_block(&left, p[6], p[7], in + b * 8, dl + b * 8, wl ? wl + b * 8 : NULL);
+        env_block(&right, p[6], p[7], in + b * 8, dr + b * 8, wr ? wr + b * 8 : NULL);
     }
-    sp->wet = wet;
-    sp->dry = dry;
-    for (int i = 0; i < 2; i++) {
-        sp->target[i] = ramps[i].target;
-        sp->rates[i] = rates[i];
-        sp->seq[i] = seq[i];
-        sp->value[i] = ramps[i].value;
-    }
+    memcpy(sc, &left, 32);
+    memcpy(sc + 16, &right, 32);
+    memcpy(sc + 32, p, 16);
+    memcpy(dram(state), sc, 0x50);
 }
 
+/* The pole filter. Its coefficient table's second row is scaled by gain << 2 in place; INIT
+ * clears only the first half of the scratch it reads its history from, so it starts from whatever
+ * history the scratch held. The state is the last 4 outputs. */
 static void polef(int init, u16 out, u16 in, u32 count, s16 gain, u32 state) {
-    s16 *sp = dram(state);
+    if (!count) return;
+    s16 *sc = s16_at(SCRATCH);
+    sc[0] = sc[1] = 0;
+    if (!init) memcpy(sc, dram(state), 8);
+    s16 y2 = sc[2], y1 = sc[3];
+    const s16 *r0 = adpcm_table, *r1 = adpcm_table + 8;
+    s16 h[8];
+    for (int i = 0; i < 8; i++) h[i] = (s16)(((s32)r1[i] * (u16)(gain << 2)) >> 16);
     s16 *dst = s16_at(out);
-    const s16 *h1 = adpcm_table;
-    s16 h2[8], h2_before[8];
-    s16 l1 = init ? 0 : sp[2], l2 = init ? 0 : sp[3];
-    for (int i = 0; i < 8; i++) { h2_before[i] = adpcm_table[8 + i]; h2[i] = (s16)((adpcm_table[8 + i] * gain) >> 14); }
-    count = align(count, 16);
-    do {
-        s16 frame[8];
-        for (int i = 0; i < 8; i++, in += 2) frame[i] = *s16_at(in);
+    for (u32 blk = 0; blk < (count + 15) / 16; blk++, dst += 8, in += 16) {
+        s16 x[8]; /* a block at a time: in and out may be the same buffer */
+        memcpy(x, s16_at(in), sizeof x);
         for (int i = 0; i < 8; i++) {
-            s32 accu = frame[i] * gain + h1[i] * l1 + h2_before[i] * l2;
-            for (int k = 0; k < i; k++) accu += h2[i - 1 - k] * frame[k];
-            dst[i] = clamp16(accu >> 14);
+            s32 sum = (s32)((u32)(r0[i] * y2) + (u32)(r1[i] * y1) + (u32)(x[i] * gain));
+            for (int k = 0; k < i; k++) sum = (s32)((u32)sum + (u32)(h[i - 1 - k] * x[k]));
+            dst[i] = sat_mid((int64_t)sum * 4);
         }
-        l1 = dst[6];
-        l2 = dst[7];
-        dst += 8;
-        count -= 16;
-    } while (count);
-    memcpy(sp, dst - 4, 8);
+        y2 = dst[6];
+        y1 = dst[7];
+    }
+    memcpy(adpcm_table + 8, h, sizeof h);
+    memcpy(dram(state), dst - 4, 8);
 }
 
-void Port_RunAudioTask(const OSTask *task) {
+/* One command (Port_RunAudioTask below; port/audio/rsp_lle.c checks them one at a time). */
+void Port_AspCommand(const OSTask *task, u32 w0, u32 w1) {
     if (!lut_ready) load_lut((u32)(uptr)task->t.ucode_data);
-    const u32 *cmd = (const u32 *)task->t.data_ptr;
-    u32 words = task->t.data_size / 4;
-    for (u32 i = 0; i + 1 < words; i += 2) {
-        u32 w0 = cmd[i], w1 = cmd[i + 1];
+    {
         u8 op = w0 >> 24, flags = (w0 >> 16) & 0xFF;
         switch (op) {
         case 0: break; /* SPNOOP */
@@ -211,7 +262,7 @@ void Port_RunAudioTask(const OSTask *task) {
         case 2: memset(dmem + (w0 & 0xFFF), 0, align(w1 & 0xFFFF, 16) & 0xFFF); break; /* CLEARBUFF */
         case 3: envmixer(flags & A_INIT, flags & A_AUX, w1); break;
         case 4: if (st.count) memcpy(dmem + (st.in & 0xFFF), dram(w1 & ~3u), st.count); break; /* LOADBUFF */
-        case 5: resample(flags & A_INIT, st.out, st.in, align(st.count, 16), (w0 & 0xFFFF) << 1, w1); break;
+        case 5: resample(flags & A_INIT, st.out, st.in, st.count, (w0 & 0xFFFF) << 1, w1); break;
         case 6: if (st.count) memcpy(dram(w1 & ~3u), dmem + (st.out & 0xFFF), st.count); break; /* SAVEBUFF */
         case 7: if (w1 & 0x00FFFFFF) Port_HostFatal("aspMain: segments are not used by this game"); break;
         case 8: /* SETBUFF */
@@ -226,12 +277,18 @@ void Port_RunAudioTask(const OSTask *task) {
                 else { st.target[lr] = (s16)w0; st.rate[lr] = (s32)w1; }
             }
             break;
-        case 10: memmove(dmem + ((w1 >> 16) & 0xFFF), dmem + (w0 & 0xFFF), align(w1 & 0xFFFF, 4)); break; /* DMEMMOVE */
+        case 10: /* DMEMMOVE, 16 bytes at a time */
+            for (u32 n = 0; n < (w1 & 0xFFFF); n += 16) {
+                u8 tmp[16];
+                memcpy(tmp, dmem + (((w0 & 0xFFFF) + n) & 0xFFF), 16);
+                memcpy(dmem + ((((w1 >> 16) & 0xFFFF) + n) & 0xFFF), tmp, 16);
+            }
+            break;
         case 11: memcpy(adpcm_table, dram(w1), (w0 & 0xFFFF) > sizeof adpcm_table ? sizeof adpcm_table : (w0 & 0xFFFF)); break;
         case 12: { /* MIXER */
             s16 gain = (s16)w0;
             s16 *dst = s16_at(w1), *src = s16_at(w1 >> 16);
-            for (u32 n = st.count >> 1; n; n--, dst++, src++) *dst = clamp16(*dst + ((*src * gain) >> 15));
+            for (u32 n = align(st.count, 32) >> 1; n; n--, dst++, src++) *dst = mix(*dst, *src, gain);
             break; }
         case 13: { /* INTERLEAVE */
             s16 *dst = s16_at(st.out), *l = s16_at(w1 >> 16), *r = s16_at(w1);
@@ -246,4 +303,12 @@ void Port_RunAudioTask(const OSTask *task) {
         default: Port_HostFatal("aspMain: unknown command");
         }
     }
+}
+
+u8 *Port_AspDmem(void) { return dmem; }
+
+void Port_RunAudioTask(const OSTask *task) {
+    const u32 *cmd = (const u32 *)task->t.data_ptr;
+    u32 words = task->t.data_size / 4;
+    for (u32 i = 0; i + 1 < words; i += 2) Port_AspCommand(task, cmd[i], cmd[i + 1]);
 }
