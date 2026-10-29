@@ -23,6 +23,128 @@ index cf65666..ce7b699 100644
      /* 0x84 */ u16 attack_power;
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
+diff --git a/src/game/actor/anim.c b/src/game/actor/anim.c
+index fe38701..11eb262 100644
+--- a/src/game/actor/anim.c
++++ b/src/game/actor/anim.c
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/actor/anim.h"
+ #include "game/camera/camera.h"
+ #include "game/actor/actor.h"
+@@ -43,6 +46,9 @@ typedef struct {
+ } Struct_80020568_xf;
+ 
+ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSet((u32)(uptr)arg1);
++#endif
+     s32 i;
+     s16 count;
+     u16 cur;
+@@ -56,7 +62,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+ 
+     count = arg1->nodeCount;
+     cur = arg0->frame;
+-    anim = arg1->nodes;
++    anim = (AnimNode *)(uptr)arg1->nodes;
+     i = 0;
+     while (i < count && anim->parent != 0) {
+         i++;
+@@ -70,7 +76,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+     }
+     Math_EvalTcbSpline(&anim->track, (f32*)&pos, frame);
+     if (arg0->animFlags & 0x200) {
+-        kf = anim->track.kfs;
++        kf = (Keyframe *)(uptr)anim->track.kfs;
+         frame = anim->track.last;
+         while (kf->frame != frame) {
+             kf++;
+@@ -102,6 +108,9 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+ }
+ 
+ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData* frameData) {
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSet((u32)(uptr)arg2);
++#endif
+     s32 i;
+     u16 frame;
+     AnimNode* anims;
+@@ -114,7 +123,7 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
+     scale.x = arg1->scale;
+     scale.y = arg1->scale;
+     scale.z = arg1->scale;
+-    anims = arg2->nodes;
++    anims = (AnimNode *)(uptr)arg2->nodes;
+     frame = arg1->frame;
+     total = arg1->ticks;
+     for (i = 0; i < arg2->nodeCount; i++) {
+@@ -128,7 +137,7 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+                    AnimNode* anims, struct GfxFrameData* buf) {
+     s32 fr;
+     s32 i;
+-    Gfx** dls;
++    u32* dls;
+     s32* tbl;
+     MtxF mtx;
+     Struct_80020568_xf xf;
+@@ -174,12 +183,12 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+         anim_node_world_positions[anim_node_position_count].z = mtx.mf[3][2];
+         anim_node_position_count++;
+     }
+-    dls = set->dls;
+-    tbl = anim->dlSeq;
++    dls = (u32 *)(uptr)set->dls;
++    tbl = (s32 *)(uptr)anim->dlSeq;
+     if (tbl == NULL) {
+         i = anim->dl;
+         if (i != -1) {
+-            if (dls[i] != NULL) {
++            if (dls[i] != 0) {
+                 gSPDisplayList(gfx_dl_head++, dls[i]);
+             }
+         }
+@@ -194,6 +203,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+ }
+ 
+ void Anim_AdvanceFrame(s32 arg0, Actor* arg1, AnimSet* arg2) {
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSet((u32)(uptr)arg2);
++#endif
+     s32 temp_v0 = arg1->frame += arg0;
+ 
+     if (temp_v0 >= arg2->length) {
+diff --git a/src/game/actor/anim.h b/src/game/actor/anim.h
+index 66c2ccd..624c42f 100644
+--- a/src/game/actor/anim.h
++++ b/src/game/actor/anim.h
+@@ -17,17 +17,20 @@ typedef struct AnimNode {
+     /* 0x15 */ s8 dl; /* index into AnimSet.dls, -1 = none */
+     /* 0x16 */ u8 flags; /* 1 billboard, 2 record the world position */
+     /* 0x17 */ u8 pad17;
+-    /* 0x18 */ s32 *dlSeq; /* if set: display list indices cycled by Actor.ticks */
++    /* 0x18 */ u32 dlSeq; /* s32 *: if set, display list indices cycled by Actor.ticks */
+     /* 0x1C */ u16 dlSeqLen;
+     /* 0x1E */ u8 pad1E[2];
+ } AnimNode; /* 0x20 bytes */
+ 
+-/* A model: its nodes and display lists, and the loop length of its animation. */
++/* A model: its nodes and display lists, and the loop length of its animation.
++ * Port: AnimSet, AnimNode and KfAnim keep their N64 layout, with addresses as u32 (the game
++ * indexes them with N64 strides and reads fields at N64 offsets); port/data/anim.c swaps the
++ * records to host byte order in place after they are loaded. */
+ typedef struct AnimSet {
+     /* 0x00 */ s16 nodeCount;
+     /* 0x02 */ s16 length; /* Anim_AdvanceFrame wraps Actor.frame here */
+-    /* 0x04 */ AnimNode *nodes;
+-    /* 0x08 */ Gfx **dls;
++    /* 0x04 */ u32 nodes; /* AnimNode * */
++    /* 0x08 */ u32 dls; /* Gfx **: N64 display-list addresses */
+ } AnimSet; /* 0xC bytes */
+ 
+ /* .bss 8008BFC0..8008C040 */
 diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
 index b78bc53..d050237 100644
 --- a/src/game/audio/audio.c
@@ -290,6 +412,26 @@ index e32b469..97cc751 100644
  void Enemy_RunAttackScript(void);
  
  #endif
+diff --git a/src/game/env/env.h b/src/game/env/env.h
+index fe11d2c..d4dca20 100644
+--- a/src/game/env/env.h
++++ b/src/game/env/env.h
+@@ -117,6 +117,15 @@ extern s32 D_80084B68;
+ extern s32 D_80084B6C;
+ extern s32 D_80084B70;
+ extern s32 D_80084B74;
++#ifdef ELTALE_P1_OS
++/* Port: these labels name fields of native objects (see undefined_syms.txt). */
++#define D_80084B60 (env_light_dirs[2][0])
++#define D_80084B64 (env_light_dirs[2][1])
++#define D_80084B68 (env_light_dirs[2][2])
++#define D_80084B6C (env_light_dirs[3][0])
++#define D_80084B70 (env_light_dirs[3][1])
++#define D_80084B74 (env_light_dirs[3][2])
++#endif
+ extern s32 env_fog_range[2];
+ 
+ /* .data */
 diff --git a/src/game/event/scene.c b/src/game/event/scene.c
 index 4c00a3a..8705a34 100644
 --- a/src/game/event/scene.c
@@ -314,10 +456,17 @@ index 4c00a3a..8705a34 100644
      camera_state.atY = camera_state.atY + camera_state.eyeY;
      camera_state.atZ = camera_state.eyeZ - camera_state.atZ;
 diff --git a/src/game/gfx/effect.c b/src/game/gfx/effect.c
-index 792d4bc..758809c 100644
+index 792d4bc..9fa8731 100644
 --- a/src/game/gfx/effect.c
 +++ b/src/game/gfx/effect.c
-@@ -297,7 +297,7 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/gfx/effect.h"
+ #include "game/actor/actor.h"
+ #include "game/camera/camera.h"
+@@ -297,7 +300,7 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
      u16 v = arg0->life;
  
      if (!(v & 3)) {
@@ -326,7 +475,34 @@ index 792d4bc..758809c 100644
      }
      arg0->scaleX = arg0->scaleY = effect_flipbook_scale_anim[v];
      gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, effect_flipbook_alpha_anim[arg0->life]);
-@@ -1084,7 +1084,7 @@ void Effect_DrawStatUpMarkers(struct GfxFrameData* arg0) {
+@@ -864,10 +867,16 @@ EffectModel* Effect_CreateModelEffect(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s3
+     p->upX = 0.0f;
+     p->upY = 0.0f;
+     p->upZ = 1.0f;
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSet((u32)(uptr)&D_800EB2B4[arg0]);
++#endif
+     p->anim = D_800EB2B4[arg0];
+     p->age = 0;
+     p->colorIndex = arg3;
+-    p->anim.dls = (Gfx**)D_800CADA8[arg1];
++    p->anim.dls = (u32)(uptr)D_800CADA8[arg1];
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSetDls(&p->anim);
++#endif
+     p->framesLeft = p->loopLength = p->anim.length;
+     p->flags = arg4;
+     p->animFrame = 0;
+@@ -950,7 +959,7 @@ void Effect_DrawModelEffectGeometry(EffectModel* arg0, struct GfxFrameData* arg1
+     scale.x = arg0->scaleX * 0.01;
+     scale.y = arg0->scaleY * 0.01;
+     scale.z = arg0->scaleZ * 0.01;
+-    anims = arg0->anim.nodes;
++    anims = (AnimNode *)(uptr)arg0->anim.nodes;
+     frame = arg0->animFrame;
+     if (gfx_mtx_index < 0x1E6) {
+         for (i = 0; i < arg0->anim.nodeCount; i++) {
+@@ -1084,7 +1093,7 @@ void Effect_DrawStatUpMarkers(struct GfxFrameData* arg0) {
                  {
                      Gfx* _g = gfx_dl_head++;
                      _g->words.w0 = 0x01020040;
@@ -457,8 +633,31 @@ index 1922075..64304e1 100644
  void Magic_SelectClosestAimTarget(MagicEffect *arg0);
  void Magic_SelectFirstActiveTarget(MagicEffect *arg0);
  void Magic_TargetCaster(MagicEffect *arg0);
+diff --git a/src/game/map/chest.c b/src/game/map/chest.c
+index ad8d378..e01bbb4 100644
+--- a/src/game/map/chest.c
++++ b/src/game/map/chest.c
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/map/chest.h"
+ #include "game/actor/actor.h"
+ #include "game/map/chest_flag.h"
+@@ -79,7 +82,11 @@ void Chest_LoadForMap(void) {
+         }
+     }
+     if (i != 19) {
++#ifdef ELTALE_P1_OS
++        group = Port_ChestGroup(entry->groups, map_subarea);
++#else
+         group = &entry->groups[map_subarea];
++#endif
+         chest_count = group->count;
+         i = chest_count;
+         def = group->defs;
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..bf046cd 100644
+index ebb5c68..994f06e 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -467,7 +666,29 @@ index ebb5c68..bf046cd 100644
  #include "game/audio/sound.h"
  #include "game/core/main.h"
  #include "game/env/env.h"
-@@ -157,9 +158,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
+@@ -25,6 +26,9 @@
+  * here from the top (2 more) to keep the margin centred. Above map.h about 96 more
+  * declarations still work. */
+ #include "game/map/map.h"
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/ui/menu.h"
+ #include "game/camera/camera.h"
+ #include "game/core/dma.h"
+@@ -50,6 +54,11 @@ extern struct MapDlPair D_8005E51C[];
+ /* Labels inside this file's D_80081AB0 (undefined_syms.txt); Map_LoadArea needs them as symbols. */
+ extern u16 D_80081B78[];
+ extern u16 D_80081B7A[];
++#ifdef ELTALE_P1_OS
++/* Port: these labels name fields of native objects (see undefined_syms.txt). */
++#define D_80081B78 (&D_80081AB0[0x64])
++#define D_80081B7A (&D_80081AB0[0x65])
++#endif
+ 
+ /* This file's .bss starts here: 8007C280..80082030 in address order, then
+  * D_80082030.. below. mapobj_billboard_list is a pointer table other files use.
+@@ -157,9 +166,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
  f32 mapobj_wave_z_div[4] = { 0.0f, 1000.0f, 5000.0f, 3000.0f };
  
  void Map_LoadArea(void) {
@@ -478,7 +699,7 @@ index ebb5c68..bf046cd 100644
      u16 *src;
      u16 *dst;
      s32 i;
-@@ -210,10 +209,8 @@ void Map_LoadArea(void) {
+@@ -210,10 +217,8 @@ void Map_LoadArea(void) {
              if (map_flags & 2) {
                  Dma_ReadRom(D_851F0, D_8010FE00, D_C8DE0 - D_851F0);
              }
@@ -491,7 +712,21 @@ index ebb5c68..bf046cd 100644
          }
          Dma_ReadRom(map_area_def->romStart, map_area_def->dst, map_area_def->romEnd - map_area_def->romStart);
          switch (map_id) {
-@@ -244,8 +241,8 @@ void Map_LoadArea(void) {
+@@ -224,7 +229,13 @@ void Map_LoadArea(void) {
+                 Dma_ReadRom(D_3E1090, D_801E0000, D_3F1BA0 - D_3E1090);
+                 break;
+         }
++#ifdef ELTALE_P1_OS
++        map_area_def = Port_MapArea(map_area_def, 1);
++#endif
+     }
++#ifdef ELTALE_P1_OS
++    map_area_def = Port_MapArea(&map_area_defs[map_id], 0);
++#endif
+     n = 0x65;
+     src = D_80081B78;
+     dst = D_80081B7A;
+@@ -244,8 +255,8 @@ void Map_LoadArea(void) {
      map_env_flags = env_area_settings->mapFlags;
      if (map_backdrop_id != env_area_settings->backdropId) {
          map_backdrop_id = env_area_settings->backdropId;
@@ -502,7 +737,7 @@ index ebb5c68..bf046cd 100644
      }
      if (exit_destination.entry != -1) {
          sp = &map_subarea_def->entries[exit_destination.entry];
-@@ -645,7 +642,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +656,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
@@ -511,6 +746,33 @@ index ebb5c68..bf046cd 100644
  }
  
  void MapObjAnim_ClearAll(void) {
+@@ -951,8 +962,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+     MapObj *s;
+ 
+     idx = type - 0x11;
++#ifdef ELTALE_P1_OS
++    /* port: the biased labels name these entries (D_8005E51C[type].a, D_8005E5AC[type]) */
++    dl = mapobj_animtex_dls[type - 0x11].b;
++    tex = mapobj_animtex_frame_tables[type - 0x11];
++#else
+     dl = D_8005E51C[type].a;
+     tex = D_8005E5AC[type];
++#endif
+     first = 0;
+     for (; count != 0; count--) {
+         s = *list++;
+@@ -1040,6 +1057,11 @@ s32 map_halfword_rotation_counter = 0;
+ 
+ extern u16 D_80081C40;
+ extern u16 D_80081C42;
++#ifdef ELTALE_P1_OS
++/* Port: these labels name fields of native objects (see undefined_syms.txt). */
++#define D_80081C40 (D_80081AB0[0xC8])
++#define D_80081C42 (D_80081AB0[0xC9])
++#endif
+ 
+ void Map_RotateHalfwordBuffer(void) {
+     s32 *cnt = &map_halfword_rotation_counter;
 diff --git a/src/game/map/map.h b/src/game/map/map.h
 index 98f7354..e8bbd56 100644
 --- a/src/game/map/map.h
@@ -537,11 +799,95 @@ index eed5d97..bd810ea 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
+diff --git a/src/game/math/keyframe.c b/src/game/math/keyframe.c
+index 198b105..bc0fcdb 100644
+--- a/src/game/math/keyframe.c
++++ b/src/game/math/keyframe.c
+@@ -29,11 +29,11 @@ void Math_EvalTcbSpline(KfAnim* anim, f32* out, s32 frame) {
+ 
+     if (anim->count == 1) {
+         for (i = 0; i < 9; i++) {
+-            out[(u32)i] = anim->kfs->v[i];
++            out[(u32)i] = ((Keyframe *)(uptr)anim->kfs)->v[i];
+         }
+         return;
+     }
+-    for (k1 = anim->kfs + 1; k1->frame < frame; k1++) {
++    for (k1 = (Keyframe *)(uptr)anim->kfs + 1; k1->frame < frame; k1++) {
+     }
+     frame -= k1[-1].frame;
+     len = k1->frame - k1[-1].frame;
+diff --git a/src/game/math/keyframe.h b/src/game/math/keyframe.h
+index df2372c..900f86e 100644
+--- a/src/game/math/keyframe.h
++++ b/src/game/math/keyframe.h
+@@ -14,7 +14,7 @@ typedef struct Keyframe {
+ } Keyframe; /* 0x34 bytes */
+ 
+ typedef struct KfAnim {
+-    /* 0x00 */ Keyframe* kfs;
++    /* 0x00 */ u32 kfs; /* Keyframe *; port: N64 layout (game/actor/anim.h) */
+     /* 0x04 */ u16 count;
+     /* 0x06 */ u16 last;
+ } KfAnim; /* 0x8 bytes */
+diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
+index 89b373a..ec9738c 100644
+--- a/src/game/npc/npc.c
++++ b/src/game/npc/npc.c
+@@ -180,7 +180,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+     u8 *end;
+ 
+     npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
++#ifdef ELTALE_P1_OS
++    /* port: the overlay area in RDRAM; func_8020C0D0 is a native function here */
++    Dma_ReadRom(D_86F6F0, (void *)(uptr)0x8020C0D0u, D_871D10 - D_86F6F0);
++#else
+     Dma_ReadRom(D_86F6F0, func_8020C0D0, D_871D10 - D_86F6F0);
++#endif
+     Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
+     start = npc_area_set_rom_range->start;
+     end = npc_area_set_rom_range->end;
+diff --git a/src/game/npc/npc.h b/src/game/npc/npc.h
+index e16ca6a..cb2771f 100644
+--- a/src/game/npc/npc.h
++++ b/src/game/npc/npc.h
+@@ -19,8 +19,14 @@ typedef struct NpcDef {
+     union {
+         /* 0x06 */ u16 boss_index;
+         struct {
++#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
++            /* port: the two bytes of boss_index, in host order */
++            u8 item_id;
++            u8 unk6_hi;
++#else
+             /* 0x06 */ u8 unk6_hi;
+             /* 0x07 */ u8 item_id;
++#endif
+         } b;
+     } u6;
+     /* 0x08 */ u16 message_offset; /* message offset */
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..2c32d7b 100644
+index c8c3fd5..eb692d5 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
-@@ -199,7 +199,7 @@ void Player_Spawn(void) {
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "common.h"
+ #include "game/player/player.h"
+ #include "game/actor/anim.h"
+@@ -102,6 +105,9 @@ s32 player_light_slot;
+ 
+ void Player_Init(void) {
+     Dma_ReadRom(D_869620, D_80206000, D_86F6F0 - D_869620);
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSets((u32)(uptr)player_char_data[0]);
++#endif
+     player_stats = player_default_stats;
+     player_state.actor.scale = player_stats.scale;
+     player_state.actor.collisionRadius = player_stats.body_radius;
+@@ -199,7 +205,7 @@ void Player_Spawn(void) {
                  p->actor.z = pos->z + player_temp_vec.y * p->actor.scale;
                  p->actor.animFlags = 1;
                  Player_LoadAnim(&player_state.actor);
@@ -550,7 +896,7 @@ index c8c3fd5..2c32d7b 100644
                  MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
                  Sfx_Play(n, 8, 0xFF);
                  break;
-@@ -213,7 +213,7 @@ void Player_Spawn(void) {
+@@ -213,7 +219,7 @@ void Player_Spawn(void) {
                  p->move_step_z = player_temp_vec.y;
                  p->actor.animFlags = 1;
                  Player_LoadAnim(&player_state.actor);
@@ -559,7 +905,7 @@ index c8c3fd5..2c32d7b 100644
                  MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
                  Sfx_Play(5, 0x21, 0xFF);
                  Sfx_Play(0xF, 0x21, 0xFF);
-@@ -361,7 +361,7 @@ void Player_Update(void) {
+@@ -361,7 +367,7 @@ void Player_Update(void) {
                      p->actor.rot = player_front_chest->rot;
                      p->finish_angle = player_front_chest->rot + 3.141592653589793;
                      p->item_id = player_front_chest->animSetIndex;
@@ -568,7 +914,17 @@ index c8c3fd5..2c32d7b 100644
                      player_front_chest = NULL;
                  } else if (player_front_text_spot != NULL) {
                      TextSpot_LoadMessage(player_front_text_spot);
-@@ -1494,10 +1494,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
+@@ -1171,6 +1177,9 @@ void Player_MoveRun(f32 sx, f32 sz, Actor *a, Player *p) {
+ }
+ 
+ void Player_GetAnimMotion(Actor *arg0, AnimSet *arg1, Vec3f *arg2) {
++#ifdef ELTALE_P1_OS
++    Port_SwapAnimSet((u32)(uptr)arg1);
++#endif
+     Player_LoadAnim(arg0);
+     Anim_UpdateRootMotion(arg0, &arg1[arg0->animIndex], arg0->scale);
+     arg2->x = -arg0->unk44;
+@@ -1494,10 +1503,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
      arg1->animFlags |= 1;
  }
  
@@ -582,10 +938,48 @@ index c8c3fd5..2c32d7b 100644
      arg0->state_timer = 0x5A;
      arg1->animFlags |= 1;
 diff --git a/src/game/player/player.h b/src/game/player/player.h
-index 8d67837..d32ddb5 100644
+index 8d67837..1f91b77 100644
 --- a/src/game/player/player.h
 +++ b/src/game/player/player.h
-@@ -180,7 +180,7 @@ void Player_PushOutOfObjects(f32 *arg0, f32 *arg1, Actor *arg2);
+@@ -143,6 +143,37 @@ extern u8 D_8007AA02; /* player_stats.agility_growth_rank */
+ extern u8 D_8007AA03; /* player_stats.defense_growth_rank */
+ extern u8 D_8007AA04; /* player_stats.level */
+ extern s32 D_8007AA10; /* player_state.flags */
++#ifdef ELTALE_P1_OS
++/* Port: these labels name fields of native objects (see undefined_syms.txt). */
++#define D_8007AA20 (player_state.actor)
++#define D_8007AA24 (player_state.actor.y)
++#define D_8007AA28 (player_state.actor.z)
++#define D_8007AA70 (player_state.actor.animSetIndex)
++#define D_8007AA72 (player_state.actor.animIndex)
++#define D_8007AA78 (player_state.actor.animStep)
++#define D_8007AA84 (player_state.actor.stats)
++#define D_8007A9D4 (player_stats.hp)
++#define D_8007A9D6 (player_stats.max_hp)
++#define D_8007A9D8 (player_stats.mp)
++#define D_8007A9DA (player_stats.max_mp)
++#define D_8007A9DC (player_stats.agility)
++#define D_8007A9DE (player_stats.defense)
++#define D_8007A9E0 (player_stats.exp)
++#define D_8007A9F4 (player_stats.element_levels[0])
++#define D_8007A9F5 (player_stats.element_levels[1])
++#define D_8007A9F6 (player_stats.element_levels[2])
++#define D_8007A9F7 (player_stats.element_levels[3])
++#define D_8007A9F8 (player_stats.hp_xp)
++#define D_8007A9FA (player_stats.mp_xp)
++#define D_8007A9FC (player_stats.agility_xp)
++#define D_8007A9FE (player_stats.defense_xp)
++#define D_8007AA00 (player_stats.hp_growth_rank)
++#define D_8007AA01 (player_stats.mp_growth_rank)
++#define D_8007AA02 (player_stats.agility_growth_rank)
++#define D_8007AA03 (player_stats.defense_growth_rank)
++#define D_8007AA04 (player_stats.level)
++#define D_8007AA10 (player_state.flags)
++#endif
+ 
+ /* .data */
+ extern PlayerStateFunc player_state_handlers[18];
+@@ -180,7 +211,7 @@ void Player_PushOutOfObjects(f32 *arg0, f32 *arg1, Actor *arg2);
  void Player_ApplyFloorEffect(Player *arg0, Actor *arg1);
  void Player_StartAreaExit(void);
  void Player_StartObjectExit(Player *arg0, Actor *arg1);
@@ -674,9 +1068,48 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..8f65565 100644
+index c955abf..a97fba3 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
+@@ -1432,19 +1432,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
+ u32 mapobjanim_type23_keys[0x8F] = {
+ #include "assets/mapobjanim_type23_keys.inc.c"
+ };
+-AnimNode mapobjanim_type23_anim = { { (Keyframe *)mapobjanim_type23_keys, 0x000B, 0x0051 } };
++AnimNode mapobjanim_type23_anim = { { PORT_ADDR(mapobjanim_type23_keys), 0x000B, 0x0051 } };
+ u32 D_80057A18[0xC3] = {
+ #include "assets/D_80057A18.inc.c"
+ };
+-AnimNode D_80057D24 = { { (Keyframe *)D_80057A18, 0x000F, 0x006E } };
++AnimNode D_80057D24 = { { 0x80057A18u, 0x000F, 0x006E } };
+ u32 mapobjanim_type23_odd_keys[0x8F] = {
+ #include "assets/mapobjanim_type23_odd_keys.inc.c"
+ };
+-AnimNode mapobjanim_type23_odd_anim = { { (Keyframe *)mapobjanim_type23_odd_keys, 0x000B, 0x0064 } };
++AnimNode mapobjanim_type23_odd_anim = { { PORT_ADDR(mapobjanim_type23_odd_keys), 0x000B, 0x0064 } };
+ u32 mapobjanim_type4_keys[0x1A] = {
+ #include "assets/mapobjanim_type4_keys.inc.c"
+ };
+-AnimNode mapobjanim_type4_anim = { { (Keyframe *)mapobjanim_type4_keys, 2, 0x001E } };
++AnimNode mapobjanim_type4_anim = { { PORT_ADDR(mapobjanim_type4_keys), 2, 0x001E } };
+ u32 mapobj_loop_anim0_keys[0x27] = {
+ #include "assets/mapobj_loop_anim0_keys.inc.c"
+ };
+@@ -1458,10 +1458,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
+ #include "assets/mapobj_loop_anim3_keys.inc.c"
+ };
+ AnimNode mapobj_loop_anims[4] = {
+-    { { (Keyframe *)mapobj_loop_anim0_keys, 3, 0x003C } },
+-    { { (Keyframe *)mapobj_loop_anim1_keys, 4, 0x003C } },
+-    { { (Keyframe *)mapobj_loop_anim2_keys, 5, 0x0050 } },
+-    { { (Keyframe *)mapobj_loop_anim3_keys, 5, 0x0050 } },
++    { { PORT_ADDR(mapobj_loop_anim0_keys), 3, 0x003C } },
++    { { PORT_ADDR(mapobj_loop_anim1_keys), 4, 0x003C } },
++    { { PORT_ADDR(mapobj_loop_anim2_keys), 5, 0x0050 } },
++    { { PORT_ADDR(mapobj_loop_anim3_keys), 5, 0x0050 } },
+ };
+ u16 mapobj_kind11_tlut[0x200] = {
+ #include "assets/mapobj_kind11_tlut.inc.c"
 @@ -1536,7 +1536,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
@@ -740,6 +1173,22 @@ index c955abf..8f65565 100644
  MapBackdropDef map_backdrop_defs[8] = {
      { 0x00D86970, 0x01001300 }, { 0x00D8B170, 0x01001300 }, { 0x00D8F970, 0x01002410 }, { 0x00D92D70, 0x01003630 },
      { 0x00D96570, 0x01003630 }, { 0x00D99D70, 0x01003630 }, { 0x00D9D570, 0x01003630 }, { 0x00DA0D70, 0x01003630 },
+diff --git a/src/game/ui/menu.h b/src/game/ui/menu.h
+index a56b278..4f08d5e 100644
+--- a/src/game/ui/menu.h
++++ b/src/game/ui/menu.h
+@@ -96,6 +96,11 @@ extern EnemyEffectDef enemy_effect_defs[22];
+  * reads them as their own symbols in retail. */
+ extern u16 D_8005685A;
+ extern u16 D_8005685C;
++#ifdef ELTALE_P1_OS
++/* Port: these labels name fields of native objects (see undefined_syms.txt). */
++#define D_8005685A (enemy_effect_defs[20].color_index)
++#define D_8005685C (enemy_effect_defs[20].flags)
++#endif
+ extern s32 D_80056878[2];
+ extern MenuRomRange npc_area_set_rom_ranges[7];
+ extern u8 npc_area_entry_message[0x2F8];
 diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
 index fe5a9e7..1860370 100644
 --- a/src/overlays/ending/ending_data.c

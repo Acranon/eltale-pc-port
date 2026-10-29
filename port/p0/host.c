@@ -1,6 +1,9 @@
 #ifndef _WIN32
 #define _GNU_SOURCE
 #endif
+#ifdef ELTALE_P1_OS
+#include "port/data.h"
+#endif
 #include "port/p0/host.h"
 #include "port/boot_probe.h"
 #include "game/core/main.h"
@@ -126,6 +129,9 @@ int Port_HostInit(const char *rom_path) {
      * keeps its own copy of this data; the RDRAM copy is what fixed display lists
      * (PORT_ADDR) point at, as raw big-endian N64 bytes. */
     memcpy((void *)(RDRAM_BASE + 0x400), rom_bytes + 0x1000, 0x100000);
+#ifdef ELTALE_P1_OS
+    Port_SwapNativeKeyframes();
+#endif
     /* Display-list words carry 32-bit addresses (PR/gbi.h). That only works if the
      * game's image sits below 4 GiB and clear of the RDRAM range. Stacks are not
      * checked: the RSP reads a list after the code that built it has returned, so
@@ -251,6 +257,9 @@ s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
                 dev_addr, (unsigned long long)addr, size);
         Port_HostFatal("ROM DMA destination outside mapped RDRAM");
     }
+#ifdef ELTALE_P1_OS
+    Port_DataForget((u32)(uptr)dst, size);
+#endif
     memcpy(dst, rom_bytes + dev_addr, size);
     dma_count++;
     dma_bytes += size;

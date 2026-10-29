@@ -544,10 +544,10 @@ void osSpTaskStartGo(OSTask *task) {
             Port_HostFatal("invalid graphics task display list");
         last_gfx_hash = hash_display_list((const Gfx *)task->t.data_ptr, words);
         gfx_task_count++;
-        if (getenv("ELTALE_DUMP_DL") && gfx_task_count == 3) {
+        if (getenv("ELTALE_DUMP_DL") && (unsigned)atoi(getenv("ELTALE_DUMP_DL")) == gfx_task_count) {
             const Gfx *dl = (const Gfx *)task->t.data_ptr;
             for (unsigned i = 0; i < words; i++)
-                fprintf(stderr, "DL3[%u]=%08x:%08x norm=%08x\n", i,
+                fprintf(stderr, "DL[%u]=%08x:%08x norm=%08x\n", i,
                         dl[i].words.w0, dl[i].words.w1,
                         normalized_second_word(&dl[i]));
         }

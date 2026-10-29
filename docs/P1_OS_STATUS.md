@@ -123,3 +123,49 @@ make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/baserom.jp.z64 FRAMES=100 INPUT=t
   then drive a save and load through the in-game menu.
 - Native audio synthesis and rendering remain the later P1 slices. Their
   sequence and SFX calls are quiescent stand-ins for the headless OS path.
+
+## P1 step 1: New Game reaches gameplay (Claude, 2026-10-28)
+
+`tests/title-new-game.input` (Start every 30 VIs) now goes boot, intro, title,
+New Game and runs gameplay: 700 frames headless reach `mode=1` with 914-command
+display lists, on Windows and Linux, with no crash. What it took:
+
+- **Map area records** (`port/data/map_area.c`): after Map_LoadArea's DMA the
+  area block's record graph (sub-areas, grids, map objects, models with their
+  collision triangles and vertices, exits, entry points, environment keyframes,
+  camera presets, walls, encounter tables, NPC lists) is decoded into native
+  copies, and `map_area_def` points at the copy. Display lists, textures and
+  vertices stay N64 bytes in RDRAM at their N64 addresses. Array lengths come
+  from the records' counts, the largest index used, or the next record start
+  in the block. Chest groups are decoded the same way (`Port_ChestGroup`).
+- **Animation records keep their N64 layout** (`port/data/anim.c`): AnimSet,
+  AnimNode and KfAnim hold addresses as `u32`, because the game indexes them
+  with N64 strides and reads fields at N64 offsets (PlayerAnimTable). They are
+  byte-swapped in place in RDRAM. A bitmap over RDRAM marks swapped halfwords,
+  so shared records swap once, and a DMA over a range forgets it. The anim
+  functions swap their set on use (its nodes can be in a block loaded later).
+  The game's own AnimNodes in menu.c point at their keyframes' RDRAM copies
+  (`PORT_ADDR`), swapped once at startup.
+- **Address labels inside native objects** (player.h, env.h, menu.h, map.c):
+  the N64 labels the matching build uses for fields (`D_8007AA70` =
+  `player_state.actor.animSetIndex`, ...) are macros for those fields on the
+  host, and two biased-base labels in MapObj_DrawAnimTexBillboards read their
+  tables directly. NpcDef's byte view of `boss_index` is ordered for the host.
+- **Decomp fix** (eltale-decomp 93b0ca0): the day-phase table was split in two,
+  and Env_InitForMap walked past the first part.
+- `-Werror=int-conversion` on Linux too (Clang already errors).
+
+Open after step 1:
+
+- **Windows and Linux diverge from frame 10** (the title, right after the first
+  Start): a fade's prim alpha is 0xF2 on Windows and 0 on Linux. Each platform
+  is deterministic on its own. Not yet traced; likely undefined behaviour or a
+  host library difference in title/fade code.
+- Other N64-pointer tables in native data still read RDRAM through native types
+  (enemy area sets and EnemyDefs, boss data, scenes, cutscene camera tracks,
+  map-object animations): they crash or misbehave when reached. Same two tools
+  apply: decode into native copies, or N64 layout plus in-place swap.
+- AnimSet table ends are found by validity checks, which could swap data that
+  only looks like an AnimSet; table lengths from the data would be safer.
+- No in-game save yet; the gameplay busy-wait did not hang in this run but is
+  still a poll.

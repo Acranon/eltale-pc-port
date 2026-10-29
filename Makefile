@@ -15,12 +15,12 @@ OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
-OS_OBJ := $(patsubst port/os/%.c,$(OUT)/obj/os/%.o,$(OS_SRC))
+OS_OBJ := $(patsubst port/%.c,$(OUT)/obj/port/%.o,$(OS_SRC))
 GU_OBJ := $(patsubst decomp/src/libultra/gu/%.c,$(OUT)/obj/gu/%.o,$(GU_SRC))
 BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ)
 ifeq ($(P1_OS),1)
@@ -38,7 +38,7 @@ CPPFLAGS += -DELTALE_P1_OS
 endif
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
-  -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast
+  -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
 LDFLAGS := -no-pie -Wl,--gc-sections -lm
 
 .PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean
@@ -67,7 +67,7 @@ $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/add
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(OUT)/obj/os/%.o: port/os/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
+$(OUT)/obj/port/%.o: port/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
