@@ -212,3 +212,11 @@ D_803AB2F0, D_803AA6C4, D_803AA690, D_803AA628, D_803A8778 (1 each). Find the
 DMA that loads the block, give each table an N64-layout type (u32 for
 pointers), and swap the block in place after the DMA as port/data/anim.c does,
 or decode the tables into native copies.
+
+Update: the unswapped texture pointer was HudTextureDesc (D_803A86F8 and the
+other descriptors in the common block). Hud_LoadTextureTile now reads a
+descriptor in RDRAM as N64 fields (port/data.h has Port_N64U16/U32/Ptr for
+this), and Hud's palette table D_803A8778 is read the same way. Gameplay
+frames now have no unresolved address; the 700-frame run ends at hash
+74b8baf63f9c1889 on Windows and Linux. The other common-block tables above
+are still read natively.

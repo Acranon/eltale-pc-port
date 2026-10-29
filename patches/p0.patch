@@ -1041,10 +1041,17 @@ index 4f9f215..e6d9cce 100644
      { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
      ;
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..9b054c1 100644
+index e6f79b4..d2589b7 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
-@@ -128,7 +128,7 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -1,3 +1,6 @@
++#ifdef ELTALE_P1_OS
++#include "port/data.h"
++#endif
+ #include "game/ui/hud.h"
+ #include "game/camera/camera.h"
+ #include "game/gfx/effect.h"
+@@ -128,7 +131,7 @@ void Hud_Draw(GfxFrameData* buf) {
      }
      if (!(core_flags & 0xC00)) {
          Hud_DrawPlayerMeters((Actor*)&player_state.actor);
@@ -1053,7 +1060,7 @@ index e6f79b4..9b054c1 100644
          if (hud_panel_transition_state == 1) {
              if (++hud_panel_transition_frame >= 13) {
                  hud_panel_transition_frame = 12;
-@@ -237,7 +237,7 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+@@ -237,7 +240,7 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
  extern Gfx D_803AA3C8[];
  extern Gfx D_803AA2F8[];
  
@@ -1062,7 +1069,7 @@ index e6f79b4..9b054c1 100644
      s32 x;
      f32 fx;
      f32 fy;
-@@ -984,7 +984,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -984,7 +987,7 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -1071,6 +1078,34 @@ index e6f79b4..9b054c1 100644
      flags = Magic_GetSpellRestrictionFlags(id, arg4);
      tmp = (id >> 8) & 0xF;
      id &= 0xFF;
+@@ -1003,7 +1006,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+     s32 row;
+ 
+     gDPPipeSync(gfx_dl_head++);
++#ifdef ELTALE_P1_OS
++    gDPLoadTLUT_pal16(gfx_dl_head++, 0, Port_N64Ptr(D_803A8778, pal)); /* an N64 table in RDRAM */
++#else
+     gDPLoadTLUT_pal16(gfx_dl_head++, 0, D_803A8778[pal]);
++#endif
+     while (*str != 0xFF) {
+         if (*str == 0x80) {
+             Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
+@@ -1065,6 +1072,15 @@ void func_80024A4C(void) {
+ }
+ 
+ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
++#ifdef ELTALE_P1_OS
++    HudTextureDesc local; /* port: the descriptors are N64 records in RDRAM (the common block) */
++    if (Port_InRdram(tex)) {
++        local.img = (void *)(uptr)Port_N64U32(tex, 0);
++        local.is4b = Port_N64U16(tex, 4);
++        local.width = Port_N64U32(tex, 8);
++        tex = &local;
++    }
++#endif
+     if (tex->is4b == 0) {
+         gDPLoadTextureTile(gfx_dl_head++, tex->img, G_IM_FMT_CI, G_IM_SIZ_8b, tex->width, 0, x, y, x + w, y + h, 0,
+                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
 diff --git a/src/game/ui/hud.h b/src/game/ui/hud.h
 index 3246010..539f21a 100644
 --- a/src/game/ui/hud.h

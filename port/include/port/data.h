@@ -27,4 +27,22 @@ void Port_SwapAnimSetDls(const struct AnimSet *set);
 /* Swap the keyframe tables the game's own AnimNodes use (after the boot copy). */
 void Port_SwapNativeKeyframes(void);
 
+/* Entry i of an N64 pointer table in RDRAM (big-endian 32-bit addresses), as a pointer. */
+static inline void *Port_N64Ptr(const void *table, int i) {
+    const unsigned char *p = (const unsigned char *)table + i * 4;
+    return (void *)(uintptr_t)((uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]);
+}
+
+/* N64 big-endian fields of a record in RDRAM. */
+static inline int Port_InRdram(const void *p) {
+    return (uintptr_t)p >= 0x80000000u && (uintptr_t)p < 0x80800000u;
+}
+static inline uint16_t Port_N64U16(const void *rec, int off) {
+    const unsigned char *p = (const unsigned char *)rec + off;
+    return (uint16_t)(p[0] << 8 | p[1]);
+}
+static inline uint32_t Port_N64U32(const void *rec, int off) {
+    return (uint32_t)Port_N64U16(rec, off) << 16 | Port_N64U16(rec, off + 2);
+}
+
 #endif
