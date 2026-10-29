@@ -106,7 +106,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..c799bb8 100644
+index db2ffb3..03cff35 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,6 @@
@@ -120,7 +120,7 @@ index db2ffb3..c799bb8 100644
          if (core_game_mode == 0) {
              core_game_mode = 1;
          }
-+#ifdef ELTALE_P0_BOOT_PROBE
++#if defined(ELTALE_P0_BOOT_PROBE) && !defined(ELTALE_P1_OS)
 +        Core_RunIntroLoop();
 +#else
          switch (core_game_mode) {
@@ -147,7 +147,7 @@ index db2ffb3..c799bb8 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
-+#ifdef ELTALE_P0_BOOT_PROBE
++#if defined(ELTALE_P0_BOOT_PROBE) && !defined(ELTALE_P1_OS)
 +    if (core_game_mode == 4) {
 +        func_8020C16C();
 +    }
@@ -167,7 +167,7 @@ index db2ffb3..c799bb8 100644
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
-+#ifndef ELTALE_P0_BOOT_PROBE
++#if !defined(ELTALE_P0_BOOT_PROBE) || defined(ELTALE_P1_OS)
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
@@ -183,7 +183,7 @@ index db2ffb3..c799bb8 100644
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
-+#ifdef ELTALE_P0_BOOT_PROBE
++#if defined(ELTALE_P0_BOOT_PROBE) && !defined(ELTALE_P1_OS)
 +        Port_P0DisplayListReady(&D_80301000[gfx_frame_index]);
 +#endif
          frame = &D_80301000[gfx_frame_index];
@@ -193,7 +193,7 @@ index db2ffb3..c799bb8 100644
      Gfx_WaitForFrameMessage(2);
  }
  
-+#ifndef ELTALE_P0_BOOT_PROBE
++#if !defined(ELTALE_P0_BOOT_PROBE) || defined(ELTALE_P1_OS)
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
@@ -335,18 +335,27 @@ index 300a0ba..16d5c60 100644
      {{ 0xB8000000, 0x00000000 }},
  };
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..21cf5de 100644
+index cc5330a..cefd08a 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
      return ret;
  }
  
-+#ifndef ELTALE_P0_BOOT_PROBE
++#if !defined(ELTALE_P0_BOOT_PROBE) || defined(ELTALE_P1_OS)
  void Input_ReadController(s32 cont) {
      OSContPad *pad;
      u16 button;
-@@ -212,7 +213,7 @@ u8 Pak_AllocateGameFile(s32 arg0, u8 arg1) {
+@@ -104,6 +105,8 @@ void Input_ReadController(s32 cont) {
+     input_previous_button_inverse = ~button;
+ }
+ 
++#endif
++#ifndef ELTALE_P0_BOOT_PROBE
+ s32 Pak_ScanGameFiles(s32 cont) {
+     s32 i;
+     s32 pad1;
+@@ -212,7 +215,7 @@ u8 Pak_AllocateGameFile(s32 arg0, u8 arg1) {
      ext = pak_allocate_extension_template;
      file_no = -1;
      ext.b[0] = arg1;
@@ -355,7 +364,7 @@ index cc5330a..21cf5de 100644
      if (ret == 0) {
          ret = file_no;
          pak_game_file_scans[arg0].note_ext_first_bytes[ret] = arg1;
-@@ -228,7 +229,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
+@@ -228,7 +231,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
  
      ext = pak_delete_extension_template;
      ext.b[0] = arg1;
@@ -364,7 +373,7 @@ index cc5330a..21cf5de 100644
  }
  
  s32 Pak_ReadFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
-@@ -321,3 +322,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
+@@ -321,3 +324,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
  void Pak_InitGbPak(void) {
      func_8003D6B0();
  }

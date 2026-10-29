@@ -51,9 +51,19 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
 
 int main(int argc, char **argv) {
     const char *rom = NULL;
+    unsigned requested_frames = 1;
+    int fast = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) rom = argv[++i];
-        else if (!strcmp(argv[i], "--headless") || !strcmp(argv[i], "--fast")) { }
+#ifdef ELTALE_P1_OS
+        else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
+            requested_frames = (unsigned)strtoul(argv[++i], NULL, 10);
+            if (!requested_frames || requested_frames > 10000)
+                Port_HostFatal("--frames must be between 1 and 10000");
+        }
+#endif
+        else if (!strcmp(argv[i], "--fast")) fast = 1;
+        else if (!strcmp(argv[i], "--headless")) { }
         else {
             fprintf(stderr, "usage: eltale-p0 --rom path [--headless --fast]\n");
             return 2;
@@ -64,8 +74,17 @@ int main(int argc, char **argv) {
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
     Port_OsInit();
+    Port_OsSetFrameLimit(requested_frames);
+    Port_OsSetFast(fast);
     Boot_Main(0);
     Port_OsRun();
+    if (Port_OsFrameCount() != requested_frames ||
+        Port_OsGfxTaskCount() < requested_frames || intro_pak_check_done != 1)
+        Port_HostFatal("P1 OS did not complete the requested intro frames");
+    printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u last_hash=%016llx\n",
+           Port_OsFrameCount(), Port_OsGfxTaskCount(), Port_OsRunCount(),
+           Port_HostDmaCount(), (unsigned long long)Port_OsLastGfxHash());
+    return 0;
 #else
     if (setjmp(boot_done) == 0) {
         Boot_Main(0);

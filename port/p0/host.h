@@ -13,5 +13,6 @@ unsigned Port_HostRunThreadCount(void);
 unsigned Port_HostIntroUpdateCount(void);
 int Port_HostRomSpanMatches(uint32_t rom_offset, uintptr_t ram_address, size_t length);
 __attribute__((noreturn)) void Port_HostFatal(const char *what);
+void Port_HostPace(uint64_t virtual_ticks);
 
 #endif

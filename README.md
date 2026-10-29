@@ -49,5 +49,18 @@ the three scheduler workers are registered but not run. Visible intro
 frames, rendering, input, saves and wider ABI/endian conversion follow.
 See [P0 status](docs/P0_STATUS.md) and the [boot audit](docs/P0_BOOT_AUDIT.md).
 
+## P1 OS development
+
+The fiber-scheduled OS can run deterministic intro frames on native Windows:
+
+```powershell
+python tools/build_windows.py --p1-os --frames 60 --rom "C:\path\to\eltalemonsters.jp.z64"
+```
+
+The run logs each completed display-list hash and ends with `P1_OS_OK`.
+Linux/WSL uses `make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/rom.z64
+FRAMES=60`. The [OS status](docs/P1_OS_STATUS.md) records the completed
+scheduler/event slices and the remaining audio, controller and Pak work.
+
 To change game source, edit `work/src/` and run `python3 tools/patches.py save`.
 The resulting `patches/p0.patch` is committed; `decomp/` stays clean.

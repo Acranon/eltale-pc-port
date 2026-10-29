@@ -31,6 +31,8 @@ def main() -> None:
                         help="also compile every game and overlay C module into a native archive")
     parser.add_argument("--p1-os", action="store_true",
                         help="use the fiber scheduler instead of P0 synchronous threads")
+    parser.add_argument("--frames", type=int, default=1,
+                        help="P1 OS: stop after this many completed graphics frames")
     args = parser.parse_args()
     global OUT
     if args.p1_os:
@@ -83,10 +85,19 @@ def main() -> None:
         obj = OUT / f"source_{index}.o"
         print(f"compile {source}", flush=True)
         if source == "port/p0/unavailable.c":
-            run([cc, "-std=gnu11", "-O2", "-c", source, "-o", str(obj)])
+            extra = ["-DELTALE_P1_OS"] if args.p1_os else []
+            run([cc, "-std=gnu11", "-O2", *extra, "-c", source, "-o", str(obj)])
         else:
             run([cc, *flags, *includes, "-c", source, "-o", str(obj)])
         objects.append(obj)
+
+    if args.p1_os:
+        address_map = OUT / "host_address_map.c"
+        run([sys.executable, "tools/gen_host_address_map.py", str(address_map),
+             *(str(obj) for obj in objects[:len(boot_sources)])])
+        address_map_obj = OUT / "host_address_map.o"
+        run([cc, "-std=gnu11", "-O2", "-c", str(address_map), "-o", str(address_map_obj)])
+        objects.append(address_map_obj)
 
     asm = OUT / "abs.s"
     run([sys.executable, "tools/gen_abs_symbols.py", "--asm", str(asm),
@@ -109,12 +120,16 @@ def main() -> None:
     if args.p1_os:
         fiber_test = OUT / "fiber-test.exe"
         scheduler_test = OUT / "os-scheduler-test.exe"
+        events_test = OUT / "os-events-test.exe"
         run([cc, "-std=gnu11", "-O2", "-Iport/include", "-I.",
              "tests/fiber_test.c", "port/os/fiber.c", "-o", str(fiber_test)])
         run([cc, *flags, *includes, "tests/os_scheduler_test.c",
              "port/os/kernel.c", "port/os/fiber.c", "-o", str(scheduler_test)])
+        run([cc, *flags, *includes, "tests/os_events_test.c",
+             "port/os/kernel.c", "port/os/fiber.c", "-o", str(events_test)])
         run([str(fiber_test)])
         run([str(scheduler_test)])
+        run([str(events_test)])
     if args.full_compile:
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))
@@ -134,7 +149,10 @@ def main() -> None:
     if args.build_only:
         print(f"Windows {'P1 OS' if args.p1_os else 'P0'} build OK: {exe}")
         return
-    run([str(exe), "--rom", str(args.rom), "--headless", "--fast"])
+    command = [str(exe), "--rom", str(args.rom), "--headless", "--fast"]
+    if args.p1_os:
+        command += ["--frames", str(args.frames)]
+    run(command)
 
 
 if __name__ == "__main__":

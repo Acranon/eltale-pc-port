@@ -4,9 +4,15 @@
 #include "port/p0/host.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-enum { MAX_OS_THREADS = 64, FIBER_STACK_BYTES = 0x40000 };
+enum { MAX_OS_THREADS = 64, FIBER_STACK_BYTES = 0x40000,
+       MAX_PENDING_EVENTS = 128, MAX_HOST_TIMERS = 16, COUNTS_PER_VI = 781250 };
+/* initialize.c starts at 62.5 MHz, then applies the N64 3/4 count ratio. */
+u64 osClockRate = UINT64_C(46875000);
+s32 osViClock = VI_NTSC_CLOCK;
 typedef enum ThreadState {
     THREAD_CREATED,
     THREAD_READY,
@@ -46,6 +52,81 @@ typedef struct HostEvent {
     OSMesg message;
 } HostEvent;
 static HostEvent events[OS_NUM_EVENTS];
+static OSMesgQueue *vi_queue;
+static OSMesg vi_message;
+static u32 vi_fields;
+static uint64_t clock_count;
+static uint64_t next_vi_tick;
+static uint64_t vi_count;
+static void *current_framebuffer;
+static unsigned frame_limit;
+static int fast_mode;
+static unsigned frame_count;
+static unsigned gfx_task_count;
+static uint64_t last_gfx_hash;
+static OSTask *loaded_task;
+
+typedef struct PendingEvent {
+    OSMesgQueue *queue;
+    OSMesg message;
+} PendingEvent;
+static PendingEvent pending[MAX_PENDING_EVENTS];
+static unsigned pending_first, pending_count;
+
+typedef struct HostTimer {
+    OSTimer *n64;
+    OSMesgQueue *queue;
+    OSMesg message;
+    uint64_t deadline;
+    uint64_t interval;
+    int active;
+} HostTimer;
+static HostTimer timers[MAX_HOST_TIMERS];
+
+static void post_event(OSMesgQueue *queue, OSMesg message) {
+    if (!queue) return;
+    if (pending_count == MAX_PENDING_EVENTS) Port_HostFatal("OS event queue full");
+    pending[(pending_first + pending_count) % MAX_PENDING_EVENTS] =
+        (PendingEvent){ queue, message };
+    pending_count++;
+}
+
+void Port_OsPostPi(OSMesgQueue *queue, OSMesg message) {
+    post_event(queue, message);
+}
+
+static void deliver_pending(void) {
+    while (pending_count) {
+        PendingEvent item = pending[pending_first];
+        pending_first = (pending_first + 1) % MAX_PENDING_EVENTS;
+        pending_count--;
+        osSendMesg(item.queue, item.message, OS_MESG_NOBLOCK);
+    }
+}
+
+static void advance_to_event(void) {
+    uint64_t next = next_vi_tick;
+    for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
+        if (timers[i].active && timers[i].deadline < next)
+            next = timers[i].deadline;
+    }
+    if (next == UINT64_MAX) Port_HostFatal("OS idle with no virtual event");
+    clock_count = next;
+    if (!fast_mode) Port_HostPace(clock_count);
+    if (clock_count == next_vi_tick) {
+        vi_count++;
+        next_vi_tick += COUNTS_PER_VI;
+        if (vi_queue && vi_fields && vi_count % vi_fields == 0)
+            post_event(vi_queue, vi_message);
+    }
+    for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
+        HostTimer *timer = &timers[i];
+        if (!timer->active || timer->deadline > clock_count) continue;
+        post_event(timer->queue, timer->message);
+        if (timer->interval) timer->deadline += timer->interval;
+        else timer->active = 0;
+    }
+}
 
 static HostThread *find_thread(OSThread *n64) {
     for (unsigned i = 0; i < thread_count; i++) {
@@ -101,15 +182,38 @@ void Port_OsInit(void) {
     current = NULL;
     stopping = 0;
     interrupt_mask = OS_IM_NONE;
+    vi_queue = NULL;
+    vi_fields = 0;
+    vi_message = NULL;
+    clock_count = vi_count = 0;
+    next_vi_tick = COUNTS_PER_VI;
+    current_framebuffer = NULL;
+    frame_limit = frame_count = gfx_task_count = 0;
+    fast_mode = 1;
+    last_gfx_hash = 0;
+    loaded_task = NULL;
+    pending_first = pending_count = 0;
+    memset(timers, 0, sizeof timers);
     host_fiber = port_fiber_main();
     if (!port_fiber_fixed()) Port_HostFatal("OS fiber stacks are not at their fixed address");
 }
 
 void Port_OsRun(void) {
     if (!host_fiber) Port_HostFatal("OS scheduler was not initialized");
+    if (!fast_mode) Port_HostPace(0);
     while (!stopping) {
+        deliver_pending();
         HostThread *next = best_ready();
-        if (!next) Port_HostFatal("OS idle with no virtual event scheduled");
+        if (!next) {
+            if (!vi_queue) {
+                int has_timer = 0;
+                for (unsigned i = 0; i < MAX_HOST_TIMERS; i++)
+                    has_timer |= timers[i].active;
+                if (!has_timer) Port_HostFatal("OS idle with no virtual event scheduled");
+            }
+            advance_to_event();
+            continue;
+        }
         current = next;
         next->state = THREAD_RUNNING;
         next->n64->state = OS_STATE_RUNNING;
@@ -132,6 +236,11 @@ void Port_OsStop(void) {
 unsigned Port_OsThreadCount(void) { return thread_count; }
 unsigned Port_OsStartedCount(void) { return started_count; }
 unsigned Port_OsRunCount(void) { return ran_count; }
+unsigned Port_OsFrameCount(void) { return frame_count; }
+unsigned Port_OsGfxTaskCount(void) { return gfx_task_count; }
+uint64_t Port_OsLastGfxHash(void) { return last_gfx_hash; }
+void Port_OsSetFrameLimit(unsigned frames) { frame_limit = frames; }
+void Port_OsSetFast(int fast) { fast_mode = fast != 0; }
 
 void osCreateThread(OSThread *n64, OSId id, void (*entry)(void *), void *arg,
                     void *stack, OSPri priority) {
@@ -281,4 +390,105 @@ OSIntMask osSetIntMask(OSIntMask mask) {
     OSIntMask old = interrupt_mask;
     interrupt_mask = mask;
     return old;
+}
+
+void osViSetEvent(OSMesgQueue *queue, OSMesg message, u32 fields) {
+    vi_queue = queue;
+    vi_message = message;
+    vi_fields = fields;
+}
+
+void *osViGetCurrentFramebuffer(void) { return current_framebuffer; }
+
+void osViSwapBuffer(void *framebuffer) {
+    current_framebuffer = framebuffer;
+    frame_count++;
+    if (frame_limit && frame_count >= frame_limit) Port_OsStop();
+}
+
+u32 osGetCount(void) { return (u32)clock_count; }
+OSTime osGetTime(void) { return (OSTime)clock_count; }
+
+int osSetTimer(OSTimer *n64, OSTime countdown, OSTime interval,
+               OSMesgQueue *queue, OSMesg message) {
+    HostTimer *timer = NULL;
+    for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
+        if (timers[i].n64 == n64 || !timers[i].active) {
+            timer = &timers[i];
+            break;
+        }
+    }
+    if (!timer) Port_HostFatal("too many OS timers");
+    *timer = (HostTimer){ n64, queue, message, clock_count + (uint64_t)countdown,
+                          (uint64_t)interval, 1 };
+    return 0;
+}
+
+int osStopTimer(OSTimer *n64) {
+    for (unsigned i = 0; i < MAX_HOST_TIMERS; i++) {
+        if (timers[i].n64 == n64 && timers[i].active) {
+            timers[i].active = 0;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void osSpTaskLoad(OSTask *task) { loaded_task = task; }
+
+static u32 normalized_second_word(const Gfx *command) {
+    u8 opcode = (u8)(command->words.w0 >> 24);
+    switch (opcode) {
+        case (u8)G_DL:
+        case (u8)G_VTX:
+        case (u8)G_MTX:
+        case (u8)G_MOVEMEM:
+        case (u8)G_SETTIMG:
+        case (u8)G_SETCIMG:
+        case (u8)G_SETZIMG:
+            return Port_NormalizeDlAddress(command->words.w1);
+        default:
+            return command->words.w1;
+    }
+}
+
+static uint64_t hash_display_list(const Gfx *dl, unsigned words) {
+    uint64_t hash = UINT64_C(0xCBF29CE484222325);
+    for (unsigned i = 0; i < words; i++) {
+        u32 pair[2] = { dl[i].words.w0, normalized_second_word(&dl[i]) };
+        for (unsigned j = 0; j < 2; j++) {
+            for (int shift = 24; shift >= 0; shift -= 8) {
+                hash ^= (pair[j] >> shift) & 0xFFu;
+                hash *= UINT64_C(0x100000001B3);
+            }
+        }
+    }
+    return hash;
+}
+
+void osSpTaskStartGo(OSTask *task) {
+    if (task != loaded_task) Port_HostFatal("starting an unloaded RSP task");
+    loaded_task = NULL;
+    if (task->t.type == M_GFXTASK) {
+        unsigned words = task->t.data_size / sizeof(Gfx);
+        if (!task->t.data_ptr || !words || words > 10000)
+            Port_HostFatal("invalid graphics task display list");
+        last_gfx_hash = hash_display_list((const Gfx *)task->t.data_ptr, words);
+        gfx_task_count++;
+        if (getenv("ELTALE_DUMP_DL") && gfx_task_count == 3) {
+            const Gfx *dl = (const Gfx *)task->t.data_ptr;
+            for (unsigned i = 0; i < words; i++)
+                fprintf(stderr, "DL3[%u]=%08x:%08x norm=%08x\n", i,
+                        dl[i].words.w0, dl[i].words.w1,
+                        normalized_second_word(&dl[i]));
+        }
+        printf("P1_GFX_TASK frame=%u words=%u hash=%016llx\n", gfx_task_count,
+               words, (unsigned long long)last_gfx_hash);
+        post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
+        post_event(events[OS_EVENT_DP].queue, events[OS_EVENT_DP].message);
+    } else if (task->t.type == M_AUDTASK) {
+        post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);
+    } else {
+        Port_HostFatal("unknown RSP task type");
+    }
 }

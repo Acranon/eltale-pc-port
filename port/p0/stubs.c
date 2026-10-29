@@ -25,7 +25,9 @@ unsigned Port_HostIntroUpdateCount(void) { return intro_update_count; }
 
 /* The P0 host has no Controller Pak or audio output yet. The first intro
  * update treats the Pak scan as successful and emits no optional screen. */
+#ifndef ELTALE_P1_OS
 void Input_ReadController(s32 port) { (void)port; }
+#endif
 s32 Pak_ScanGameFiles(s32 port) { (void)port; return 0; }
 s32 Pak_ClassifyError(s32 error) { return error; }
 void func_8003D8EC(char *format, ...) { (void)format; }

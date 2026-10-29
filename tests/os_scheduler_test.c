@@ -12,6 +12,9 @@ static OSMesg jam_messages[2];
 static int sequence[12];
 static int step;
 
+uint32_t Port_NormalizeDlAddress(uint32_t word) { return word; }
+void Port_HostPace(uint64_t ticks) { (void)ticks; }
+
 __attribute__((noreturn)) void Port_HostFatal(const char *message) {
     fprintf(stderr, "OS scheduler test: %s\n", message);
     exit(1);

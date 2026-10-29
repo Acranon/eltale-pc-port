@@ -2,26 +2,41 @@ CC ?= gcc
 PYTHON ?= python3
 ROM ?= $(ELTALE_ROM)
 
-OUT := out/p0
+OUT ?= out/p0
+P1_OS ?= 0
+FRAMES ?= 1
+BIN := $(OUT)/$(if $(filter 1,$(P1_OS)),eltale-p1,eltale-p0)
 GAME_SRC := $(filter-out work/src/game/audio/audio.c,$(shell find work/src/game -name '*.c')) \
   $(shell find work/src/overlays/intro -name '*.c')
 HOST_SRC := port/p0/boot_probe.c port/p0/host.c port/p0/stubs.c port/p0/unavailable.c
+OS_SRC :=
+ifeq ($(P1_OS),1)
+OS_SRC += port/os/fiber.c port/os/kernel.c
+endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
-OBJ := $(GAME_OBJ) $(HOST_OBJ)
+OS_OBJ := $(patsubst port/os/%.c,$(OUT)/obj/os/%.o,$(OS_SRC))
+BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ)
+ifeq ($(P1_OS),1)
+MAP_OBJ := $(OUT)/host_address_map.o
+endif
+OBJ := $(BASE_OBJ) $(MAP_OBJ)
 
 CPPFLAGS := -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI -DNDEBUG -D_FINALROM \
   -DBUILD_VERSION=VERSION_J -DNON_MATCHING -DELTALE_P0_BOOT_PROBE \
   -I$(OUT)/include -I$(OUT) -Iport/include -I. -Iwork/src -Idecomp/include -Idecomp/src \
   -idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR \
   -include port/addresses.h -include game/actor/actor.h
+ifeq ($(P1_OS),1)
+CPPFLAGS += -DELTALE_P1_OS
+endif
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast
 LDFLAGS := -no-pie -Wl,--gc-sections -lm
 
-.PHONY: p0 p0-test p1-os-test endian-test abi-test census assets clean
-p0: assets $(OUT)/eltale-p0
+.PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean
+p0: assets $(BIN)
 
 assets:
 	@test -n "$(ROM)" || (echo 'Set ROM=/path/to/baserom.jp.z64 or ELTALE_ROM' && exit 2)
@@ -29,7 +44,7 @@ assets:
 	$(PYTHON) decomp/tools/extract_assets.py decomp/assets.yaml "$(ROM)" $(OUT)/assets
 
 $(OUT)/include/PR/gbi.h: decomp/include/ultra64/PR/gbi.h tools/gen_host_gbi.py
-	$(PYTHON) tools/gen_host_gbi.py
+	$(PYTHON) tools/gen_host_gbi.py $@
 
 $(OUT)/include/port/addresses.h: decomp/symbol_addrs.txt tools/gen_addresses.py
 	$(PYTHON) tools/gen_addresses.py $(OUT)/include/port/addresses.h
@@ -40,20 +55,33 @@ $(OUT)/obj/game/%.o: work/src/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/ad
 
 $(OUT)/obj/host/unavailable.o: port/p0/unavailable.c
 	@mkdir -p $(dir $@)
-	$(CC) -std=gnu11 -O2 -c $< -o $@
+	$(CC) -std=gnu11 -O2 $(if $(filter 1,$(P1_OS)),-DELTALE_P1_OS,) -c $< -o $@
 
 $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
+$(OUT)/obj/os/%.o: port/os/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(OUT)/host_address_map.c: $(GAME_OBJ) tools/gen_host_address_map.py
+	$(PYTHON) tools/gen_host_address_map.py $@ $(GAME_OBJ)
+
+$(OUT)/host_address_map.o: $(OUT)/host_address_map.c
+	$(CC) -std=gnu11 -O2 -c $< -o $@
+
 $(OUT)/abs.rsp: $(OBJ) tools/gen_abs_symbols.py
 	$(PYTHON) tools/gen_abs_symbols.py $@ $(OBJ)
 
-$(OUT)/eltale-p0: $(OBJ) $(OUT)/abs.rsp
+$(BIN): $(OBJ) $(OUT)/abs.rsp
 	$(CC) $(OBJ) @$(OUT)/abs.rsp $(LDFLAGS) -o $@
 
 p0-test: p0 abi-test endian-test
-	$(OUT)/eltale-p0 --rom "$(ROM)" --headless --fast
+	$(BIN) --rom "$(ROM)" --headless --fast
+
+p1-os-run: p0 abi-test endian-test p1-os-test
+	$(BIN) --rom "$(ROM)" --headless --fast --frames $(FRAMES)
 
 endian-test: tests/endian_test.c port/include/port/endian.h
 	@mkdir -p $(OUT)
@@ -70,6 +98,8 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	$(OUT)/fiber-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/os_scheduler_test.c port/os/kernel.c port/os/fiber.c -o $(OUT)/os-scheduler-test
 	$(OUT)/os-scheduler-test
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/os_events_test.c port/os/kernel.c port/os/fiber.c -o $(OUT)/os-events-test
+	$(OUT)/os-events-test
 
 census:
 	@mkdir -p $(OUT)

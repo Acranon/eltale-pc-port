@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -42,6 +43,40 @@ static HostThread threads[16];
 
 s32 osTvType = OS_TV_NTSC;
 OSViMode osViModeTable[16];
+
+static uint64_t monotonic_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER frequency, count;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&count);
+    uint64_t ticks = (uint64_t)count.QuadPart;
+    uint64_t rate = (uint64_t)frequency.QuadPart;
+    return (ticks / rate) * UINT64_C(1000000000) +
+           (ticks % rate) * UINT64_C(1000000000) / rate;
+#else
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+#endif
+}
+
+void Port_HostPace(uint64_t virtual_ticks) {
+    static uint64_t start_ns;
+    if (!start_ns) start_ns = monotonic_ns();
+    uint64_t target = start_ns + virtual_ticks * UINT64_C(1000000000) / UINT64_C(46875000);
+    uint64_t now;
+    while ((now = monotonic_ns()) < target) {
+        uint64_t remaining = target - now;
+#ifdef _WIN32
+        if (remaining > UINT64_C(2000000)) Sleep((DWORD)((remaining - UINT64_C(1000000)) / 1000000));
+        else SwitchToThread();
+#else
+        struct timespec pause = { (time_t)(remaining / UINT64_C(1000000000)),
+                                  (long)(remaining % UINT64_C(1000000000)) };
+        nanosleep(&pause, NULL);
+#endif
+    }
+}
 
 void Port_HostFatal(const char *what) {
     fprintf(stderr, "P0 error: %s\n", what);
@@ -198,7 +233,11 @@ s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
     dma_bytes += size;
     if (dma_count <= 8) fprintf(stderr, "P0 DMA rom=%08x ram=%08lx bytes=%u\n",
                                 dev_addr, (unsigned long)addr, size);
+#ifdef ELTALE_P1_OS
+    Port_OsPostPi(queue, (OSMesg)mb);
+#else
     osSendMesg(queue, (OSMesg)mb, OS_MESG_BLOCK);
+#endif
     return 0;
 }
 
@@ -211,17 +250,21 @@ void osCreateViManager(OSPri pri) { (void)pri; }
 void osViSetMode(OSViMode *mode) { (void)mode; }
 void osViBlack(u8 active) { (void)active; }
 void osViSetSpecialFeatures(u32 features) { (void)features; }
+#ifndef ELTALE_P1_OS
 void osViSetEvent(OSMesgQueue *q, OSMesg msg, u32 fields) {
     (void)q; (void)msg; (void)fields;
 }
+#endif
 #ifndef ELTALE_P1_OS
 void osSetEventMesg(OSEvent event, OSMesgQueue *q, OSMesg msg) {
     (void)event; (void)q; (void)msg;
 }
 OSIntMask osSetIntMask(OSIntMask mask) { return mask; }
 #endif
+#ifndef ELTALE_P1_OS
 void *osViGetCurrentFramebuffer(void) { return NULL; }
 void osViSwapBuffer(void *framebuffer) { (void)framebuffer; }
+#endif
 
 s32 osContInit(OSMesgQueue *q, u8 *pattern, OSContStatus *status) {
     (void)q;
@@ -230,6 +273,11 @@ s32 osContInit(OSMesgQueue *q, u8 *pattern, OSContStatus *status) {
     return 0;
 }
 s32 osContSetCh(u8 channels) { (void)channels; return 0; }
+s32 osContStartReadData(OSMesgQueue *queue) {
+    osSendMesg(queue, NULL, OS_MESG_NOBLOCK);
+    return 0;
+}
+void osContGetReadData(OSContPad *pads) { memset(pads, 0, 4 * sizeof *pads); }
 
 u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
@@ -245,8 +293,10 @@ u32 osVirtualToPhysical(void *ptr) {
     Port_HostFatal("physical address requested for an unknown host pointer");
 }
 
+#ifndef ELTALE_P1_OS
 OSTime osGetTime(void) { return 0; }
 void osSpTaskLoad(OSTask *task) { (void)task; Port_HostFatal("RSP task before P1"); }
 void osSpTaskStartGo(OSTask *task) { (void)task; Port_HostFatal("RSP task before P1"); }
+#endif
 void osSpTaskYield(void) { Port_HostFatal("RSP yield before P1"); }
 OSYieldResult osSpTaskYielded(OSTask *task) { (void)task; Port_HostFatal("RSP yield before P1"); }
