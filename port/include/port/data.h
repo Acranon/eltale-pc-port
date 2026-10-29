@@ -28,6 +28,10 @@ void Port_SwapAnimSetDls(const struct AnimSet *set);
 void Port_SwapNativeKeyframes(void);
 /* port/data/common.c: swap the common block's pointer-free tables (after its boot DMA). */
 void Port_SwapCommonBlock(void);
+/* port/data/enemy.c: swap N64-layout EnemyDefs (and their attack lists) in place. */
+struct EnemyAreaSet;
+void Port_SwapEnemyDefs(uint32_t defs, uint32_t count);
+void Port_SwapAreaEnemyDefs(const struct EnemyAreaSet *set);
 
 /* Entry i of an N64 pointer table in RDRAM (big-endian 32-bit addresses), as a pointer. */
 static inline void *Port_N64Ptr(const void *table, int i) {

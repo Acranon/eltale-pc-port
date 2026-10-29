@@ -15,7 +15,7 @@ OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))

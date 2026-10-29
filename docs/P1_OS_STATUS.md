@@ -220,3 +220,18 @@ this), and Hud's palette table D_803A8778 is read the same way. Gameplay
 frames now have no unresolved address; the 700-frame run ends at hash
 74b8baf63f9c1889 on Windows and Linux. The other common-block tables above
 are still read natively.
+
+Update 3: the common block is closed.
+- EnemyDef keeps its N64 layout (`attacks` is a u32 address) and is swapped in
+  place with its attack lists (port/data/enemy.c): the boss defs in the block
+  (D_803AB820[7], D_803AB9A8) at boot, and each area's defs after
+  Enemy_LoadAreaSet's DMA. An area set's defs run up to its anim-set table; the
+  port stops if that span is not a whole number of defs. Enemy anim-set tables
+  are read with Port_N64Ptr.
+- Table counts were checked with `ELTALE_DUMP_COMMON=1` (prints every swapped
+  record and the boss defs). Three were too long and were swapping the next data:
+  ItemDef is 25 (then the item name strings), EnemyEffectDef at 0x803AA6C4 is 5
+  (then vertices), CameraPreset is 8. The boss defs read back right (HP 200 to
+  2300, attack lists back to back from 0x803AB670).
+- Renderer: RT64 first (it already draws this game in the Quest 64 recomp), then
+  our own native renderer later, as for KF4.

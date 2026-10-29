@@ -453,10 +453,61 @@ index 8b0df2f..e72d3e6 100644
          for (i = 0x20; i != 0; i--) {
              *dst++ = *src++;
 diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
-index 481f713..7f9294a 100644
+index 481f713..6506f54 100644
 --- a/src/game/enemy/enemy.c
 +++ b/src/game/enemy/enemy.c
-@@ -636,7 +636,7 @@ void Enemy_StartAttack(Enemy *e, Actor *obj, EnemyAttack *arg2) {
+@@ -1,3 +1,4 @@
++#include "port/data.h"
+ #include "common.h"
+ #include "game/enemy/enemy.h"
+ #include "game/actor/anim.h"
+@@ -96,7 +97,7 @@ void Enemy_UpdateAll(void) {
+         for (e = enemy_slots; n != 0; e++) {
+             obj = &e->actor;
+             if (e->actor.animSetIndex != -1) {
+-                enemy_state_handlers[e->type](obj, e, enemy_anim_tables[obj->animSetIndex]);
++                enemy_state_handlers[e->type](obj, e, ((AnimSet *)Port_N64Ptr(enemy_anim_tables, obj->animSetIndex)));
+                 n--;
+             }
+         }
+@@ -124,7 +125,7 @@ void Enemy_DrawAll(struct GfxFrameData *arg0) {
+         obj = &e->actor;
+         if (e->actor.animSetIndex != -1) {
+             y = obj->y;
+-            anims = enemy_anim_tables[obj->animSetIndex];
++            anims = ((AnimSet *)Port_N64Ptr(enemy_anim_tables, obj->animSetIndex));
+             if (obj->stats->unk0 == 1) {
+                 h = obj->stats->body_height * obj->scale;
+                 if (y < player_state.actor.y) {
+@@ -157,6 +158,9 @@ void Enemy_LoadAreaSet(void) {
+     start = enemy_area_set->start;
+     end = enemy_area_set->end;
+     Dma_ReadRom(start, D_8020E6F0, end - start);
++#ifdef ELTALE_P1_OS
++    Port_SwapAreaEnemyDefs(enemy_area_set);
++#endif
+ }
+ 
+ void Enemy_RemoveAll(void) {
+@@ -548,7 +552,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
+ 
+     e->flags &= ~0x10;
+     dist = sqrtf((player_state.actor.x - obj->x) * (player_state.actor.x - obj->x) + (player_state.actor.z - obj->z) * (player_state.actor.z - obj->z)) - D_8007AA84->body_radius * player_state.actor.scale;
+-    sel = e->def->attacks;
++    sel = (EnemyAttack *)(uptr)e->def->attacks;
+     for (i = 0; i < e->def->attack_count; i++) {
+         list[i] = sel++;
+     }
+@@ -605,7 +609,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
+         sel = NULL;
+     }
+     if (e->def->flags & 4) {
+-        sel = &e->def->attacks[Math_Rand(e->def->attack_count)];
++        sel = &((EnemyAttack *)(uptr)e->def->attacks)[Math_Rand(e->def->attack_count)];
+     }
+     e->selected_attack = sel;
+     return sel;
+@@ -636,7 +640,7 @@ void Enemy_StartAttack(Enemy *e, Actor *obj, EnemyAttack *arg2) {
          e->state_timer = 1;
      }
      if (battle_flags & 0x100) {
@@ -465,7 +516,25 @@ index 481f713..7f9294a 100644
      }
  }
  
-@@ -943,11 +943,13 @@ void Enemy_ClearAttackScript(void) {
+@@ -717,7 +721,7 @@ void Enemy_Move(s32 clamp, f32 dx, f32 dz, Actor *obj, Enemy *ai) {
+ void Enemy_GetAnimStep(Actor *obj, Vec3f *out) {
+     AnimSet *anims;
+ 
+-    anims = enemy_anim_tables[obj->animSetIndex];
++    anims = ((AnimSet *)Port_N64Ptr(enemy_anim_tables, obj->animSetIndex));
+     Anim_UpdateRootMotion(obj, &anims[obj->animIndex], obj->scale);
+     out->x = -obj->unk44;
+     out->y = obj->unk4C;
+@@ -832,7 +836,7 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
+     Enemy *enemies;
+ 
+     obj = &enemy_slots[idx].actor;
+-    anims = enemy_anim_tables[enemy_slots[idx].actor.animSetIndex];
++    anims = ((AnimSet *)Port_N64Ptr(enemy_anim_tables, enemy_slots[idx].actor.animSetIndex));
+     if (enemy_slots[idx].hp) {
+         if (dmg) {
+             if (!(flags & 0x8000)) {
+@@ -943,11 +947,13 @@ void Enemy_ClearAttackScript(void) {
      enemy_script_cmd = 0;
  }
  
@@ -485,10 +554,20 @@ index 481f713..7f9294a 100644
  
  #ifdef NON_MATCHING
 diff --git a/src/game/enemy/enemy.h b/src/game/enemy/enemy.h
-index e32b469..97cc751 100644
+index e32b469..0862237 100644
 --- a/src/game/enemy/enemy.h
 +++ b/src/game/enemy/enemy.h
-@@ -144,7 +144,7 @@ void Enemy_PlayMissEffect(Actor *obj);
+@@ -45,7 +45,8 @@ typedef struct EnemyDef {
+     /* 0x2A */ u16 attack_power; /* copied to ActorBattle.attack_power */
+     /* 0x2C */ u16 attack_count; /* attack count */
+     /* 0x2E */ u8 pad2E[2];
+-    /* 0x30 */ EnemyAttack *attacks; /* attack list */
++    /* 0x30 */ u32 attacks; /* EnemyAttack *: attack list. Port: EnemyDef keeps its N64 layout (the game
++                            * indexes defs with the N64 stride); port/data/enemy.c swaps them in place. */
+     /* 0x34 */ u8 item_id; /* item id (Battle_RollDropItem) */
+     /* 0x35 */ u8 pad35[3];
+ } EnemyDef; /* 0x38 bytes */
+@@ -144,7 +145,7 @@ void Enemy_PlayMissEffect(Actor *obj);
  s32 Enemy_GetSlotIndex(Actor *arg0);
  void Enemy_SpawnDeathEffects(Actor *obj);
  void Enemy_ClearAttackScript(void);
