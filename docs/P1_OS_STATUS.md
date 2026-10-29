@@ -281,3 +281,11 @@ audio frame; the RSP runs them and the AI plays the output. Plan:
    virtual AI timing stays as it is, so headless runs are unchanged.
 5. **Checks**: the US envelope bug from PLAN.md (1 µs releases; PAL values are
    the fix), and a headless hash of each audio frame's output.
+
+Sound, first probe: libultra's audio sources compile natively except for ~12
+pointer/integer casts (bnkf.c, cseq.c, env.c, heapinit.c, load.c, resample.c,
+reverb.c, save.c), all through `osVirtualToPhysical`-style 32-bit addresses or
+the in-place offset patching that the bank/sequence decoder replaces. Build them
+from work/src/libultra/audio (so fixes go through patches.py). The audio heap
+(alHeapInit at 0x80332DB0, 0x68000 bytes) will need more room natively: its
+structs carry 8-byte pointers.
