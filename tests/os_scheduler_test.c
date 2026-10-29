@@ -13,6 +13,7 @@ static int sequence[12];
 static int step;
 
 uint32_t Port_NormalizeDlAddress(uint32_t word) { return word; }
+uint32_t Port_HostNormalizeFrameAddress(uint32_t word) { return word; }
 void Port_HostPace(uint64_t ticks) { (void)ticks; }
 
 __attribute__((noreturn)) void Port_HostFatal(const char *message) {

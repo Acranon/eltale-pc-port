@@ -306,6 +306,10 @@ void osContGetReadData(OSContPad *pads) { memset(pads, 0, 4 * sizeof *pads); }
 
 u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
+#ifdef ELTALE_P1_OS
+    if (addr > UINT32_MAX) Port_HostFatal("N64 address exceeds 32-bit display-list word");
+    return (u32)addr;
+#else
     if (addr >= RDRAM_BASE && addr < RDRAM_BASE + RDRAM_BYTES)
         return (u32)(addr - RDRAM_BASE);
     for (unsigned i = 0; i < 2; i++) {
@@ -316,6 +320,17 @@ u32 osVirtualToPhysical(void *ptr) {
         }
     }
     Port_HostFatal("physical address requested for an unknown host pointer");
+#endif
+}
+
+uint32_t Port_HostNormalizeFrameAddress(uint32_t word) {
+    uintptr_t addr = word;
+    for (unsigned i = 0; i < 2; i++) {
+        uintptr_t data = (uintptr_t)&port_gfx_frames[i].data;
+        if (addr >= data && addr < data + sizeof port_gfx_frames[i].data)
+            return 0x00600000u + i * 0x10000u + (u32)(addr - data);
+    }
+    return word;
 }
 
 #ifndef ELTALE_P1_OS

@@ -445,6 +445,9 @@ void osSpTaskLoad(OSTask *task) { loaded_task = task; }
 static u32 normalized_second_word(const Gfx *command) {
     u8 opcode = (u8)(command->words.w0 >> 24);
     switch (opcode) {
+        case (u8)G_MOVEWORD:
+            if ((command->words.w0 & 0xff) != G_MW_SEGMENT) return command->words.w1;
+            /* fall through */
         case (u8)G_DL:
         case (u8)G_VTX:
         case (u8)G_MTX:
@@ -452,7 +455,7 @@ static u32 normalized_second_word(const Gfx *command) {
         case (u8)G_SETTIMG:
         case (u8)G_SETCIMG:
         case (u8)G_SETZIMG:
-            return Port_NormalizeDlAddress(command->words.w1);
+            return Port_NormalizeDlAddress(Port_HostNormalizeFrameAddress(command->words.w1));
         default:
             return command->words.w1;
     }

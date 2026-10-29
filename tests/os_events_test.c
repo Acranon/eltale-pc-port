@@ -10,6 +10,7 @@ static OSMesg vi_buffer[2], timer_buffer[2], pi_buffer[2], sp_buffer[2], dp_buff
 static OSTimer timer;
 
 uint32_t Port_NormalizeDlAddress(uint32_t word) { return word; }
+uint32_t Port_HostNormalizeFrameAddress(uint32_t word) { return word; }
 void Port_HostPace(uint64_t ticks) { (void)ticks; }
 __attribute__((noreturn)) void Port_HostFatal(const char *message) {
     fprintf(stderr, "OS events test: %s\n", message);

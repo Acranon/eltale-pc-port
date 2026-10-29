@@ -33,10 +33,13 @@ regression target while the P1 OS replaces its synchronous host stand-in.
 - `osSpTaskStartGo` hashes each game's display list and posts SP/DP events.
   The hash normalizes address-bearing words through a generated host-symbol
   to pinned-N64-address map; the actual 32-bit Gfx words stay unchanged.
+  P1 `osVirtualToPhysical` passes 32-bit addresses through, including KSEG0
+  and the host frame data pointer. Hashing maps that frame pointer to a stable
+  trace address on each host.
 - `--headless --fast --frames N` stops after N completed graphics frames.
   Windows and Linux matched **all 60 frame hashes and command counts**, and
-  repeated Windows runs matched exactly. Frame 60 has 120 commands and hash
-  `92394da5842922b0`.
+  repeated Windows runs matched exactly. After the P1 address-model correction,
+  frame 60 has 120 commands and hash `3ec25a41519e00b0`.
 - `tests/os_events_test.c` checks a timer at half a VI, retrace timing,
   deferred PI completion and SP/DP event delivery. Fiber and scheduler tests
   continue to pass on Windows and Linux.
@@ -89,11 +92,11 @@ make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/baserom.jp.z64 FRAMES=100 INPUT=t
   Motor calls are harmless success; the GB Pak probe reports a device error.
 - VI time now advances at each presented frame. Before that correction, SP
   tasks could complete hundreds of frames while the VI count stayed at zero,
-  leaving scripted inputs unconsumed. The 60-frame intro hash remains
-  `92394da5842922b0` on Windows and Linux after the correction.
+  leaving scripted inputs unconsumed. The 60-frame intro hash matches on
+  Windows and Linux after the correction.
 - `tests/intro-to-title.input` reaches the title through the game's own
   intro/title loops. Windows and Linux both finish a 100-frame run with
-  `mode=3`, 63 DMA chunks and hash `913cefa5b443dc5e`. Both create a
+  `mode=3`, 63 DMA chunks and hash `9945f9cc1c2b7a5e`. Both create a
   32 KiB `.mpk` image. Native title code is linked in P1.
 - `tests/title-new-game.input` enters the title's New Game path. Map loading
   currently requests invalid ROM offset `0x7796e15f`. The map area data in
