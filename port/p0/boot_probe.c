@@ -2,6 +2,10 @@
 #include "game/core/boot.h"
 #include "game/core/main.h"
 #include "game/event/cutscene.h"
+#ifdef ELTALE_P1_OS
+#include "port/gfx.h"
+extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
+#endif
 #include "port/p0/host.h"
 #ifdef ELTALE_P1_OS
 #include "port/controller.h"
@@ -88,6 +92,7 @@ int main(int argc, char **argv) {
     Port_OsInit();
     Port_OsSetFrameLimit(requested_frames);
     Port_OsSetFast(fast);
+    if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
     Boot_Main(0);
     Port_OsRun();
     if (Port_OsFrameCount() != requested_frames ||

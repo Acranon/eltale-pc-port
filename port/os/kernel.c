@@ -535,6 +535,9 @@ static uint64_t hash_display_list(const Gfx *dl, unsigned words) {
     return hash;
 }
 
+/* Set by the host: sees each graphics task before it completes (the renderer, or a trace). */
+void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
+
 void osSpTaskStartGo(OSTask *task) {
     if (task != loaded_task) Port_HostFatal("starting an unloaded RSP task");
     loaded_task = NULL;
@@ -553,6 +556,7 @@ void osSpTaskStartGo(OSTask *task) {
         }
         printf("P1_GFX_TASK frame=%u vi=%llu words=%u hash=%016llx\n", gfx_task_count,
                (unsigned long long)vi_count, words, (unsigned long long)last_gfx_hash);
+        if (Port_GfxTaskHook) Port_GfxTaskHook(task, gfx_task_count);
         gfx_done_tick = next_vi_tick;
     } else if (task->t.type == M_AUDTASK) {
         post_event(events[OS_EVENT_SP].queue, events[OS_EVENT_SP].message);

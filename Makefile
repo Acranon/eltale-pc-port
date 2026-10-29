@@ -15,7 +15,7 @@ OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c
 GU_SRC += $(wildcard decomp/src/libultra/gu/*.c)
 endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
@@ -39,7 +39,7 @@ endif
 CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasing -fwrapv -MMD -MP -ffunction-sections -fdata-sections -fno-pie \
   -fno-stack-protector -Wno-builtin-declaration-mismatch \
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
-LDFLAGS := -no-pie -Wl,--gc-sections -lm
+LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm
 
 .PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean
 p0: assets $(BIN)

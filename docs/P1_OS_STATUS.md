@@ -172,3 +172,30 @@ Open after step 1:
   only looks like an AnimSet; table lengths from the data would be safer.
 - No in-game save yet; the gameplay busy-wait did not hang in this run but is
   still a poll.
+
+## P1 step 2 (renderer), started: the frame image (Claude, 2026-10-28)
+
+A renderer that reads RDRAM like the RSP/RDP (paraLLEl-RDP with an LLE RSP, or
+RT64, which the Quest 64 recomp already uses for this game) needs one N64-format
+RDRAM image per frame. `port/gfx/frame_image.c` builds it from a graphics task:
+it starts from a copy of RDRAM, walks the display list (F3DEX 1.23 address
+commands: MTX, MOVEMEM, VTX, DL, BRANCH_Z, MOVEWORD segments, SETTIMG with the
+following loads, SETCIMG/SETZIMG), converts every native object it reaches by
+how the list uses it (lists with their address words rewritten, matrices, vertices,
+16/32-bit texels and TLUTs, viewports) and writes it big-endian at its N64
+address (decomp symbol addresses via the generated host map; the frame data at
+0x80301000 + i*0xDAD0 + 0x58). `ELTALE_FRAME_IMAGE=1` logs per frame: commands,
+matrices, vertices, texture loads, native bytes converted, unresolved addresses.
+
+- Linux now links at 0x10000000 like Windows (`-Ttext-segment`): native
+  addresses below 0x10000000 looked like segmented ones.
+- Gameplay frames: ~2650 commands, 63 matrices, 1050 vertices, 157 texture
+  loads, no unresolved address except one: a SETTIMG of `0xB0AF3980`, which is
+  `0x8039AFB0` byte-swapped. Native code read a texture pointer from an N64
+  table in RDRAM without swapping it (a HUD table at 0x8039xxxx is the likely
+  source, e.g. hud.c's `D_803A8778`): one more of the step-1 leftovers, which
+  the walker now finds.
+
+Next: fix that read; choose the backend (paraLLEl-RDP + an LLE RSP running the
+ROM's F3DEX, the plan's reference, or RT64 first for a quick picture) and add
+the SDL window; then frame tests against an emulator.
