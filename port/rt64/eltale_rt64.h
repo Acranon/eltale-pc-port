@@ -39,8 +39,13 @@ ELRT64_API void ElRt64_KeepRange(uint32_t start, uint32_t bytes);
 /* Show the frame the VI registers point at. */
 ELRT64_API void ElRt64_Present(const ElRt64Vi *vi);
 
-/* Handle window events. Returns 0 once the window was closed. */
+/* Handle window events (and the menu, which pauses the game inside ElRt64_Present while it is
+ * open). Returns 1 to carry on, 0 once the window was closed or Quit chosen, 2 for a reset, 3 for
+ * a reset into the Controller Pak manager. */
 ELRT64_API int ElRt64_Poll(void);
+
+/* The data folder (saves, settings.json), UTF-8: ELTALE_DATA_DIR, else %APPDATA%\eltale. */
+ELRT64_API const char *ElRt64_DataDir(void);
 
 /* The pad from the keyboard and the first game controller, in N64 terms: button bits as
  * OSContPad.button, stick -80..80 (y up). Call after ElRt64_Poll. */

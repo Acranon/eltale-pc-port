@@ -112,10 +112,18 @@ s32 osContStartReadData(OSMesgQueue *queue) {
     return 0;
 }
 
+/* Start held on the first read: the boot check that opens the Controller Pak manager. */
+static int hold_start_at_boot;
+void Port_ControllerHoldStartAtBoot(void) { hold_start_at_boot = 1; }
+
 void osContGetReadData(OSContPad *pads) {
     update_pad();
     memset(pads, 0, 4 * sizeof *pads);
     pads[0] = current_pad;
+    if (hold_start_at_boot) {
+        pads[0].button |= START_BUTTON;
+        hold_start_at_boot = 0;
+    }
 }
 
 s32 osContStartQuery(OSMesgQueue *queue) {

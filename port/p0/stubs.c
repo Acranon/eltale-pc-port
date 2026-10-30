@@ -34,7 +34,13 @@ void Sfx_Enqueue(s32 id, s32 volume, s32 pan) { (void)id; (void)volume; (void)pa
 void Sfx_StopChannel4(void) { }
 void Sfx_StopAllChannels(void) { }
 #endif
+#ifdef ELTALE_P1_OS
+#include "overlays/pakmenu/pakmenu.h"
+/* the Controller Pak manager (Start held at power-on) */
+s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) { return PakMenu_Run(a, b); }
+#else
 s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) { (void)a; (void)b; return 0; }
+#endif
 void func_8020C0D0(void) {
 #ifdef ELTALE_P1_OS
     if (core_game_mode == 3) { Title_Init(); return; }

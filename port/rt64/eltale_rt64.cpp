@@ -3,11 +3,14 @@
 #define ELTALE_RT64_BUILD
 #define NOMINMAX // windows.h (via SDL_syswm.h) min/max macros break RT64 headers
 #include "eltale_rt64.h"
+#include "menu.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <string>
 
 #define HLSL_CPU
 #include "hle/rt64_application.h"
@@ -38,7 +41,23 @@ struct { uint32_t start, end; } keep[8];
 unsigned keep_count;
 std::unique_ptr<RT64::Application> app;
 
+bool quit_requested;
+
 void check_interrupts() {}
+
+void pump_events() {
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_QUIT) quit_requested = true;
+        if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = SDL_GameControllerOpen(e.cdevice.which);
+        if (e.type == SDL_CONTROLLERDEVICEREMOVED && pad &&
+            e.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))) {
+            SDL_GameControllerClose(pad);
+            pad = nullptr;
+        }
+        menu::handle_event(e);
+    }
+}
 
 } // namespace
 
@@ -48,7 +67,8 @@ extern "C" int ElRt64_Init(const char *title, int width, int height) {
         return -1;
     }
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
-                              SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+                              SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN |
+                                  (std::getenv("ELTALE_HIDDEN_WINDOW") ? SDL_WINDOW_HIDDEN : 0));
     if (!window) {
         std::fprintf(stderr, "RT64: SDL_CreateWindow failed: %s\n", SDL_GetError());
         return -1;
@@ -99,6 +119,7 @@ extern "C" int ElRt64_Init(const char *title, int width, int height) {
     app->userConfig.graphicsAPI = RT64::UserConfiguration::GraphicsAPI::Automatic;
     app->enhancementConfig.f3dex.forceBranch = true;          // as the Quest 64 recomp sets it
     app->emulatorConfig.dither.postBlendNoiseNegative = true;
+    menu::load_settings(app.get());
     uint32_t thread_id = 0;
 #ifdef _WIN32
     thread_id = GetCurrentThreadId();
@@ -108,6 +129,7 @@ extern "C" int ElRt64_Init(const char *title, int width, int height) {
         app.reset();
         return -1;
     }
+    menu::init(app.get(), window);
     return 0;
 }
 
@@ -147,21 +169,31 @@ extern "C" void ElRt64_Present(const ElRt64Vi *vi) {
     VI_V_BURST_REG = vi->v_burst;
     VI_X_SCALE_REG = vi->x_scale;
     VI_Y_SCALE_REG = vi->y_scale;
+    menu::frame();
     app->updateScreen();
+    // the game is paused while the menu is open: keep showing this frame under it
+    while (menu::is_open() && !quit_requested) {
+        SDL_Delay(15);
+        pump_events();
+        menu::frame();
+        app->updateScreen();
+    }
 }
 
 extern "C" int ElRt64_Poll(void) {
-    SDL_Event e;
-    while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) return 0;
-        if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = SDL_GameControllerOpen(e.cdevice.which);
-        if (e.type == SDL_CONTROLLERDEVICEREMOVED && pad &&
-            e.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))) {
-            SDL_GameControllerClose(pad);
-            pad = nullptr;
-        }
+    pump_events();
+    if (quit_requested) return 0;
+    switch (menu::take_request()) {
+    case menu::QUIT: quit_requested = true; return 0;
+    case menu::RESET: return 2;
+    case menu::RESET_PAK_MANAGER: return 3;
+    default: return 1;
     }
-    return 1;
+}
+
+extern "C" const char *ElRt64_DataDir(void) {
+    static std::string dir = menu::data_dir().u8string();
+    return dir.c_str();
 }
 
 namespace {
@@ -181,6 +213,11 @@ int8_t axis(Sint16 v, bool invert) {
 // I/K/J/L the C buttons, T/G/F/H the D-pad. Controller: left stick and D-pad, A A, X B, left
 // trigger Z, Start, shoulders L/R, right stick the C buttons.
 extern "C" void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y) {
+    if (menu::is_open()) {
+        *buttons = 0;
+        *stick_x = *stick_y = 0;
+        return;
+    }
     const Uint8 *k = SDL_GetKeyboardState(nullptr);
     uint16_t b = 0;
     int x = 0, y = 0;
@@ -251,6 +288,7 @@ struct AudioRing {
 void audio_callback(void *, Uint8 *stream, int len) {
     int16_t *out = (int16_t *)stream;
     int count = len / 4;
+    const float gain = menu::volume();
     uint64_t avail = ring.write_pos - ring.read_pos;
     if (!ring.playing && avail >= ring.target) ring.playing = true;
     double step = 1.0;
@@ -262,7 +300,7 @@ void audio_callback(void *, Uint8 *stream, int len) {
         if (ring.playing && ring.write_pos - ring.read_pos >= 2) {
             const int16_t *a = ring.frames[ring.read_pos % AUDIO_RING], *b = ring.frames[(ring.read_pos + 1) % AUDIO_RING];
             for (int c = 0; c < 2; c++) {
-                ring.last[c] = (float)(a[c] + (b[c] - a[c]) * ring.frac);
+                ring.last[c] = (float)(a[c] + (b[c] - a[c]) * ring.frac) * gain;
                 out[i * 2 + c] = (int16_t)ring.last[c];
             }
             ring.frac += step;
@@ -309,8 +347,9 @@ extern "C" void ElRt64_QueueAudio(const int16_t *samples, uint32_t bytes, uint32
 }
 
 extern "C" void ElRt64_Shutdown(void) {
-    if (app) app->end();
+    if (app) app->end(); // RT64's deinit hook takes the menu's ImGui down with it
     app.reset();
+    menu::shutdown();
     if (audio_dev) SDL_CloseAudioDevice(audio_dev);
     audio_dev = 0;
     if (pad) SDL_GameControllerClose(pad);

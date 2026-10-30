@@ -218,6 +218,40 @@ const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *out) 
     return image;
 }
 
+/* A screen the CPU drew: the Controller Pak manager stores native u16 pixels into its own
+ * framebuffer. The image holds them big-endian, with a display list at FRAME_N64 that copies them
+ * into `target` six rows at a time (a TMEM load each), so the renderer shows it like any frame. */
+const u8 *Port_BuildCpuFrameImage(u32 fb, u32 target, u32 *root_n64) {
+    static Gfx dl[512];
+    Gfx *g = dl;
+    memcpy(image, (const void *)(uintptr_t)RDRAM, RDRAM_BYTES);
+    const u16 *px = (const u16 *)(uintptr_t)fb;
+    u8 *dst = image + (fb - RDRAM);
+    for (u32 i = 0; i < 320 * 240; i++) { dst[i * 2] = px[i] >> 8; dst[i * 2 + 1] = (u8)px[i]; }
+    fb -= RDRAM;
+    gDPPipeSync(g++);
+    gDPSetColorImage(g++, G_IM_FMT_RGBA, G_IM_SIZ_16b, 320, target - RDRAM);
+    gDPSetScissor(g++, G_SC_NON_INTERLACE, 0, 0, 320, 240);
+    gDPSetCycleType(g++, G_CYC_1CYCLE);
+    gDPSetRenderMode(g++, G_RM_OPA_SURF, G_RM_OPA_SURF2);
+    gDPSetCombineMode(g++, G_CC_DECALRGB, G_CC_DECALRGB);
+    gDPSetTexturePersp(g++, G_TP_NONE);
+    gDPSetTextureFilter(g++, G_TF_POINT);
+    gDPSetTextureLUT(g++, G_TT_NONE);
+    gDPSetTextureLOD(g++, G_TL_TILE);
+    for (s32 y = 0; y < 240; y += 6) {
+        gDPLoadTextureTile(g++, fb, G_IM_FMT_RGBA, G_IM_SIZ_16b, 320, 240, 0, y, 319, y + 5, 0, G_TX_CLAMP,
+                           G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+        gSPTextureRectangle(g++, 0, y << 2, 320 << 2, (y + 6) << 2, G_TX_RENDERTILE, 0, y << 5, 1 << 10, 1 << 10);
+    }
+    gDPFullSync(g++);
+    gSPEndDisplayList(g++);
+    u8 *out = image + (FRAME_N64 - RDRAM);
+    for (Gfx *c = dl; c < g; c++, out += 8) { put32(out, c->words.w0); put32(out + 4, c->words.w1); }
+    *root_n64 = FRAME_N64;
+    return image;
+}
+
 /* ELTALE_FRAME_IMAGE=1: build each frame's image and log what it took. */
 void Port_FrameImageTrace(OSTask *task, unsigned frame) {
     PortFrameStats st;

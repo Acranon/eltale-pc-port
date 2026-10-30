@@ -14,6 +14,10 @@ typedef struct PortFrameStats {
  * the next call. */
 const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *stats);
 
+/* The image of a screen the CPU drew into `fb` (native u16 pixels, 320x240), with a display list
+ * (*root_n64) that copies it into `target`. */
+const u8 *Port_BuildCpuFrameImage(u32 fb, u32 target, u32 *root_n64);
+
 /* A Port_GfxTaskHook that builds each frame's image and logs its statistics. */
 void Port_FrameImageTrace(OSTask *task, unsigned frame);
 
@@ -26,5 +30,10 @@ int Port_ViRegs(u32 framebuffer, PortViRegs *regs);
 
 /* port/gfx/rt64_bridge.c: draw with eltale_rt64 (a window). Returns 0 on success. */
 int Port_Rt64Start(void);
+/* After the scheduler stopped: 2 if the menu asked for a reset, 3 for a reset into the Controller
+ * Pak manager, else 0. */
+int Port_Rt64TakeReset(void);
+/* The data folder for saves and settings (eltale_rt64's ElRt64_DataDir). */
+const char *Port_Rt64DataDir(void);
 
 #endif

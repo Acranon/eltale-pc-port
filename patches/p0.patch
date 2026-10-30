@@ -3409,10 +3409,33 @@ index a93dfb8..f3c00c4 100644
      /* 0x22 */ s16 sprite_slot;
      /* 0x24 */ u16 previous_cue_index;
 diff --git a/src/overlays/pakmenu/pakmenu.c b/src/overlays/pakmenu/pakmenu.c
-index 145e9b5..a888315 100644
+index 145e9b5..056f957 100644
 --- a/src/overlays/pakmenu/pakmenu.c
 +++ b/src/overlays/pakmenu/pakmenu.c
-@@ -745,7 +745,7 @@ void PakMenu_DrawSprites(PakMenuSprite* arg0, s32 arg1) {
+@@ -9,6 +9,9 @@
+  */
+ 
+ extern u8 D_803245A0[];
++#ifdef ELTALE_P1_OS
++void Port_NoteCpuFrame(u32 framebuffer, s32 state);
++#endif
+ 
+ /* .data 80101FA0..80107050: images, palettes, sprite tables, message text, then the font. */
+ /* palette, 16 colours */
+@@ -665,7 +668,12 @@ void PakMenu_DrawChar(s32 arg0) {
+     dst = pak_menu_text_pixel_cursor;
+     for (i = 0; i < 12; i++) {
+         for (shift = 28; shift >= 0; shift -= 4) {
++#ifdef ELTALE_P1_OS
++            /* port: the font is bytes, read as big-endian words */
++            px = ((u32)((u8 *)src)[0] << 24 | (u32)((u8 *)src)[1] << 16 | ((u8 *)src)[2] << 8 | ((u8 *)src)[3]) >> shift & 0xF;
++#else
+             px = (*src >> shift) & 0xF;
++#endif
+             if (px != 0) {
+                 *dst = pak_menu_active_font_tlut[px];
+             }
+@@ -745,11 +753,14 @@ void PakMenu_DrawSprites(PakMenuSprite* arg0, s32 arg1) {
  void PakMenu_WaitFrame(void) {
      osWritebackDCacheAll();
      osRecvMesg(pak_menu_vi_queue, &pak_menu_mesg, OS_MESG_BLOCK);
@@ -3421,6 +3444,13 @@ index 145e9b5..a888315 100644
          osViBlack(1);
          return;
      }
+     if (pak_menu_redraw_pending != 0) {
++#ifdef ELTALE_P1_OS
++        Port_NoteCpuFrame((u32)(uptr)pak_menu_framebuffers[pak_menu_framebuffer_index & 1], pak_menu_state);
++#endif
+         osViSwapBuffer(pak_menu_framebuffers[pak_menu_framebuffer_index & 1]);
+         pak_menu_draw_framebuffer = pak_menu_framebuffers[++pak_menu_framebuffer_index & 1];
+         pak_menu_redraw_pending = 0;
 diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
 index d3ba9ee..faaa820 100644
 --- a/src/overlays/title/title_draw.c

@@ -559,3 +559,39 @@ buffer with the CPU, which the RT64 path does not show; stubs.c returns 0
   the title's items run left to right. `tests/p1_checks.sh ... --tour` saves at
   the map 18 inn (`tests/tour-save.input` with the tour) and loads it again:
   `P1_LOAD map=18 sub=7 hp=50/50`.
+
+## Controller Pak manager, the menu, reset (2026-10-29)
+
+**Controller Pak manager** (overlays/pakmenu, Start held at power-on): now built and run
+(`func_801009EC` calls PakMenu_Run). It draws with the CPU into its own framebuffers
+(0x80200000/0x80225800, native u16 stores). Two port changes:
+- PakMenu_DrawChar read its 4bpp font as u32 words: on a little-endian host the nibbles came out
+  in the wrong order. It reads big-endian words now.
+- Showing a CPU-drawn screen: the RT64 bridge treats any framebuffer other than the game's two as
+  CPU-drawn. `Port_BuildCpuFrameImage` puts its pixels big-endian into the frame image with a
+  display list (at the gfx frame area, unused at boot) that copies them into game framebuffer 0 with
+  40 texture rectangles of 6 rows; that is drawn and shown.
+- `--pak-manager` holds Start on the first controller read; the menu has "Reset to the Controller
+  Pak manager". Headless: `P1_CPU_FRAME n state hash` per screen (ELTALE_DUMP_CPU_FRAMES=1 writes
+  out/cpu_frame_N.ppm). tests/pak-manager-delete.input deletes a save: last screen
+  `P1_CPU_FRAME n=9 state=1 hash=43842e6ff23bd261` (Windows and Linux), part of p1_checks.sh --tour.
+
+**Saves in a window**: without `--pak`, a window now keeps its Controller Pak in the data folder
+(`%APPDATA%\eltale\controller-pak.mpk`, or ELTALE_DATA_DIR). Before this, window play kept saves
+in memory only.
+
+**Menu** (port/rt64/menu.cpp, in eltale_rt64.dll): F1 or the controller's Back button. ImGui
+through RT64's own Inspector class (D3D12 or Vulkan backends) drawn from RT64's present hook. The
+game pauses while it is open (ElRt64_Present keeps re-presenting the frame). Pages: Game (resume,
+reset, reset to the Pak manager, save folder, quit), Audio (volume, mute in background), Graphics
+(fullscreen F11/Alt+Enter, RT64 resolution, MSAA, scaling filter, three-point filtering, frame
+rate), Controls (fixed bindings for now). Settings in settings.json in the data folder (RT64's
+UserConfiguration JSON under "graphics"). Host pacing no longer races to catch up after a pause
+(Port_HostPace rebases when more than 100 ms behind).
+
+**Reset** (Windows): `Port_HostSnapshot` copies the exe's writable PE sections and RDRAM just
+before Boot_Main; Reset stops the scheduler, `Port_HostRestore` copies them back, the Pak is
+reloaded from its file, and the game boots again. Fiber stacks are fixed slots and the window and
+sound live in the DLL, so nothing else needs undoing. Unattended check: ELTALE_HIDDEN_WINDOW=1
+ELTALE_MENU_TEST=N (opens the menu at frame N, resets into the Pak manager, quits) with
+ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"volume":0}}`.

@@ -77,7 +77,11 @@ void Port_HostPace(uint64_t virtual_ticks) {
     static uint64_t start_ns;
     if (!start_ns) start_ns = monotonic_ns();
     uint64_t target = start_ns + virtual_ticks * UINT64_C(1000000000) / UINT64_C(46875000);
-    uint64_t now;
+    uint64_t now = monotonic_ns();
+    /* far behind (the menu paused the game, the window was dragged): carry on from now instead of
+     * racing to catch up */
+    if (now > target + UINT64_C(100000000)) start_ns += now - target;
+    target = start_ns + virtual_ticks * UINT64_C(1000000000) / UINT64_C(46875000);
     while ((now = monotonic_ns()) < target) {
         uint64_t remaining = target - now;
 #ifdef _WIN32
@@ -90,6 +94,51 @@ void Port_HostPace(uint64_t virtual_ticks) {
 #endif
     }
 }
+
+#if defined(ELTALE_P1_OS) && defined(_WIN32)
+/* A reset (the menu's Reset game): the program's writable sections and RDRAM as they were just
+ * before Boot_Main, put back. Everything the game and the port keep is in those (the fiber stacks
+ * have fixed slots, and the window and sound live in eltale_rt64.dll), so the game boots again as
+ * if the program had just started. */
+static struct { unsigned char *at, *copy; size_t bytes; } snapshot_parts[16];
+static unsigned snapshot_count;
+
+void Port_HostSnapshot(void) {
+    extern IMAGE_DOS_HEADER __ImageBase;
+    unsigned char *base = (unsigned char *)&__ImageBase;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + __ImageBase.e_lfanew);
+    IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    unsigned count = 0;
+    for (unsigned i = 0; i < nt->FileHeader.NumberOfSections && count < 15; i++)
+        if (sec[i].Characteristics & IMAGE_SCN_MEM_WRITE) {
+            snapshot_parts[count].at = base + sec[i].VirtualAddress;
+            snapshot_parts[count].bytes = sec[i].Misc.VirtualSize;
+            count++;
+        }
+    snapshot_parts[count].at = (unsigned char *)RDRAM_BASE;
+    snapshot_parts[count].bytes = RDRAM_BYTES;
+    count++;
+    for (unsigned i = 0; i < count; i++) {
+        snapshot_parts[i].copy = malloc(snapshot_parts[i].bytes);
+        if (!snapshot_parts[i].copy) Port_HostFatal("no memory for the reset snapshot");
+    }
+    snapshot_count = count;
+    /* last, so the copies hold the table as it is now */
+    for (unsigned i = 0; i < count; i++) memcpy(snapshot_parts[i].copy, snapshot_parts[i].at, snapshot_parts[i].bytes);
+}
+
+void Port_HostRestore(void) {
+    /* the table is restored along with its section: work from a copy of it */
+    unsigned count = snapshot_count;
+    if (!count) Port_HostFatal("reset without a snapshot");
+    struct { unsigned char *at, *copy; size_t bytes; } parts[16];
+    memcpy(parts, snapshot_parts, sizeof parts);
+    for (unsigned i = 0; i < count; i++) memcpy(parts[i].at, parts[i].copy, parts[i].bytes);
+}
+#elif defined(ELTALE_P1_OS)
+void Port_HostSnapshot(void) { }
+void Port_HostRestore(void) { Port_HostFatal("reset is Windows-only for now"); }
+#endif
 
 void Port_HostFatal(const char *what) {
     fprintf(stderr, "P0 error: %s\n", what);

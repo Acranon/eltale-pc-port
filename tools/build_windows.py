@@ -88,6 +88,7 @@ def main() -> None:
     if args.p1_os:
         boot_sources += sorted((ROOT / "work/src/overlays/title").rglob("*.c"))
         boot_sources += sorted((ROOT / "work/src/overlays/ending").rglob("*.c"))
+        boot_sources += sorted((ROOT / "work/src/overlays/pakmenu").rglob("*.c"))
     sources = [str(p.relative_to(ROOT)) for p in boot_sources] + HOST_SOURCES
     if args.p1_os:
         sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]

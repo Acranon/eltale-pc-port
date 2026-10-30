@@ -1,0 +1,20 @@
+# Start held at power-on opens the Controller Pak manager: choose the note list (left, A), take
+# note 1 (A), Delete (left, A), confirm (left, A), then leave with B. Run with --pak holding a save.
+0 0x1000 0 0
+60 0 0 0
+100 0 -80 0
+104 0 0 0
+110 0x8000 0 0
+112 0 0 0
+140 0x8000 0 0
+142 0 0 0
+170 0 -80 0
+174 0 0 0
+180 0x8000 0 0
+182 0 0 0
+210 0 -80 0
+214 0 0 0
+220 0x8000 0 0
+222 0 0 0
+260 0x4000 0 0
+262 0 0 0

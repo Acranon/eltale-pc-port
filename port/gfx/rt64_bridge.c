@@ -20,6 +20,8 @@ static int (*rt_init)(const char *, int, int);
 static void (*rt_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
 static void (*rt_present)(const ElRt64Vi *);
 static int (*rt_poll)(void);
+static const char *(*rt_data_dir)(void);
+static int reset_request;
 static void (*rt_keep)(uint32_t, uint32_t);
 static void (*rt_pad)(uint16_t *, int8_t *, int8_t *);
 static void (*rt_audio)(const int16_t *, uint32_t, uint32_t);
@@ -36,15 +38,37 @@ static void draw_task(OSTask *task, unsigned frame) {
     rt_draw(image, (u32)(uptr)task->t.ucode, (u32)(uptr)task->t.ucode_data, root);
 }
 
+/* The game's two framebuffers (Gfx_InitFrames) and its F3DEX ucode (Gfx_InitFrameTask). */
+enum { GAME_FB0 = 0x803B5000, GAME_FB1 = 0x803DA800, UCODE = 0x8004BA50, UCODE_DATA = 0x80070260 };
+
 static void present(u32 framebuffer) {
     PortViRegs r;
+    /* any other framebuffer is a screen the CPU drew (the Controller Pak manager, before the game's
+     * frames exist): draw it into the first game framebuffer and show that */
+    if (framebuffer && framebuffer != GAME_FB0 && framebuffer != GAME_FB1) {
+        u32 root;
+        rt_draw(Port_BuildCpuFrameImage(framebuffer, GAME_FB0, &root), UCODE, UCODE_DATA, root);
+        framebuffer = GAME_FB0;
+    }
     if (Port_ViRegs(framebuffer, &r)) {
         ElRt64Vi vi = { r.status, r.origin, r.width, r.intr, r.v_current, r.timing, r.v_sync, r.h_sync, r.leap,
                         r.h_start, r.v_start, r.v_burst, r.x_scale, r.y_scale };
         rt_present(&vi);
     }
-    if (!rt_poll()) Port_OsRequestStop();
+    int status = rt_poll();
+    if (status != 1) {
+        reset_request = status >= 2 ? status : 0;
+        Port_OsRequestStop();
+    }
 }
+
+int Port_Rt64TakeReset(void) {
+    int r = reset_request;
+    reset_request = 0;
+    return r;
+}
+
+const char *Port_Rt64DataDir(void) { return rt_data_dir ? rt_data_dir() : "."; }
 
 int Port_Rt64Start(void) {
 #ifdef _WIN32
@@ -65,6 +89,7 @@ int Port_Rt64Start(void) {
     rt_keep = (void (*)(uint32_t, uint32_t))SYM("ElRt64_KeepRange");
     rt_pad = (void (*)(uint16_t *, int8_t *, int8_t *))SYM("ElRt64_GetPad");
     rt_audio = (void (*)(const int16_t *, uint32_t, uint32_t))SYM("ElRt64_QueueAudio");
+    rt_data_dir = (const char *(*)(void))SYM("ElRt64_DataDir");
     if (!rt_init || !rt_draw || !rt_present || !rt_poll || rt_init("Eltale Monsters", 1280, 960) != 0) {
         fprintf(stderr, "RT64: setup failed\n");
         return -1;

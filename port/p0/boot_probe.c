@@ -187,6 +187,28 @@ static void ai_wav_close(void) {
     fclose(ai_wav);
     ai_wav = NULL;
 }
+
+/* Each screen the Controller Pak manager draws, as a hash of its pixels (the headless check). */
+void Port_NoteCpuFrame(u32 framebuffer, s32 state) {
+    static unsigned count;
+    const u16 *px = (const u16 *)(uintptr_t)framebuffer;
+    uint64_t hash = UINT64_C(0xCBF29CE484222325);
+    for (u32 i = 0; i < 320 * 240; i++) hash = (hash ^ px[i]) * UINT64_C(0x100000001B3);
+    printf("P1_CPU_FRAME n=%u state=%d hash=%016llx\n", ++count, (int)state, (unsigned long long)hash);
+    /* ELTALE_DUMP_CPU_FRAMES=1: each as out/cpu_frame_<n>.ppm */
+    if (getenv("ELTALE_DUMP_CPU_FRAMES")) {
+        char name[64];
+        snprintf(name, sizeof name, "out/cpu_frame_%u.ppm", count);
+        FILE *f = fopen(name, "wb");
+        if (!f) return;
+        fprintf(f, "P6 320 240 255\n");
+        for (u32 i = 0; i < 320 * 240; i++) {
+            u16 p = px[i];
+            fputc((p >> 11 & 31) * 255 / 31, f); fputc((p >> 6 & 31) * 255 / 31, f); fputc((p >> 1 & 31) * 255 / 31, f);
+        }
+        fclose(f);
+    }
+}
 #endif
 
 int main(int argc, char **argv) {
@@ -198,6 +220,7 @@ int main(int argc, char **argv) {
     int frames_given = 0;
     int fast = 0;
     int window = 0;
+    int pak_manager = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) rom = argv[++i];
 #ifdef ELTALE_P1_OS
@@ -214,10 +237,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) { }
 #ifdef ELTALE_P1_OS
         else if (!strcmp(argv[i], "--window")) window = 1;
+        else if (!strcmp(argv[i], "--pak-manager")) pak_manager = 1;
 #endif
         else {
 #ifdef ELTALE_P1_OS
-            fprintf(stderr, "usage: eltale-p1 --rom path [--headless --fast --frames N --input script --pak image.mpk]\n");
+            fprintf(stderr, "usage: eltale-p1 --rom path [--window] [--headless --fast --frames N --input script --pak image.mpk]\n"
+                            "       [--pak-manager: start in the game's Controller Pak manager]\n");
 #else
             fprintf(stderr, "usage: eltale-p0 --rom path [--headless --fast]\n");
 #endif
@@ -228,6 +253,13 @@ int main(int argc, char **argv) {
     if (!rom) Port_HostFatal("supply --rom or ELTALE_ROM");
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
+    if (window && Port_Rt64Start() != 0) return 1;
+    /* a window keeps its Controller Pak in the data folder unless --pak names one */
+    static char default_pak[1024];
+    if (window && !pak) {
+        snprintf(default_pak, sizeof default_pak, "%s/controller-pak.mpk", Port_Rt64DataDir());
+        pak = default_pak;
+    }
     if (Port_ControllerLoadScript(input) || Port_PakLoad(pak)) return 1;
     Port_OsInit();
     /* a window runs until it is closed, unless --frames was given */
@@ -248,9 +280,19 @@ int main(int argc, char **argv) {
     if (getenv("ELTALE_AUDIO_WAV") && (ai_wav = fopen(getenv("ELTALE_AUDIO_WAV"), "wb")))
         fseek(ai_wav, 44, SEEK_SET);
 #endif
-    if (window && Port_Rt64Start() != 0) return 1;
-    Boot_Main(0);
-    Port_OsRun();
+    /* the menu's Reset puts everything back as it is here and boots again */
+    if (window) Port_HostSnapshot();
+    if (pak_manager) Port_ControllerHoldStartAtBoot();
+    for (;;) {
+        Boot_Main(0);
+        Port_OsRun();
+        int reset = window ? Port_Rt64TakeReset() : 0;
+        if (!reset) break;
+        Port_HostRestore();
+        if (Port_PakLoad(pak)) return 1; /* the saves as they are now, not as they were */
+        if (reset == 3) Port_ControllerHoldStartAtBoot();
+        fprintf(stderr, "P1_RESET%s\n", reset == 3 ? " pak-manager" : "");
+    }
     /* the tour and the load test stop themselves */
     int tour = getenv("ELTALE_MAP_TOUR") != NULL || getenv("ELTALE_LOAD_TEST") != NULL;
     if (!window && ((!tour && Port_OsFrameCount() != requested_frames) ||

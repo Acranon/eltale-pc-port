@@ -25,7 +25,7 @@ else()
     set(SDL2_INCLUDE ${SDL2_INCLUDE_DIRS})
 endif()
 
-add_library(eltale_rt64 SHARED eltale_rt64.cpp)
+add_library(eltale_rt64 SHARED eltale_rt64.cpp menu.cpp)
 target_include_directories(eltale_rt64 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${RT64_DIR}/src ${RT64_DIR}/src/contrib ${RT64_DIR}/src/contrib/hlslpp/include

@@ -5,4 +5,7 @@
  * State holds until the next row. Lines beginning with # are ignored. */
 int Port_ControllerLoadScript(const char *path);
 
+/* Hold Start on the first controller read, so the game opens its Controller Pak manager. */
+void Port_ControllerHoldStartAtBoot(void);
+
 #endif
