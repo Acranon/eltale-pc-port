@@ -72,8 +72,8 @@ extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
 /* ELTALE_MAP_TOUR=1 (no --input): start a New Game, then visit every sub-area of every map, 90
  * frames each, the way an exit does (exit_destination, then the area transition). Entry -1 keeps
  * the player's position. Ends the run after the last map. Its pad presses Start on the intro and
- * title, A while a text window is open (so it never starts a conversation) or in a battle (the
- * first command), and B in menus. */
+ * title, A while a text window is open (so it never starts a conversation), B in menus, and in
+ * battles a C button and A in turn (casting one-element spells). */
 static void tour_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     uint64_t vi = Port_OsViCount();
     *stick_x = *stick_y = 0;
@@ -81,7 +81,12 @@ static void tour_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     if (vi % 30 >= 2) return;
     if (core_game_mode == 3 || core_game_mode == 4) *buttons = 0x1000;
     else if (core_game_mode == 2) *buttons = 0x4000;
-    else if (text_active_window_count > 0 || (battle_flags & 1)) *buttons = 0x8000;
+    else if (battle_flags & 1) {
+        /* a one-element spell (a C button, each element in turn) then A to cast it; once the MP
+         * is gone A attacks */
+        static const u16 c_buttons[4] = { 0x0008, 0x0004, 0x0002, 0x0001 };
+        *buttons = (vi / 30) % 2 ? 0x8000 : c_buttons[(vi / 60) % 4];
+    } else if (text_active_window_count > 0) *buttons = 0x8000;
 }
 
 /* ELTALE_LOAD_TEST=1 (with --pak holding a save): from the title, Continue (stick right, A), load

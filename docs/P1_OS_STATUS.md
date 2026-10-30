@@ -505,14 +505,18 @@ map 35. The tour drives its own pad:
 - Start on the intro and title;
 - A while a text window is open, so it never starts a conversation, and in
   battles;
-- B in menus.
+- B in menus;
+- in battles, a C button and A in turn, so it casts one-element spells
+  (each element in turn) until the MP runs out, then attacks.
 
 `tests/p1_checks.sh exe rom --tour` runs it. Windows and Linux both finish all
-258 sub-areas in 30188 frames, with last_hash 46b61f5a7d79c61c and audio
-583e539f380183ad. On the way the tour:
-- saves at an inn;
-- fights the map 30 boss;
+258 sub-areas in 56367 frames, with last_hash 50bf22ee177096dd and audio
+d04b0bbcb16b02f5. On the way the tour:
+- fights the two map 30 bosses, with the player casting spells;
 - passes through the opening scene's dialogue.
+
+(`tests/tour-save.input` instead mashes A and B, which talks to the innkeeper
+on map 18 and saves; the save/load check uses it.)
 
 Input scripts accept `repeat FROM PERIOD`: after the last row, the rows from
 VI FROM onwards play again every PERIOD VIs.
@@ -537,8 +541,10 @@ Fixed on the way:
 - **Busy wait**: the menu loop's exit after a rest (`while (bgm_current != -1)
   Bgm_Update();`) calls Port_OsSpinWait too.
 
-Still to check by playing: loading a save from the title, the Controller Pak
-manager overlay (pakmenu), and magic in use: casting, hits and effects.
+Not built natively: pakmenu, the Controller Pak note manager that opens when
+Start is held at power-on or the Pak needs repair. It draws into the frame
+buffer with the CPU, which the RT64 path does not show; stubs.c returns 0
+("nothing to do").
 
 ## Loading, and N64-compatible saves (2026-10-29)
 
