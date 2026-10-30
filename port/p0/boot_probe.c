@@ -62,6 +62,58 @@ void Port_P0DisplayListReady(struct GfxFrame *raw_frame) {
 
 #ifdef ELTALE_P1_AUDIO
 extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
+#ifdef ELTALE_P1_OS
+#include "port/data.h"
+#include "game/env/env.h"
+#include "game/battle/battle.h"
+
+#include "game/text/text_window.h"
+
+/* ELTALE_MAP_TOUR=1 (no --input): start a New Game, then visit every sub-area of every map, 90
+ * frames each, the way an exit does (exit_destination, then the area transition). Entry -1 keeps
+ * the player's position. Ends the run after the last map. Its pad presses Start on the intro and
+ * title, A while a text window is open (so it never starts a conversation) or in a battle (the
+ * first command), and B in menus. */
+static void tour_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
+    uint64_t vi = Port_OsViCount();
+    *stick_x = *stick_y = 0;
+    *buttons = 0;
+    if (vi % 30 >= 2) return;
+    if (core_game_mode == 3 || core_game_mode == 4) *buttons = 0x1000;
+    else if (core_game_mode == 2) *buttons = 0x4000;
+    else if (text_active_window_count > 0 || (battle_flags & 1)) *buttons = 0x8000;
+}
+
+void Port_MapTourStep(void) {
+    static int on = -1, map = -1, sub, wait;
+    if (on < 0) on = getenv("ELTALE_MAP_TOUR") != NULL;
+    static int blocked;
+    if (!on) return;
+    if ((core_flags & 0x87) || (battle_flags & 1)) {
+        if (++blocked == 3000)
+            fprintf(stderr, "P1_TOUR blocked at map=%d sub=%d: core_flags=%x battle_flags=%x\n", map, sub,
+                    (unsigned)core_flags, battle_flags);
+        return;
+    }
+    blocked = 0;
+    if (++wait < 90) return;
+    wait = 0;
+    if (map < 0) map = 0, sub = 0;
+    else if (++sub >= (int)Port_MapAreaSubareaCount()) map++, sub = 0;
+    if (map >= 36) {
+        fprintf(stderr, "P1_TOUR done\n");
+        Port_OsRequestStop();
+        return;
+    }
+    fprintf(stderr, "P1_TOUR map=%d sub=%d vi=%llu\n", map, sub, (unsigned long long)Port_OsViCount());
+    exit_destination.map = map;
+    exit_destination.subarea = sub;
+    exit_destination.entry = -1;
+    core_flags |= 0x80;
+    core_transition_timer = 0x14;
+}
+#endif
+
 void Port_OverrideStartMode(void) {
 #ifdef ELTALE_P1_OS
     static int done;
@@ -122,8 +174,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             requested_frames = (unsigned)strtoul(argv[++i], NULL, 10);
             frames_given = 1;
-            if (!requested_frames || requested_frames > 10000)
-                Port_HostFatal("--frames must be between 1 and 10000");
+            if (!requested_frames || requested_frames > 1000000)
+                Port_HostFatal("--frames must be between 1 and 1000000");
         }
 #endif
         else if (!strcmp(argv[i], "--fast")) fast = 1;
@@ -150,6 +202,10 @@ int main(int argc, char **argv) {
     Port_OsSetFrameLimit(window && !frames_given ? 0 : requested_frames);
     Port_OsSetFast(fast);
     if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
+    if (getenv("ELTALE_MAP_TOUR") && !input) {
+        extern void (*Port_LivePad)(u16 *, s8 *, s8 *);
+        Port_LivePad = tour_pad;
+    }
 #ifdef ELTALE_P1_AUDIO
     Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTask;
     /* the reference microcode: play with it, or check the HLE against it on every task */
@@ -163,8 +219,9 @@ int main(int argc, char **argv) {
     if (window && Port_Rt64Start() != 0) return 1;
     Boot_Main(0);
     Port_OsRun();
-    if (!window && (Port_OsFrameCount() != requested_frames ||
-        Port_OsGfxTaskCount() < requested_frames || (intro_pak_check_done != 1 && !getenv("ELTALE_START_MODE"))))
+    int tour = getenv("ELTALE_MAP_TOUR") != NULL; /* stops itself after the last map */
+    if (!window && ((!tour && Port_OsFrameCount() != requested_frames) ||
+        (!tour && Port_OsGfxTaskCount() < requested_frames) || (intro_pak_check_done != 1 && !getenv("ELTALE_START_MODE"))))
         Port_HostFatal("P1 OS did not complete the requested intro frames");
 #ifdef ELTALE_P1_AUDIO
     ai_wav_close();

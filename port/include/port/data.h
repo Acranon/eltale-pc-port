@@ -12,6 +12,9 @@ struct MapAreaDef *Port_MapArea(const struct MapAreaDef *def, int reloaded);
 /* The native copy of one sub-area's chests (chest_map_placements). */
 struct ChestGroup *Port_ChestGroup(const struct ChestGroup *groups, int subarea);
 
+/* The number of sub-areas in the area Port_MapArea decoded last. */
+unsigned Port_MapAreaSubareaCount(void);
+
 /* port/data/anim.c: in-place byte swapping of N64-layout records in RDRAM. */
 #include <stdint.h>
 void Port_DataForget(uint32_t start, uint32_t bytes);
@@ -30,6 +33,8 @@ void Port_SwapHalfwords(void *p, uint32_t bytes);
 void Port_SwapKfAnim(uint32_t anim);
 /* Swap the keyframe tables the game's own AnimNodes use (after the boot copy). */
 void Port_SwapNativeKeyframes(void);
+/* port/data/magic.c: swap the magic block's records (after its boot DMA to 0x800C0000). */
+void Port_SwapMagicBlock(void);
 /* port/data/common.c: swap the common block's pointer-free tables (after its boot DMA). */
 void Port_SwapCommonBlock(void);
 /* port/data/enemy.c: swap N64-layout EnemyDefs (and their attack lists) in place. */

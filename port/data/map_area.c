@@ -135,6 +135,9 @@ static MapGrid *decode_grids(u32 a, unsigned count, unsigned *model_count) {
     return g;
 }
 
+static unsigned last_subarea_count;
+unsigned Port_MapAreaSubareaCount(void) { return last_subarea_count; }
+
 static MapSubareaDef *decode_subareas(u32 a, unsigned count, unsigned *grids, unsigned *envs) {
     MapSubareaDef *s = alloc(count * sizeof *s);
     for (unsigned i = 0; i < count; i++, a += 0x18) {
@@ -291,6 +294,7 @@ static MapAreaDef *decode_area(const MapAreaDef *def) {
     u32 subareas = (u32)(uptr)def->subareas;
     unsigned nsub = bounded_count(subareas, 0x18, 64), ngrids = 0, nenvs = 0, nmodels = 0;
     if (!nsub) Port_HostFatal("map area has no sub-areas");
+    last_subarea_count = nsub;
     out.subareas = decode_subareas(subareas, nsub, &ngrids, &nenvs);
     out.grids = decode_grids((u32)(uptr)def->grids, ngrids, &nmodels);
     out.models = decode_models((u32)(uptr)def->models, nmodels);

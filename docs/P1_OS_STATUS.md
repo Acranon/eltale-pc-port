@@ -495,3 +495,47 @@ the tool for them.
   exception, the faulting address and the unwound stack (fiber stacks defeat
   the unhandled-exception filter). Symbolize with
   `llvm-symbolizer --obj=out/p1-windows/eltale-p1.exe 0x...`.
+
+## Map tour, saving, magic (2026-10-29)
+
+`ELTALE_MAP_TOUR=1` (with no `--input`) starts a New Game and then visits every
+sub-area of every map, 90 frames each. Arrival goes through the game's own exit
+transition, with entry -1 so the player keeps its position. The run ends after
+map 35. The tour drives its own pad:
+- Start on the intro and title;
+- A while a text window is open, so it never starts a conversation, and in
+  battles;
+- B in menus.
+
+`tests/p1_checks.sh exe rom --tour` runs it. Windows and Linux both finish all
+258 sub-areas in 30188 frames, with last_hash 46b61f5a7d79c61c and audio
+583e539f380183ad. On the way the tour:
+- saves at an inn;
+- fights the map 30 boss;
+- passes through the opening scene's dialogue.
+
+Input scripts accept `repeat FROM PERIOD`: after the last row, the rows from
+VI FROM onwards play again every PERIOD VIs.
+
+Fixed on the way:
+- **Magic block** (ROM 0xD490C0, DMA'd to 0x800C0000 at boot) was raw N64 data
+  read through native types. Every spell, the player's included, would have
+  misread it. `Port_SwapMagicBlock` (port/data/magic.c) swaps it in place:
+  - the records: SpellDef, SpellFxDef and SpellParticleDef rows for 5 groups ×
+    15 spells, the MP costs, the launch directions, the visual defs, the
+    effect texture animations, and two light animations;
+  - the pointer tables stay big-endian and are read through `MAGIC_SPELLS`,
+    `MAGIC_FX` and `MAGIC_PARTICLES` (magic.h), and in hud.c through
+    `Port_N64Ptr` for the spell names.
+- **Saving**: Pak_CompareNameBytes compares n + 1 bytes and calls the names
+  equal only when the extra byte differs. On the N64 that byte is stack
+  padding after OSPfsState.game_name and happens to differ. Natively it
+  matched, so the game never found its own save and tried to allocate it
+  again (PFS_ERR_EXIST). The port compares the 16 name bytes. Saving, the
+  rescan and the header read-back now work; `ELTALE_TRACE_PAK=1` logs every
+  Pak file call.
+- **Busy wait**: the menu loop's exit after a rest (`while (bgm_current != -1)
+  Bgm_Update();`) calls Port_OsSpinWait too.
+
+Still to check by playing: loading a save from the title, the Controller Pak
+manager overlay (pakmenu), and magic in use: casting, hits and effects.

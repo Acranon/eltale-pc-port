@@ -16,11 +16,15 @@ typedef struct InputRow {
 } InputRow;
 static InputRow rows[MAX_INPUT_ROWS];
 static unsigned row_count, next_row;
+/* `repeat FROM PERIOD`: after the last row, the rows from VI FROM on play again every PERIOD VIs */
+static unsigned repeat_first;
+static uint64_t repeat_period, repeat_offset;
 static OSContPad current_pad;
 static u8 channels = 4;
 
 int Port_ControllerLoadScript(const char *path) {
     row_count = next_row = 0;
+    repeat_period = repeat_offset = 0;
     memset(&current_pad, 0, sizeof current_pad);
     if (!path) return 0;
     FILE *file = fopen(path, "r");
@@ -33,6 +37,18 @@ int Port_ControllerLoadScript(const char *path) {
     while (fgets(line, sizeof line, file)) {
         lineno++;
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
+        unsigned long long from, period;
+        if (sscanf(line, "repeat %llu %llu", &from, &period) == 2) {
+            repeat_first = 0;
+            while (repeat_first < row_count && rows[repeat_first].vi < from) repeat_first++;
+            if (repeat_first == row_count || !period || from + period <= rows[row_count - 1].vi) {
+                fprintf(stderr, "input script %s:%u: repeat must follow its rows and span them\n", path, lineno);
+                fclose(file);
+                return -1;
+            }
+            repeat_period = period;
+            continue;
+        }
         unsigned long long vi;
         int buttons;
         int x, y;
@@ -64,7 +80,12 @@ static void update_pad(void) {
         return;
     }
     uint64_t now = Port_OsViCount();
-    while (next_row < row_count && rows[next_row].vi <= now) {
+    for (;;) {
+        if (next_row == row_count && repeat_period) {
+            next_row = repeat_first;
+            repeat_offset += repeat_period;
+        }
+        if (next_row >= row_count || rows[next_row].vi + repeat_offset > now) break;
         fprintf(stderr, "P1_INPUT vi=%llu buttons=%04x stick=%d,%d\n",
                 (unsigned long long)now, rows[next_row].buttons,
                 rows[next_row].stick_x, rows[next_row].stick_y);

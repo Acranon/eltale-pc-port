@@ -12,4 +12,7 @@ __attribute__((noreturn)) void Port_P0DisplayListReady(struct GfxFrame *frame);
  * mode without playing to it. Called after Core_ResetGameState. */
 void Port_OverrideStartMode(void);
 
+/* ELTALE_MAP_TOUR: called once per gameplay frame. */
+void Port_MapTourStep(void);
+
 #endif

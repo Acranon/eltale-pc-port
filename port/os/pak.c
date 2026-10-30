@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum { PAK_SIZE = 32768, PAGE_SIZE = 256, FIRST_PAGE = 5, LAST_PAGE = 127,
@@ -158,7 +159,7 @@ s32 osPfsRepairId(OSPfs *p) {
     return 0;
 }
 
-s32 osPfsFindFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext, s32 *file) {
+static s32 osPfsFindFile_impl(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext, s32 *file) {
     s32 err = check(p);
     if (err) return err;
     for (int i = 0; i < DIR_COUNT; i++) {
@@ -181,7 +182,7 @@ static int chain_length(int first) {
     return count;
 }
 
-s32 osPfsFileState(OSPfs *p, s32 file, OSPfsState *st) {
+static s32 osPfsFileState_impl(OSPfs *p, s32 file, OSPfsState *st) {
     s32 err = check(p);
     if (err) return err;
     if (file < 0 || file >= DIR_COUNT || !occupied(file)) return PFS_ERR_INVALID;
@@ -205,17 +206,17 @@ s32 osPfsFreeBlocks(OSPfs *p, s32 *bytes) {
     return 0;
 }
 
-s32 osPfsAllocateFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext,
+static s32 osPfsAllocateFile_impl(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext,
                       int size, s32 *file) {
     s32 err = check(p), existing;
     if (err) return err;
     if (!game || !company || size <= 0 || !name || !ext) return PFS_ERR_INVALID;
-    if (osPfsFindFile(p, company, game, name, ext, &existing) == 0) return PFS_ERR_EXIST;
+    if (osPfsFindFile_impl(p, company, game, name, ext, &existing) == 0) return PFS_ERR_EXIST;
     int pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     int free_bytes;
     osPfsFreeBlocks(p, &free_bytes);
     if (pages * PAGE_SIZE > free_bytes) return PFS_DATA_FULL;
-    if (osPfsFindFile(p, 0, 0, NULL, NULL, file)) return PFS_DIR_FULL;
+    if (osPfsFindFile_impl(p, 0, 0, NULL, NULL, file)) return PFS_DIR_FULL;
     int first = 0, prev = 0;
     for (int i = FIRST_PAGE; i <= LAST_PAGE && pages; i++) {
         if (inode(i) != PFS_PAGE_NOT_USED) continue;
@@ -236,8 +237,8 @@ s32 osPfsAllocateFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext,
     return flush_pak() ? PFS_ERR_CONTRFAIL : 0;
 }
 
-s32 osPfsDeleteFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext) {
-    s32 file, err = osPfsFindFile(p, company, game, name, ext, &file);
+static s32 osPfsDeleteFile_impl(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext) {
+    s32 file, err = osPfsFindFile_impl(p, company, game, name, ext, &file);
     if (err) return err;
     int page = entry(file)[7], seen[128] = {0};
     while (page != PFS_EOF) {
@@ -252,9 +253,9 @@ s32 osPfsDeleteFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext) {
     return flush_pak() ? PFS_ERR_CONTRFAIL : 0;
 }
 
-s32 osPfsReadWriteFile(OSPfs *p, s32 file, u8 flag, int offset, int size, u8 *buffer) {
+static s32 osPfsReadWriteFile_impl(OSPfs *p, s32 file, u8 flag, int offset, int size, u8 *buffer) {
     OSPfsState st;
-    s32 err = osPfsFileState(p, file, &st);
+    s32 err = osPfsFileState_impl(p, file, &st);
     if (err) return err;
     if (!buffer || (offset | size) & 31 || offset < 0 || size <= 0 ||
         (uint64_t)(unsigned)offset + (unsigned)size > st.file_size || flag > PFS_WRITE)
@@ -289,4 +290,33 @@ s32 osPfsNumFiles(OSPfs *p, s32 *max, s32 *used) {
 }
 s32 func_8003EDC0(OSPfs *p, s32 *max, s32 *used) {
     return osPfsNumFiles(p, max, used);
+}
+
+/* ELTALE_TRACE_PAK=1: each file call and its result. */
+static int trace_pak(void) { static int t = -1; if (t < 0) t = getenv("ELTALE_TRACE_PAK") != NULL; return t; }
+s32 osPfsFindFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext, s32 *file) {
+    s32 r = osPfsFindFile_impl(p, company, game, name, ext, file);
+    if (trace_pak()) fprintf(stderr, "PAK find game=%08x -> %d file=%d\n", game, r, r ? -1 : *file);
+    return r;
+}
+s32 osPfsFileState(OSPfs *p, s32 file, OSPfsState *st) {
+    s32 r = osPfsFileState_impl(p, file, st);
+    if (trace_pak()) fprintf(stderr, "PAK state file=%d -> %d\n", file, r);
+    return r;
+}
+s32 osPfsAllocateFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext, int size, s32 *file) {
+    s32 r = osPfsAllocateFile_impl(p, company, game, name, ext, size, file);
+    if (trace_pak()) fprintf(stderr, "PAK allocate size=%d ext=%02x%02x%02x%02x -> %d file=%d\n", size, ext[0], ext[1], ext[2],
+                             ext[3], r, r ? -1 : *file);
+    return r;
+}
+s32 osPfsDeleteFile(OSPfs *p, u16 company, u32 game, u8 *name, u8 *ext) {
+    s32 r = osPfsDeleteFile_impl(p, company, game, name, ext);
+    if (trace_pak()) fprintf(stderr, "PAK delete -> %d\n", r);
+    return r;
+}
+s32 osPfsReadWriteFile(OSPfs *p, s32 file, u8 flag, int offset, int size, u8 *buffer) {
+    s32 r = osPfsReadWriteFile_impl(p, file, flag, offset, size, buffer);
+    if (trace_pak()) fprintf(stderr, "PAK %s file=%d offset=%d size=%d -> %d\n", flag ? "write" : "read", file, offset, size, r);
+    return r;
 }
