@@ -171,12 +171,18 @@ extern "C" void ElRt64_Present(const ElRt64Vi *vi) {
     VI_Y_SCALE_REG = vi->y_scale;
     menu::frame();
     app->updateScreen();
-    // the game is paused while the menu is open: keep showing this frame under it
-    while (menu::is_open() && !quit_requested) {
-        SDL_Delay(15);
-        pump_events();
-        menu::frame();
-        app->updateScreen();
+    // The game is paused while the menu is open. RT64 only presents when the picture changed, so it
+    // is told it is paused (its debugger's pause), which makes it re-present the last frame each
+    // time: the menu is redrawn over it.
+    if (menu::is_open() && !quit_requested) {
+        app->state->debuggerInspector.paused = true;
+        while (menu::is_open() && !quit_requested) {
+            SDL_Delay(15);
+            pump_events();
+            menu::frame();
+            app->updateScreen();
+        }
+        app->state->debuggerInspector.paused = false;
     }
 }
 

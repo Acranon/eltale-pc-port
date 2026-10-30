@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     if (getenv("ELTALE_AUDIO_LLE")) Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTaskLle;
     if (getenv("ELTALE_AUDIO_CHECK")) Port_AudioTaskHook = (void (*)(OSTask *))Port_CheckAudioTask;
     Port_PiDmaHook = Port_LleNotePiDma;
-    Port_AiBufferHook = hash_ai_buffer;
+    if (!Port_AiBufferHook) Port_AiBufferHook = hash_ai_buffer; /* a window plays it instead */
     if (getenv("ELTALE_AUDIO_WAV") && (ai_wav = fopen(getenv("ELTALE_AUDIO_WAV"), "wb")))
         fseek(ai_wav, 44, SEEK_SET);
 #endif
