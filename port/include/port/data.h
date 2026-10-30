@@ -27,6 +27,8 @@ void Port_SwapAnimSet(uint32_t set);
 /* Swap the display-list table a native AnimSet copy points to (its nodes already swapped). */
 struct AnimSet;
 void Port_SwapAnimSetDls(const struct AnimSet *set);
+/* Byte-swap a host buffer record by `shape` (w: 4 bytes, h: 2, b: 1); returns the bytes covered. */
+uint32_t Port_SwapRecord(void *p, const char *shape);
 /* Byte-swap a native u16 array that a ROM DMA filled (palettes the game blends as numbers). */
 void Port_SwapHalfwords(void *p, uint32_t bytes);
 /* Swap a KfAnim record and its keyframes. */

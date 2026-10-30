@@ -17,3 +17,12 @@ if [ "${3:-}" = "--tour" ]; then
     echo "map tour:"
     ELTALE_MAP_TOUR=1 "$exe" --headless --fast --frames 300000 --rom "$rom" 2>/dev/null | grep 'P1_OS_OK\|P1_AUDIO'
 fi
+if [ "${3:-}" = "--tour" ]; then
+    # save at the inn on map 18 (tour-save.input talks to the innkeeper), then Continue from the title
+    echo "save and load:"
+    pak=$(mktemp)
+    rm -f "$pak"
+    ELTALE_MAP_TOUR=1 "$exe" --headless --fast --frames 16000 --input tests/tour-save.input --pak "$pak" --rom "$rom" >/dev/null 2>&1
+    ELTALE_LOAD_TEST=1 "$exe" --headless --fast --frames 5000 --pak "$pak" --rom "$rom" 2>&1 >/dev/null | grep 'P1_LOAD'
+    rm -f "$pak"
+fi

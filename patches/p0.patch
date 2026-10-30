@@ -976,7 +976,7 @@ index b10f0fe..c7821f6 100644
  
  void Fade_Init(void);
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..72a6a23 100644
+index cc5330a..b8362a8 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
@@ -1005,7 +1005,7 @@ index cc5330a..72a6a23 100644
      if (ret == 0) {
          ret = file_no;
          pak_game_file_scans[arg0].note_ext_first_bytes[ret] = arg1;
-@@ -228,7 +231,7 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
+@@ -228,10 +231,27 @@ u8 Pak_DeleteGameFile(s32 arg0, u8 arg1) {
  
      ext = pak_delete_extension_template;
      ext.b[0] = arg1;
@@ -1013,8 +1013,44 @@ index cc5330a..72a6a23 100644
 +    return osPfsDeleteFile(&pak_port_states[arg0], 0x3943, 0x4E45544A, pak_game_name, ext.b);
  }
  
++#ifdef ELTALE_P1_OS
++/* Port: a save's header (SaveHeader, 0x80 bytes at offset 0) goes to the Pak big-endian, as the
++ * N64 writes it, so Paks move between the port and the N64 or an emulator. The rest is bytes. */
++#include "port/data.h"
++#include <string.h>
++__attribute__((noreturn)) void Port_HostFatal(const char *what);
++#define SAVE_HEADER_SHAPE "hhhhhhhhwwwwwbbbbhhhhbbbbbbbbhhwwwwwwwwhhhbbhbb"
++static void port_swap_save_header(u8 *buf) {
++    if (Port_SwapRecord(buf, SAVE_HEADER_SHAPE) != 0x68) Port_HostFatal("save header shape does not match its size");
++}
++#endif
++
  s32 Pak_ReadFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
-@@ -298,6 +301,14 @@ s32 Pak_ClassifyError(s32 arg0) {
++#ifdef ELTALE_P1_OS
++    s32 r = osPfsReadWriteFile(&pak_port_states[arg0], file_no, 0, offset, nbytes, buf);
++    if (r == 0 && offset == 0 && nbytes >= 0x68) port_swap_save_header(buf);
++    return r;
++#endif
+     return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 0, offset, nbytes, buf);
+ }
+ 
+@@ -243,6 +263,15 @@ s32 Pak_WriteFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
+     if (ret != 0) {
+         return ret;
+     }
++#ifdef ELTALE_P1_OS
++    if (offset == 0 && nbytes >= 0x68) {
++        u8 big[0x80];
++        if (nbytes > (s32)sizeof big) Port_HostFatal("save header write too long");
++        memcpy(big, buf, nbytes);
++        port_swap_save_header(big);
++        return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, big);
++    }
++#endif
+     return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, buf);
+ }
+ 
+@@ -298,6 +327,14 @@ s32 Pak_ClassifyError(s32 arg0) {
  }
  
  s32 Pak_CompareNameBytes(u8 *a, u8 *b, s32 n) {
@@ -1029,7 +1065,7 @@ index cc5330a..72a6a23 100644
      do {
          if (*a++ != *b++) {
              break;
-@@ -321,3 +332,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
+@@ -321,3 +358,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
  void Pak_InitGbPak(void) {
      func_8003D6B0();
  }

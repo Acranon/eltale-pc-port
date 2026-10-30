@@ -84,7 +84,34 @@ static void tour_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     else if (text_active_window_count > 0 || (battle_flags & 1)) *buttons = 0x8000;
 }
 
+/* ELTALE_LOAD_TEST=1 (with --pak holding a save): from the title, Continue (stick right, A), load
+ * the first save, and print where gameplay starts (P1_LOAD), then stop. */
+#include "overlays/title/title.h"
+#include "game/map/map.h"
+#include "game/player/player.h"
+static void load_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
+    static int moved;
+    uint64_t vi = Port_OsViCount();
+    *stick_x = *stick_y = 0;
+    *buttons = 0;
+    if (vi % 30 >= 2) return;
+    if (core_game_mode == 4) *buttons = 0x1000;
+    else if (core_game_mode == 3) {
+        if (title_menu_state == 2 && !moved) { *stick_x = 80; moved = 1; } /* the items run left to right */
+        else *buttons = title_menu_state == 2 ? 0x8000 : 0x1000;
+    } else if (core_game_mode == 2) *buttons = 0x8000;
+}
+
 void Port_MapTourStep(void) {
+    static int load_test = -1;
+    if (load_test < 0) load_test = getenv("ELTALE_LOAD_TEST") != NULL;
+    if (load_test) {
+        fprintf(stderr, "P1_LOAD map=%d sub=%d hp=%d/%d level=%d vi=%llu\n", map_id, map_subarea, player_stats.hp,
+                player_stats.max_hp, player_stats.level, (unsigned long long)Port_OsViCount());
+        load_test = 0;
+        Port_OsRequestStop();
+        return;
+    }
     static int on = -1, map = -1, sub, wait;
     if (on < 0) on = getenv("ELTALE_MAP_TOUR") != NULL;
     static int blocked;
@@ -202,9 +229,9 @@ int main(int argc, char **argv) {
     Port_OsSetFrameLimit(window && !frames_given ? 0 : requested_frames);
     Port_OsSetFast(fast);
     if (getenv("ELTALE_FRAME_IMAGE")) Port_GfxTaskHook = Port_FrameImageTrace;
-    if (getenv("ELTALE_MAP_TOUR") && !input) {
+    if ((getenv("ELTALE_MAP_TOUR") || getenv("ELTALE_LOAD_TEST")) && !input) {
         extern void (*Port_LivePad)(u16 *, s8 *, s8 *);
-        Port_LivePad = tour_pad;
+        Port_LivePad = getenv("ELTALE_LOAD_TEST") ? load_pad : tour_pad;
     }
 #ifdef ELTALE_P1_AUDIO
     Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTask;
@@ -219,7 +246,8 @@ int main(int argc, char **argv) {
     if (window && Port_Rt64Start() != 0) return 1;
     Boot_Main(0);
     Port_OsRun();
-    int tour = getenv("ELTALE_MAP_TOUR") != NULL; /* stops itself after the last map */
+    /* the tour and the load test stop themselves */
+    int tour = getenv("ELTALE_MAP_TOUR") != NULL || getenv("ELTALE_LOAD_TEST") != NULL;
     if (!window && ((!tour && Port_OsFrameCount() != requested_frames) ||
         (!tour && Port_OsGfxTaskCount() < requested_frames) || (intro_pak_check_done != 1 && !getenv("ELTALE_START_MODE"))))
         Port_HostFatal("P1 OS did not complete the requested intro frames");

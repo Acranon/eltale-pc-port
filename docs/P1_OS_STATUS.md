@@ -539,3 +539,17 @@ Fixed on the way:
 
 Still to check by playing: loading a save from the title, the Controller Pak
 manager overlay (pakmenu), and magic in use: casting, hits and effects.
+
+## Loading, and N64-compatible saves (2026-10-29)
+
+- Saves go to the Pak in the N64's format. The 0x68-byte SaveHeader (player
+  stats, play time, map and return points, options) is byte-swapped to
+  big-endian when written and back when read, in the game's own
+  Pak_WriteFile/Pak_ReadFile (`Port_SwapRecord`). The rest of a save is bytes.
+  A `--pak` file therefore moves between the port and an emulator or the
+  N64 (an emulator's .mpk is the same raw 32 KiB image).
+- `ELTALE_LOAD_TEST=1 --pak FILE` loads the first save from the title's
+  Continue and prints `P1_LOAD`; its pad picks Continue with stick right, since
+  the title's items run left to right. `tests/p1_checks.sh ... --tour` saves at
+  the map 18 inn (`tests/tour-save.input` with the tour) and loads it again:
+  `P1_LOAD map=18 sub=7 hp=50/50`.

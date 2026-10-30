@@ -63,6 +63,18 @@ static void swap_keyframes(u32 kfs, u32 count) {
     }
 }
 
+/* Byte-swap a host buffer record by `shape` (w: 4 bytes, h: 2, b: 1); returns the bytes covered. */
+u32 Port_SwapRecord(void *p, const char *shape) {
+    u8 *b = p, t;
+    u32 off = 0;
+    for (const char *s = shape; *s; s++) {
+        if (*s == 'w') { t = b[off]; b[off] = b[off + 3]; b[off + 3] = t; t = b[off + 1]; b[off + 1] = b[off + 2]; b[off + 2] = t; off += 4; }
+        else if (*s == 'h') { t = b[off]; b[off] = b[off + 1]; b[off + 1] = t; off += 2; }
+        else off += 1;
+    }
+    return off;
+}
+
 /* A native u16 array a ROM DMA filled with big-endian halfwords (palettes the game blends). */
 void Port_SwapHalfwords(void *p, u32 bytes) {
     u8 *b = p;
