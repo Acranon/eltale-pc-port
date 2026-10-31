@@ -12,7 +12,8 @@
  *   of native lists to N64 addresses.
  *
  * F3DEX 1.23 commands that carry addresses: MTX, MOVEMEM, VTX, DL, MOVEWORD (segments),
- * SETTIMG (with the following LOADBLOCK/LOADTILE/LOADTLUT for the size), SETCIMG, SETZIMG,
+ * SETTIMG (with the following LOADBLOCK/LOADTILE/LOADTLUT for the size, and SETTILE for a block
+ * load's texel size), SETCIMG, SETZIMG,
  * RDPHALF_1 + BRANCH_Z. */
 #include "port/gfx.h"
 #include "game/core/main.h"
@@ -116,13 +117,32 @@ static void ref_data(u32 word, u32 bytes, int unit) {
     if (native && n64) copy_native(native_host(word), n64, bytes, unit);
 }
 
-static void texture_load(u32 bytes) {
+static void texture_copy(uintptr_t host, u32 bytes, int unit) {
+    u32 n64 = native_to_n64(host);
+    if (n64) copy_native(host, n64, bytes, unit);
+    else stats.unknown++;
+}
+
+/* A LOADBLOCK names 4- and 8-bit textures as 16-bit ones (G_IM_SIZ_8b_LOAD_BLOCK and the like), so a
+ * native texture it loads waits for the render tile's SETTILE, which gives the real texel size: a
+ * u8 array copied as halfwords would come out with its texels swapped in pairs. */
+static struct { uintptr_t host; u32 bytes; } pending_block;
+
+static void flush_block(int unit) {
+    if (pending_block.bytes) texture_copy(pending_block.host, pending_block.bytes, unit);
+    pending_block.bytes = 0;
+}
+
+static void texture_load(u32 bytes, int block) {
     if (!timg.addr || !bytes) return;
     stats.textures++;
-    if (timg.native) {
-        u32 n64 = native_to_n64(timg.addr);
-        if (n64) copy_native(timg.addr, n64, bytes, timg.siz == 2 ? 2 : timg.siz == 3 ? 4 : 1);
-        else stats.unknown++;
+    if (!timg.native) return;
+    if (block && timg.siz == 2) {
+        flush_block(2);
+        pending_block.host = timg.addr;
+        pending_block.bytes = bytes;
+    } else {
+        texture_copy(timg.addr, bytes, timg.siz == 2 ? 2 : timg.siz == 3 ? 4 : 1);
     }
 }
 
@@ -180,16 +200,19 @@ static void walk(u32 word, int depth) {
             break;
         case 0xF3: { /* LOADBLOCK: lrs+1 texels */
             u32 texels = (w1 >> 12 & 0xFFF) + 1;
-            texture_load(timg.siz == 0 ? (texels + 1) / 2 : texels << (timg.siz - 1));
+            texture_load(timg.siz == 0 ? (texels + 1) / 2 : texels << (timg.siz - 1), 1);
             break; }
         case 0xF4: { /* LOADTILE: rows of the image */
             u32 ult = w0 & 0xFFF, lrt = w1 & 0xFFF, lrs = w1 >> 12 & 0xFFF;
             u32 rows = (lrt >> 2) + 1, row_bytes = timg.siz == 0 ? (timg.width + 1) / 2 : timg.width << (timg.siz - 1);
             (void)lrs;
-            texture_load(rows * row_bytes);
+            texture_load(rows * row_bytes, 0);
             (void)ult;
             break; }
-        case 0xF0: texture_load(((w1 >> 14 & 0x3FF) + 1) * 2); break; /* LOADTLUT */
+        case 0xF0: texture_load(((w1 >> 14 & 0x3FF) + 1) * 2, 0); break; /* LOADTLUT */
+        case 0xF5: /* SETTILE: a tile other than the load tile gives a pending block load's texel size */
+            if ((w1 >> 24 & 7) != 7) { u32 siz = w0 >> 19 & 3; flush_block(siz == 2 ? 2 : siz == 3 ? 4 : 1); }
+            break;
         case 0xFE: case 0xFF: out1 = resolve(w1, &ref_native); break; /* SETZIMG, SETCIMG */
         }
         if (is_rdram(out1) && (op == 0x01 || op == 0x03 || op == 0x04 || op == 0x06 || op == 0xFD ||
@@ -209,11 +232,13 @@ const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *out) 
     memset(&stats, 0, sizeof stats);
     memset(segments, 0, sizeof segments);
     memset(&timg, 0, sizeof timg);
+    pending_block.bytes = 0;
     memcpy(image, (const void *)(uintptr_t)RDRAM, RDRAM_BYTES);
     trace_copies = getenv("ELTALE_TRACE_COPIES") != NULL && getenv("ELTALE_DUMP_IMAGE") != NULL;
     int native;
     *root_n64 = resolve(dl_word, &native);
     walk(dl_word, 0);
+    flush_block(2);
     *out = stats;
     return image;
 }
