@@ -37,6 +37,9 @@ float volume();
 // The text language setting: English (true) or the original Japanese.
 bool english();
 
+// The English font: 0 the game's own, 1.. the optional fonts (port/text/en_fonts.h's order).
+int text_font();
+
 // Take the pending request (NONE if there is none).
 Request take_request();
 

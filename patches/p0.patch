@@ -2120,10 +2120,10 @@ index f2ae77c..06e032f 100644
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
 diff --git a/src/game/text/text.c b/src/game/text/text.c
-index af00459..7217696 100644
+index af00459..ffc06b4 100644
 --- a/src/game/text/text.c
 +++ b/src/game/text/text.c
-@@ -1,113 +1,159 @@
+@@ -1,113 +1,174 @@
 -#include "game/text/text.h"
 -#include "game/core/dma.h"
 -#include "game/core/main.h"
@@ -2307,9 +2307,17 @@ index af00459..7217696 100644
 +    s32 y = y0;
 +    s32 c;
 +#ifdef ELTALE_P1_OS
++    /* English (font index >= 1, port/text/en_text.c): proportional glyphs, the page loaded when
++     * a glyph needs it (a continued page can select its page before its font) */
 +    s32 page = 0;
-+    s32 left;
++    s32 loaded = -1;
++    s32 s;
 +    s32 w;
++    s32 xoff;
++    s32 adv;
++    u8 *tex;
++    s32 tw;
++    s32 th;
 +
 +    str = (u8 *)Port_TextTranslate(str);
 +#endif
@@ -2322,10 +2330,9 @@ index af00459..7217696 100644
 +            switch (*str & 0x60) {
 +                case 0x00:
 +#ifdef ELTALE_P1_OS
-+                    /* English: the port's extra page (port/text/en_text.c) */
 +                    page = c;
-+                    if (c >= 30) {
-+                        gDPLoadTextureTile_4b(gfx_dl_head++, Port_TextExtraPage(c), G_IM_FMT_CI, 304, 13, 0, 0, 303, 12, 0, 0, 0, 0, 0, 0, 0);
++                    loaded = -1;
++                    if (text_font_index >= 1 || c >= 30) {
 +                        break;
 +                    }
 +#endif
@@ -2336,6 +2343,9 @@ index af00459..7217696 100644
 +                    break;
 +                case 0x40:
 +                    if (c < 16) {
++#ifdef ELTALE_P1_OS
++                        loaded = -1;
++#endif
 +                        text_font_index = c;
 +                    } else {
 +                        text_extra_glyph_spacing = c;
@@ -2353,8 +2363,8 @@ index af00459..7217696 100644
 +                        case 0:
 +                            x = x0;
 +#ifdef ELTALE_P1_OS
-+                            if (text_font_index == 1) {
-+                                y += text_font_metrics[0].line_height;
++                            if (text_font_index >= 1) {
++                                y += Port_TextLineHeight(text_font_index);
 +                                break;
 +                            }
 +#endif
@@ -2366,16 +2376,21 @@ index af00459..7217696 100644
 +        } else {
 +            c = *str & 0x7F;
 +#ifdef ELTALE_P1_OS
-+            /* English (font 1): the glyphs spaced by their own width */
-+            if (text_font_index == 1) {
++            if (text_font_index >= 1) {
 +                if (*str == 0x7F) {
-+                    x += Port_TextSpaceWidth();
-+                } else {
-+                    w = Port_TextGlyphWidth(page, c, &left);
-+                    gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, (x + w) << 2, (y + 13) << 2, G_TX_RENDERTILE,
-+                                        (c * 10 + left) << 5, 0, 1 << 10, 1 << 10);
-+                    x += w;
++                    x += Port_TextSpaceWidth(text_font_index);
++                    continue;
 +                }
++                if (loaded != page) {
++                    Port_TextPage(text_font_index, page, &tex, &tw, &th);
++                    gDPLoadTextureTile_4b(gfx_dl_head++, tex, G_IM_FMT_CI, tw, th, 0, 0, tw - 1, th - 1, 0, 0, 0, 0, 0, 0, 0);
++                    loaded = page;
++                }
++                adv = Port_TextGlyph(text_font_index, page, c, &s, &w, &xoff);
++                th = Port_TextGlyphHeight(text_font_index);
++                gSPTextureRectangle(gfx_dl_head++, (x + xoff) << 2, y << 2, (x + xoff + w) << 2, (y + th) << 2, G_TX_RENDERTILE,
++                                    s << 5, 0, 1 << 10, 1 << 10);
++                x += adv;
 +                continue;
 +            }
 +#endif
@@ -2391,16 +2406,16 @@ index af00459..7217696 100644
 +    gDPPipeSync(gfx_dl_head++);
 +    gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
 +#ifdef ELTALE_P1_OS
-+    if (text_font_index == 1) {
++    if (text_font_index >= 1) {
 +        text_font_index = 0;
 +    }
 +#endif
 +}
 diff --git a/src/game/text/text_window.c b/src/game/text/text_window.c
-index 4f9f215..7acd85e 100644
+index 4f9f215..7d63e24 100644
 --- a/src/game/text/text_window.c
 +++ b/src/game/text/text_window.c
-@@ -1,817 +1,860 @@
+@@ -1,817 +1,862 @@
 -#include "game/text/text_window.h"
 -#include "game/audio/sound.h"
 -#include "game/core/main.h"
@@ -3270,8 +3285,10 @@ index 4f9f215..7acd85e 100644
 + * broken to fit, so the game's own breaking (10-pixel columns) is off */
 +static s32 port_text_en[4];
 +#define TEXT_COLS(i) (port_text_en[i] ? 0x7FFF : (text_window_slots[i].width - 20) / 10)
++#define TEXT_ROWS(i, rows) (port_text_en[i] ? 64 : (rows))
 +#else
 +#define TEXT_COLS(i) ((text_window_slots[i].width - 20) / 10)
++#define TEXT_ROWS(i, rows) (rows)
 +#endif
 +
 +
@@ -3392,7 +3409,7 @@ index 4f9f215..7acd85e 100644
 +#ifdef ELTALE_P1_OS
 +                /* English: the message laid out for this window, the name and the choices */
 +                port_text_en[i] = arg0 >= 0 && Port_TextLayoutMessage(text_window_slots[i].message_bytes, 0x4B0, text_message_buf,
-+                                                                      text_window_slots[i].width - 20, (text_window_slots[i].height - 20) / 13);
++                                                                      text_window_slots[i].width - 20, text_window_slots[i].height - 20);
 +                s = (u8 *)Port_TextTranslate(text_window_slots[i].speaker_name);
 +                if (s != text_window_slots[i].speaker_name) {
 +                    for (j = 0; j < 31 && s[j] != 0xFF; j++) {
@@ -3649,7 +3666,7 @@ index 4f9f215..7acd85e 100644
 +                                    text_window_slots[idx].message_bytes[j] = text_window_slots[idx].pending_byte;
 +                                    tab = 0;
 +                                    col = 0;
-+                                    max = TEXT_COLS(idx) * 4;
++                                    max = TEXT_COLS(idx) * TEXT_ROWS(idx, 4);
 +                                    while (TRUE) {
 +                                        if (text_window_slots[idx].message_bytes[j] & 0x80) {
 +                                            if (text_window_slots[idx].message_bytes[j] == 0xE0) {
@@ -3858,7 +3875,7 @@ index 4f9f215..7acd85e 100644
 +void Text_BuildVisiblePage(s32 idx) {
 +    TextWindow *p = &text_window_slots[idx];
 +    s32 cols = TEXT_COLS(idx) + 1;
-+    s32 rows = (p->height - 20) / 13;
++    s32 rows = TEXT_ROWS(idx, (p->height - 20) / 13);
 +    s32 k = 0;
 +    s32 dst = -1;
 +    s32 src = -1;

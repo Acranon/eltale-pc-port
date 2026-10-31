@@ -1,10 +1,14 @@
-/* The English script in the game's own font (port/include/port/text.h).
+/* The English script in the game's own font, or one of the optional fonts (port/include/port/text.h).
  *
  * text/en.tsv (tools/text/runtime_text.py): one row per string, "<ROM offset hex>\t<English>",
  * the English in ASCII with \n a line break, \f a page break and \x02 a Yes/No choice. The
  * Japanese string at that ROM offset (up to its 0xFF) is the key: the game's text is found by its
  * bytes wherever the game copied it to. tools/text/enfont.py is the same layout in Python (for
- * previews), so the two must agree. */
+ * previews of the original font), so the two must agree.
+ *
+ * Fonts: set 0 is the original (the game's own Latin glyphs, font pages 0-2, plus the port's extra
+ * page 30); sets 1.. are en_fonts[] (port/text/en_fonts.h). English text is encoded with font byte
+ * 0xC1 + set, so text laid out in one font still draws right after the player picks another. */
 #include "port/text.h"
 #include "port/p0/host.h"
 
@@ -19,28 +23,45 @@
 #endif
 
 #include "en_glyphs.h"
+#include "en_fonts.h"
 
 int Port_Rt64Language(void);
+int Port_Rt64TextFont(void);
 
-enum { FONT_ROM = 0xD3A930, PAGE_BYTES = 0x7B8, ROW_BYTES = 152, EXTRA_PAGE = 30, SPACE = 4, MAX_TEXT = 0x4B0 };
-/* the extra page lives past the 4 MiB the game uses */
-#define EXTRA_ADDR ((uint8_t *)(uintptr_t)0x807F0000u)
+enum { FONT_ROM = 0xD3A930, PAGE_BYTES = 0x7B8, ROW_BYTES = 152, EXTRA_PAGE = 30, MAX_TEXT = 0x4B0 };
+enum { SETS = 1 + sizeof en_fonts / sizeof en_fonts[0], PAGES = 32 };
+/* logical characters beyond ASCII: a dot inside "...", and the curly quotes */
+enum { SDOT = 1, OPEN = 3, CLOSE = 4 };
+/* the game's font in RDRAM (Text_LoadFontAssets), and the port's pages past the 4 MiB it uses */
+#define GAME_FONT_ADDR 0x803245A0u
+#define EXTRA_ADDR 0x807F0000u
+#define SET_PAGES_ADDR 0x807F0800u
 
 typedef struct {
     uint64_t hash;
-    char *text;      /* the English */
-    uint8_t *drawn;  /* encoded without wrapping, for Port_TextTranslate (made on first use) */
+    char *text;       /* the English */
+    uint8_t *drawn;   /* encoded without wrapping, for Port_TextTranslate (made on first use) */
+    int drawn_set;
     uint8_t *wrapped; /* encoded wrapped to wrapped_width, for Port_TextTranslateWrapped */
-    int wrapped_width;
+    int wrapped_width, wrapped_set;
 } Entry;
+
+typedef struct { uint8_t s, w, xoff, adv; } Metric;
+
+typedef struct {
+    int height, line, space;
+    uint32_t page_addr[PAGES];
+    int page_width;
+    uint8_t code_page[128], code_index[128]; /* 0xFF: no glyph */
+    Metric metric[PAGES][128];
+} FontSet;
 
 static Entry *entries;
 static int entry_count;
-static int8_t glyph_page[128], glyph_index[128];
-static uint8_t glyph_left[32][30], glyph_width[32][30];
+static FontSet sets[SETS];
 static char pending[MAX_TEXT];
 static int has_pending;
-static int forced = -1; /* ELTALE_LANG */
+static int forced_lang = -1, forced_font = -1; /* ELTALE_LANG, ELTALE_FONT */
 
 static uint64_t hash_bytes(const uint8_t *s) {
     uint64_t h = 1469598103934665603ull;
@@ -81,27 +102,80 @@ static Entry *find(const uint8_t *jp) {
     return NULL;
 }
 
-static void set_glyph(int ch, int page, int index) {
-    glyph_page[ch] = (int8_t)page;
-    glyph_index[ch] = (int8_t)index;
-}
+/* ---- the fonts ---- */
 
 static int pixel(const uint8_t *page, int x, int y) {
     uint8_t b = page[y * ROW_BYTES + x / 2];
     return x % 2 == 0 ? b >> 4 : b & 15;
 }
 
-static void measure(int page, const uint8_t *pixels) {
-    for (int g = 0; g < 30; g++) {
-        int left = -1, right = -1;
-        for (int x = 0; x < 10; x++)
-            for (int y = 0; y < 13; y++)
-                if (pixel(pixels, g * 10 + x, y)) {
-                    if (left < 0) left = x;
-                    right = x;
-                }
-        glyph_left[page][g] = (uint8_t)(left < 0 ? 0 : left);
-        glyph_width[page][g] = (uint8_t)(left < 0 ? 3 : right - left + 1);
+/* set 0, one glyph of a 304x13 page: its ink's columns */
+static void measure(FontSet *f, int page, int g, const uint8_t *pixels) {
+    int left = -1, right = -1;
+    for (int x = 0; x < 10; x++)
+        for (int y = 0; y < 13; y++)
+            if (pixel(pixels, g * 10 + x, y)) {
+                if (left < 0) left = x;
+                right = x;
+            }
+    int w = left < 0 ? 3 : right - left + 1;
+    f->metric[page][g] = (Metric){ (uint8_t)(g * 10 + (left < 0 ? 0 : left)), (uint8_t)w, 0, (uint8_t)w };
+}
+
+static void map_code(FontSet *f, int code, int page, int index) {
+    f->code_page[code] = (uint8_t)page;
+    f->code_index[code] = (uint8_t)index;
+}
+
+static void init_original(const uint8_t *rom) {
+    FontSet *f = &sets[0];
+    f->height = 13;
+    f->line = 14;
+    f->space = 4;
+    f->page_width = 304;
+    for (int p = 0; p < PAGES; p++) f->page_addr[p] = GAME_FONT_ADDR + p * PAGE_BYTES;
+    f->page_addr[EXTRA_PAGE] = EXTRA_ADDR;
+    for (int i = 0; i < 10; i++) map_code(f, '0' + i, 0, i);
+    map_code(f, '!', 0, 10); map_code(f, '?', 0, 11); map_code(f, '.', 0, 16); map_code(f, ',', 0, 17);
+    map_code(f, ':', 0, 20); map_code(f, '~', 0, 24);
+    for (int i = 0; i < 26; i++) {
+        map_code(f, 'A' + i, 1, i);
+        map_code(f, 'a' + i, 2, i);
+    }
+    map_code(f, '&', 1, 26); map_code(f, '\'', 2, 26);
+    map_code(f, OPEN, 2, 28); map_code(f, CLOSE, 2, 27);
+    for (int i = 0; en_extra_order[i]; i++) map_code(f, (unsigned char)en_extra_order[i], EXTRA_PAGE, i);
+    for (int p = 0; p < 3; p++)
+        for (int g = 0; g < 30; g++) measure(f, p, g, rom + FONT_ROM + p * PAGE_BYTES);
+    for (int i = 0; en_extra_order[i]; i++) {
+        measure(f, EXTRA_PAGE, i, en_extra_page);
+        if (en_extra_width[i]) f->metric[EXTRA_PAGE][i].w = f->metric[EXTRA_PAGE][i].adv = en_extra_width[i];
+    }
+}
+
+static void init_ttf_sets(void) {
+    uint32_t addr = SET_PAGES_ADDR;
+    for (int k = 1; k < SETS; k++) {
+        const EnFont *src = &en_fonts[k - 1];
+        FontSet *f = &sets[k];
+        int count[PAGES] = { 0 };
+        f->height = src->height;
+        f->line = src->line;
+        f->space = src->space;
+        f->page_width = 256;
+        for (int p = 0; p < src->pages; p++, addr += 0x800) f->page_addr[p] = addr;
+        for (int c = 0; c < 128; c++) {
+            const EnGlyph *g = &src->glyph[c];
+            if (!g->width) continue;
+            int code = c == 1 ? OPEN : c == 2 ? CLOSE : c;
+            int i = count[g->page]++;
+            f->metric[g->page][i] = (Metric){ g->s, g->width, g->xoff, g->advance };
+            map_code(f, code, g->page, i);
+        }
+        /* what a font lacks: straight quotes for curly ones, a plain dot for the spaced one */
+        if (f->code_page[OPEN] == 0xFF) map_code(f, OPEN, f->code_page['"'], f->code_index['"']);
+        if (f->code_page[CLOSE] == 0xFF) map_code(f, CLOSE, f->code_page['"'], f->code_index['"']);
+        map_code(f, SDOT, f->code_page['.'], f->code_index['.']);
     }
 }
 
@@ -130,24 +204,16 @@ void Port_TextInit(void) {
     static int done;
     if (done) return;
     done = 1;
-    const char *lang = getenv("ELTALE_LANG");
-    if (lang) forced = strcmp(lang, "en") == 0;
+    const char *env = getenv("ELTALE_LANG");
+    if (env) forced_lang = strcmp(env, "en") == 0;
+    env = getenv("ELTALE_FONT");
+    if (env) forced_font = atoi(env);
 
-    memset(glyph_page, -1, sizeof glyph_page);
-    for (int i = 0; i < 10; i++) set_glyph('0' + i, 0, i);
-    set_glyph('!', 0, 10); set_glyph('?', 0, 11); set_glyph('.', 0, 16); set_glyph(',', 0, 17);
-    set_glyph(':', 0, 20); set_glyph('~', 0, 24);
-    for (int i = 0; i < 26; i++) {
-        set_glyph('A' + i, 1, i);
-        set_glyph('a' + i, 2, i);
-    }
-    set_glyph('&', 1, 26); set_glyph('\'', 2, 26);
-    for (int i = 0; en_extra_order[i]; i++) set_glyph(en_extra_order[i], EXTRA_PAGE, i);
+    memset(sets, 0, sizeof sets);
+    for (int k = 0; k < SETS; k++) memset(sets[k].code_page, 0xFF, sizeof sets[k].code_page);
     const uint8_t *rom = Port_HostRom();
-    for (int p = 0; p < 3; p++) measure(p, rom + FONT_ROM + p * PAGE_BYTES);
-    measure(EXTRA_PAGE, en_extra_page);
-    for (int i = 0; en_extra_order[i]; i++)
-        if (en_extra_width[i]) glyph_width[EXTRA_PAGE][i] = en_extra_width[i];
+    init_original(rom);
+    init_ttf_sets();
 
     char path_buf[1024];
     const char *path = text_path(path_buf, sizeof path_buf);
@@ -166,7 +232,7 @@ void Port_TextInit(void) {
         char *text = tab + 1;
         size_t len = strlen(text);
         while (len && (text[len - 1] == '\n' || text[len - 1] == '\r')) text[--len] = 0;
-        /* unescape \n, \f, \x02 */
+        /* unescape \n, \f, \2 */
         char *w = text;
         for (char *r = text; *r; r++) {
             if (r[0] == '\\' && r[1] == 'n') { *w++ = '\n'; r++; }
@@ -181,10 +247,7 @@ void Port_TextInit(void) {
             cap = cap ? cap * 2 : 1024;
             entries = realloc(entries, (size_t)cap * sizeof *entries);
         }
-        entries[entry_count].hash = hash_bytes(rom + at);
-        entries[entry_count].text = strdup(text);
-        entries[entry_count].drawn = NULL;
-        entries[entry_count].wrapped = NULL;
+        entries[entry_count] = (Entry){ hash_bytes(rom + at), strdup(text), NULL, -1, NULL, 0, -1 };
         entry_count++;
     }
     fclose(f);
@@ -193,25 +256,52 @@ void Port_TextInit(void) {
 
 int Port_TextEnglish(void) {
     if (!entry_count) return 0;
-    if (forced >= 0) return forced;
-    int lang = Port_Rt64Language();
-    return lang > 0;
+    if (forced_lang >= 0) return forced_lang;
+    return Port_Rt64Language() > 0;
 }
 
-void Port_TextFontLoaded(void) { memcpy(EXTRA_ADDR, en_extra_page, sizeof en_extra_page); }
+/* the font set English is laid out in now */
+static int active_set(void) {
+    int k = forced_font >= 0 ? forced_font : Port_Rt64TextFont();
+    return k > 0 && k < SETS ? k : 0;
+}
 
-uint8_t *Port_TextExtraPage(int page) { return EXTRA_ADDR + (page - EXTRA_PAGE) * PAGE_BYTES; }
-
-int Port_TextGlyphWidth(int page, int glyph, int *left) {
-    if (page < 0 || page >= 32 || glyph < 0 || glyph >= 30) {
-        *left = 0;
-        return 10;
+void Port_TextFontLoaded(void) {
+    memcpy((void *)(uintptr_t)EXTRA_ADDR, en_extra_page, sizeof en_extra_page);
+    for (int k = 1; k < SETS; k++) {
+        const EnFont *src = &en_fonts[k - 1];
+        size_t bytes = (size_t)(sets[k].page_width / 2) * (size_t)src->height;
+        for (int p = 0; p < src->pages; p++)
+            memcpy((void *)(uintptr_t)sets[k].page_addr[p], src->texels + p * bytes, bytes);
     }
-    *left = glyph_left[page][glyph];
-    return glyph_width[page][glyph];
 }
 
-int Port_TextSpaceWidth(void) { return SPACE; }
+static FontSet *set_of(int font) { return font >= 1 && font <= SETS ? &sets[font - 1] : &sets[0]; }
+
+void Port_TextPage(int font, int page, uint8_t **texels, int *width, int *height) {
+    FontSet *f = set_of(font);
+    if (page < 0 || page >= PAGES) page = 0;
+    *texels = (uint8_t *)(uintptr_t)f->page_addr[page];
+    *width = f->page_width;
+    *height = f->height;
+}
+
+int Port_TextGlyph(int font, int page, int glyph, int *s, int *width, int *xoff) {
+    FontSet *f = set_of(font);
+    if (page < 0 || page >= PAGES || glyph < 0 || glyph >= 128) {
+        *s = *width = *xoff = 0;
+        return 0;
+    }
+    Metric m = f->metric[page][glyph];
+    *s = m.s;
+    *width = m.w;
+    *xoff = m.xoff;
+    return m.adv;
+}
+
+int Port_TextSpaceWidth(int font) { return set_of(font)->space; }
+int Port_TextLineHeight(int font) { return set_of(font)->line; }
+int Port_TextGlyphHeight(int font) { return set_of(font)->height; }
 
 /* ---- layout ---- */
 
@@ -221,23 +311,19 @@ static int is_open_quote(const char *text, const char *p) {
     return c == ' ' || c == '\n' || c == '\f' || c == '(' || c == '*' || c == '-';
 }
 
-/* the page and glyph for one character (quotes by position), or -1 */
-static int glyph_of(const char *text, const char *p, int *page) {
+/* the logical character at p: quotes by position, spaced dots inside "..." */
+static int code_at(const char *text, const char *p) {
     unsigned char c = (unsigned char)*p;
-    if (c == '.' && p[1] == '.') c = 1; /* a dot inside "...": the spaced one */
-    if (c == '"') {
-        *page = 2;
-        return is_open_quote(text, p) ? 28 : 27;
-    }
-    if (c >= 128 || glyph_page[c] < 0) return -1;
-    *page = glyph_page[c];
-    return glyph_index[c];
+    if (c == '.' && p[1] == '.') return SDOT;
+    if (c == '"') return is_open_quote(text, p) ? OPEN : CLOSE;
+    return c < 128 ? c : -1;
 }
 
-static int char_width(const char *text, const char *p) {
-    if (*p == ' ') return SPACE;
-    int page, g = glyph_of(text, p, &page);
-    return g < 0 ? 0 : glyph_width[page][g];
+static int char_width(const FontSet *f, const char *text, const char *p) {
+    if (*p == ' ') return f->space;
+    int c = code_at(text, p);
+    if (c < 0 || f->code_page[c] == 0xFF) return 0;
+    return f->metric[f->code_page[c]][f->code_index[c]].adv;
 }
 
 typedef struct {
@@ -249,23 +335,24 @@ static void put(Writer *w, uint8_t b) {
     if (w->n < w->cap - 1) w->out[w->n++] = b;
 }
 
-static void put_char(Writer *w, const char *text, const char *p) {
+static void put_char(Writer *w, const FontSet *f, const char *text, const char *p) {
     if (*p == ' ') { put(w, 0x7F); return; }
     if (*p == '\x02') { put(w, 0xF2); return; }
-    int page, g = glyph_of(text, p, &page);
-    if (g < 0) return;
-    if (page != w->page) {
-        put(w, (uint8_t)(0x80 | page));
-        w->page = page;
+    int c = code_at(text, p);
+    if (c < 0 || f->code_page[c] == 0xFF) return;
+    if (f->code_page[c] != w->page) {
+        w->page = f->code_page[c];
+        put(w, (uint8_t)(0x80 | w->page));
     }
-    put(w, (uint8_t)g);
+    put(w, f->code_index[c]);
 }
 
-/* Word-wrap `text` to `width` pixels and `rows` lines a page. */
-static int layout(uint8_t *out, int cap, const char *text, int width, int rows) {
+/* Word-wrap `text` in font set k to `width` pixels and `rows` lines a page. */
+static int layout(int k, uint8_t *out, int cap, const char *text, int width, int rows) {
+    const FontSet *f = &sets[k];
     Writer w = { out, 0, cap, -1 };
     put(&w, 0xA0);
-    put(&w, 0xC1);
+    put(&w, (uint8_t)(0xC1 + k));
     int row = 0, x = 0, line_has_text = 0;
     const char *p = text;
     while (*p) {
@@ -284,23 +371,21 @@ static int layout(uint8_t *out, int cap, const char *text, int width, int rows) 
         }
         if (*p == ' ') {
             /* a space, then the next word: wrap before the word if it does not fit */
-            const char *word = p + 1;
             int ww = 0;
-            const char *q = word;
-            while (*q && *q != ' ' && *q != '\n' && *q != '\f') ww += char_width(text, q++);
-            if (line_has_text && x + SPACE + ww > width) {
+            for (const char *q = p + 1; *q && *q != ' ' && *q != '\n' && *q != '\f'; q++) ww += char_width(f, text, q);
+            if (line_has_text && x + f->space + ww > width) {
                 if (++row >= rows) { put(&w, 0xF0); row = 0; }
                 else put(&w, 0xE0);
                 x = 0; line_has_text = 0;
             } else {
                 put(&w, 0x7F);
-                x += SPACE;
+                x += f->space;
             }
             p++;
             continue;
         }
-        x += char_width(text, p);
-        put_char(&w, text, p);
+        x += char_width(f, text, p);
+        put_char(&w, f, text, p);
         line_has_text = 1;
         p++;
     }
@@ -308,18 +393,26 @@ static int layout(uint8_t *out, int cap, const char *text, int width, int rows) 
     return w.n;
 }
 
+static uint8_t *encode_copy(int k, const char *text, int width, int rows) {
+    uint8_t buf[MAX_TEXT];
+    int n = layout(k, buf, sizeof buf, text, width, rows);
+    uint8_t *copy = malloc((size_t)n);
+    memcpy(copy, buf, (size_t)n);
+    return copy;
+}
+
 const uint8_t *Port_TextTranslate(const uint8_t *jp) {
     if (!Port_TextEnglish()) return jp;
     Entry *e = find(jp);
     if (!e) {
-        if (jp[0] == 0xA0 && jp[1] != 0xC1) log_miss(jp);
+        if (jp[0] == 0xA0 && (jp[1] < 0xC1 || jp[1] > 0xC0 + SETS)) log_miss(jp);
         return jp;
     }
-    if (!e->drawn) {
-        uint8_t buf[MAX_TEXT];
-        int n = layout(buf, sizeof buf, e->text, 1 << 20, 1 << 20);
-        e->drawn = malloc((size_t)n);
-        memcpy(e->drawn, buf, (size_t)n);
+    int k = active_set();
+    if (!e->drawn || e->drawn_set != k) {
+        free(e->drawn);
+        e->drawn = encode_copy(k, e->text, 1 << 20, 1 << 20);
+        e->drawn_set = k;
     }
     return e->drawn;
 }
@@ -328,13 +421,12 @@ const uint8_t *Port_TextTranslateWrapped(const uint8_t *jp, int width) {
     if (!Port_TextEnglish()) return jp;
     Entry *e = find(jp);
     if (!e) return Port_TextTranslate(jp);
-    if (!e->wrapped || e->wrapped_width != width) {
-        uint8_t buf[MAX_TEXT];
-        int n = layout(buf, sizeof buf, e->text, width, 1 << 20);
+    int k = active_set();
+    if (!e->wrapped || e->wrapped_width != width || e->wrapped_set != k) {
         free(e->wrapped);
-        e->wrapped = malloc((size_t)n);
-        memcpy(e->wrapped, buf, (size_t)n);
+        e->wrapped = encode_copy(k, e->text, width, 1 << 20);
         e->wrapped_width = width;
+        e->wrapped_set = k;
     }
     return e->wrapped;
 }
@@ -351,7 +443,7 @@ void Port_TextSetPending(const uint8_t *const *pieces, int n) {
     has_pending = 1;
 }
 
-int Port_TextLayoutMessage(uint8_t *out, int cap, const uint8_t *jp, int width, int rows) {
+int Port_TextLayoutMessage(uint8_t *out, int cap, const uint8_t *jp, int width, int height) {
     const char *text = NULL;
     if (has_pending) {
         has_pending = 0;
@@ -364,20 +456,19 @@ int Port_TextLayoutMessage(uint8_t *out, int cap, const uint8_t *jp, int width, 
     }
     if (!text) return 0;
     if (getenv("ELTALE_TEXT_LOG")) fprintf(stderr, "P1_TEXT %.60s\n", text);
-    if (rows < 1) rows = 1;
-    layout(out, cap, text, width, rows);
+    int k = active_set();
+    int rows = (height - sets[k].height) / sets[k].line + 1;
+    layout(k, out, cap, text, width, rows < 1 ? 1 : rows);
     return 1;
 }
 
 int Port_TextLineWidth(const uint8_t *s) {
-    int x = 0, best = 0, font = 0, page = 0;
+    int x = 0, best = 0, font = 0, page = 0, sw, w, xoff;
     for (; *s != 0xFF; s++) {
         uint8_t b = *s;
-        if (b == 0x7F) x += font == 1 ? SPACE : 10;
-        else if (b < 0x80) {
-            int left;
-            x += font == 1 ? Port_TextGlyphWidth(page, b, &left) : 10;
-        } else if (b < 0xA0) page = b & 0x1F;
+        if (b == 0x7F) x += font >= 1 ? Port_TextSpaceWidth(font) : 10;
+        else if (b < 0x80) x += font >= 1 ? Port_TextGlyph(font, page, b, &sw, &w, &xoff) : 10;
+        else if (b < 0xA0) page = b & 0x1F;
         else if (b >= 0xC0 && b < 0xE0 && (b & 0x1F) < 16) font = b & 0x1F;
         else if (b == 0xE0) { if (x > best) best = x; x = 0; }
     }

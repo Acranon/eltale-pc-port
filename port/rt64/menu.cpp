@@ -35,6 +35,7 @@ struct Settings {
     bool mute_in_background = false;
     bool fullscreen = false;
     bool english = true; // the game's text: English, or the original Japanese
+    int font = 0;        // the English font: 0 the game's own, then port/text/en_fonts.h's
 };
 
 Settings settings;
@@ -55,7 +56,7 @@ void save_settings() {
     json j;
     j["audio"] = { { "volume", settings.volume }, { "mute_in_background", settings.mute_in_background } };
     j["window"] = { { "fullscreen", settings.fullscreen } };
-    j["game"] = { { "language", settings.english ? "en" : "jp" } };
+    j["game"] = { { "language", settings.english ? "en" : "jp" }, { "font", settings.font } };
     j["graphics"] = app->userConfig;
     std::ofstream f(settings_path());
     f << j.dump(4) << "\n";
@@ -95,6 +96,12 @@ void game_page() {
         save_settings();
     }
     help("Applies from the next text the game shows. Pictures with text in them are still Japanese.");
+    // the order of port/text/en_fonts.h (tools/text/gen_fonts.py), after the game's own
+    const char *fonts[] = { "Original (the game's own)", "Royalty Mono", "Quest Square", "Pixel Sans", "Retro Sans",
+                            "Rune Mono" };
+    ImGui::BeginDisabled(!settings.english);
+    if (ImGui::Combo("English font", &settings.font, fonts, IM_ARRAYSIZE(fonts))) save_settings();
+    ImGui::EndDisabled();
     ImGui::Spacing();
     if (ImGui::Button("Reset game", button)) ask("Reset the game? Anything not saved is lost.", RESET);
     if (ImGui::Button("Reset to the Controller Pak manager", button))
@@ -306,6 +313,7 @@ void load_settings(RT64::Application *application) {
         settings.mute_in_background = j.value("/audio/mute_in_background"_json_pointer, settings.mute_in_background);
         settings.fullscreen = j.value("/window/fullscreen"_json_pointer, settings.fullscreen);
         settings.english = j.value("/game/language"_json_pointer, std::string("en")) != "jp";
+        settings.font = std::clamp(j.value("/game/font"_json_pointer, 0), 0, 5);
         if (j.contains("graphics")) {
             RT64::UserConfiguration cfg = j["graphics"].get<RT64::UserConfiguration>();
             cfg.graphicsAPI = app->userConfig.graphicsAPI;
@@ -392,6 +400,8 @@ void frame() {
 }
 
 bool english() { return settings.english; }
+
+int text_font() { return settings.font; }
 
 float volume() {
     if (settings.mute_in_background && !focused) return 0.0f;

@@ -204,6 +204,8 @@ extern "C" const char *ElRt64_DataDir(void) {
 
 extern "C" int ElRt64_Language(void) { return menu::english() ? 1 : 0; }
 
+extern "C" int ElRt64_TextFont(void) { return menu::text_font(); }
+
 namespace {
 // N64 button bits (OSContPad.button)
 enum : uint16_t { A = 0x8000, B = 0x4000, Z = 0x2000, START = 0x1000, DU = 0x0800, DD = 0x0400, DL = 0x0200,
