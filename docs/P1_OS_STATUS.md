@@ -635,7 +635,8 @@ ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"v
   matching map from the same picture and English drawn on (`art/en/maps.json`). The title menu's
   English strip is wider: at RDRAM 0x807F8000, drawn by the title screen itself, each item starting
   where the Japanese one does. The logo (title screen and the prologue's copy) is the artist's
-  "Eltale Monsters" at 194x76 with 255 colours of its own: its palette is swapped too.
+  "Eltale Monsters" at 194x76 with 255 colours of its own (its palette is swapped too), with a
+  dark outline and drop shadow added by the build (as Quest 64's logo has) so it reads on the gold.
 - **Spell names:** the battle HUD's 8x9 font gets Latin letters (Royalty Mono shapes, the kana's
   colours) and the names come from `spell.*` rows in en.v2.tsv (0x83 marks English: 6-pixel
   advance). The "can't use" label is "Sealed".
