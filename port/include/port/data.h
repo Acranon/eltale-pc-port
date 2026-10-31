@@ -20,8 +20,9 @@ unsigned Port_MapAreaSubareaCount(void);
 void Port_DataForget(uint32_t start, uint32_t bytes);
 void Port_Swap16(uint32_t addr);
 void Port_Swap32(uint32_t addr);
-/* Swap the AnimSet table at `table` (and its nodes, keyframes and display-list tables). */
-void Port_SwapAnimSets(uint32_t table);
+/* Swap the AnimSet table at `table`, just loaded from [lo, hi) (and the nodes, keyframes and
+ * display-list tables of the sets whose nodes came with it). */
+void Port_SwapAnimSets(uint32_t table, uint32_t lo, uint32_t hi);
 /* Swap one AnimSet and its nodes, keyframes and display-list table (idempotent). */
 void Port_SwapAnimSet(uint32_t set);
 /* Swap the display-list table a native AnimSet copy points to (its nodes already swapped). */

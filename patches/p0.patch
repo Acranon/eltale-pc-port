@@ -280,7 +280,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..56229b8 100644
+index db2ffb3..4dee20a 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,10 @@
@@ -294,12 +294,13 @@ index db2ffb3..56229b8 100644
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -176,11 +183,17 @@ void Core_MainThread(void *arg0) {
+@@ -176,11 +183,18 @@ void Core_MainThread(void *arg0) {
          Bgm_Init();
          Core_ResetGameState();
          Menu_Init();
 +#ifdef ELTALE_P1_OS
 +        Port_OverrideStartMode(); /* ELTALE_START_MODE: test a mode without playing to it */
++        Port_QuickLoadApply(); /* a quick load (F4) restarts the session here, as a Continue */
 +#endif
      loop:
          core_flags &= ~3;
@@ -312,7 +313,7 @@ index db2ffb3..56229b8 100644
          switch (core_game_mode) {
              case 1:
                  Core_RunGameplayLoop();
-@@ -204,6 +217,7 @@ void Core_MainThread(void *arg0) {
+@@ -204,6 +218,7 @@ void Core_MainThread(void *arg0) {
                  Core_RunEndingLoop();
                  break;
          }
@@ -320,7 +321,7 @@ index db2ffb3..56229b8 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
-@@ -249,8 +263,14 @@ void Gfx_InitFrames(void) {
+@@ -249,8 +264,14 @@ void Gfx_InitFrames(void) {
      Dma_ReadRom(D_71920, D_80095AF0, D_753F0 - D_71920);
      gfx_segment1_base = D_80095AF0;
      Dma_ReadRom(D_D490C0, D_800C0000, D_D74AC0 - D_D490C0);
@@ -335,7 +336,7 @@ index db2ffb3..56229b8 100644
      D_80301000[0].data.msg = 2;
      D_80301000[0].data.framebuffer = D_803B5000;
      Gfx_InitFrameTask(&D_80301000[0]);
-@@ -274,7 +294,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+@@ -274,7 +295,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
      arg0->task.list.t.type = M_GFXTASK;
      arg0->task.list.t.flags = 0;
      arg0->task.list.t.ucode_boot = D_8004B980;
@@ -344,7 +345,7 @@ index db2ffb3..56229b8 100644
      arg0->task.list.t.ucode = D_8004BA50;
      arg0->task.list.t.ucode_data = D_80070260;
      arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -324,6 +344,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,6 +345,11 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -356,7 +357,7 @@ index db2ffb3..56229b8 100644
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
          Camera_Update(sub);
          Env_PrepareFrameLighting();
-@@ -406,6 +431,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -406,6 +432,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
              core_game_mode = 7;
          }
      }
@@ -364,7 +365,7 @@ index db2ffb3..56229b8 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +446,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +447,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -372,7 +373,7 @@ index db2ffb3..56229b8 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -497,6 +524,9 @@ void Core_RunGameplayLoop(void) {
+@@ -497,6 +525,9 @@ void Core_RunGameplayLoop(void) {
          MapObjAnim_UpdateAll();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
          frame = &D_80301000[gfx_frame_index];
@@ -382,7 +383,17 @@ index db2ffb3..56229b8 100644
          if (!(core_flags & 0x87)) {
              if (!(player_state.actor.animFlags & 1) && Exit_CheckEnter(player_state.actor.x, player_state.actor.z, player_state.actor.rot) != 0) {
                  core_flags |= 0x80;
-@@ -566,6 +596,9 @@ void Core_RunGameplayLoop(void) {
+@@ -558,6 +589,9 @@ void Core_RunGameplayLoop(void) {
+         nnsc_retrace_count = 0;
+         gfx_frame_index ^= 1;
+         core_frame_start_time = osGetTime();
++#ifdef ELTALE_P1_OS
++        Port_QuickFrame(); /* F2 quick save, F4 quick load, between two frames */
++#endif
+     }
+     if (core_flags & 0x200) {
+         Audio_StopSeq(0);
+@@ -566,6 +600,9 @@ void Core_RunGameplayLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -392,7 +403,7 @@ index db2ffb3..56229b8 100644
          }
      }
      if (core_flags & 0x400) {
-@@ -649,6 +682,9 @@ void Core_RunMessageCutsceneLoop(void) {
+@@ -649,6 +686,9 @@ void Core_RunMessageCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -402,7 +413,7 @@ index db2ffb3..56229b8 100644
          }
      }
  }
-@@ -660,6 +696,12 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -660,6 +700,12 @@ void Core_RunCameraCutsceneLoop(void) {
  
      msg = NULL;
      Dma_ReadRom(D_E43780, D_801C0000, D_E5BF60 - D_E43780);
@@ -415,7 +426,7 @@ index db2ffb3..56229b8 100644
      core_transition_timer = 0;
      fade_transition_style = 2;
      sfx_master_volume = 0;
-@@ -722,6 +764,9 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -722,6 +768,9 @@ void Core_RunCameraCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -425,7 +436,7 @@ index db2ffb3..56229b8 100644
          }
      }
      core_flags |= 0x20000;
-@@ -754,6 +799,9 @@ void Core_RunMenuLoop(void) {
+@@ -754,6 +803,9 @@ void Core_RunMenuLoop(void) {
          Bgm_Play(-1);
          while (bgm_current != -1) {
              Bgm_Update();
@@ -435,7 +446,14 @@ index db2ffb3..56229b8 100644
          }
      }
      if (menu_save_loaded != 0) {
-@@ -788,6 +836,7 @@ void Core_RunTitleLoop(void) {
+@@ -784,10 +836,14 @@ void Core_RunTitleLoop(void) {
+         }
+         osSendMesg(gfx_sched_mq, frame, OS_MESG_BLOCK);
+         gfx_frame_index ^= 1;
++#ifdef ELTALE_P1_OS
++        Port_QuickFrame(); /* F4 on the title screen */
++#endif
+     }
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -443,7 +461,7 @@ index db2ffb3..56229b8 100644
  void Core_RunIntroLoop(void) {
      GfxFrame *frame;
  
-@@ -799,6 +848,9 @@ void Core_RunIntroLoop(void) {
+@@ -799,6 +855,9 @@ void Core_RunIntroLoop(void) {
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
@@ -453,7 +471,7 @@ index db2ffb3..56229b8 100644
          frame = &D_80301000[gfx_frame_index];
          if (gfx_frame_sent == 0) {
              gfx_frame_sent++;
-@@ -814,6 +866,7 @@ void Core_RunIntroLoop(void) {
+@@ -814,6 +873,7 @@ void Core_RunIntroLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -461,7 +479,7 @@ index db2ffb3..56229b8 100644
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
-@@ -888,3 +941,4 @@ void Fade_StartTransitionOut(void) {
+@@ -888,3 +948,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
@@ -976,7 +994,7 @@ index b10f0fe..c7821f6 100644
  
  void Fade_Init(void);
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..b8362a8 100644
+index cc5330a..975387d 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
@@ -1020,7 +1038,7 @@ index cc5330a..b8362a8 100644
 +#include <string.h>
 +__attribute__((noreturn)) void Port_HostFatal(const char *what);
 +#define SAVE_HEADER_SHAPE "hhhhhhhhwwwwwbbbbhhhhbbbbbbbbhhwwwwwwwwhhhbbhbb"
-+static void port_swap_save_header(u8 *buf) {
++void port_swap_save_header(u8 *buf) { /* also the quick saves' (port/p0/quicksave.c) */
 +    if (Port_SwapRecord(buf, SAVE_HEADER_SHAPE) != 0x68) Port_HostFatal("save header shape does not match its size");
 +}
 +#endif
@@ -1547,7 +1565,7 @@ index e16ca6a..cb2771f 100644
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..2a8da27 100644
+index c8c3fd5..512f741 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
 @@ -1,3 +1,6 @@
@@ -1562,7 +1580,7 @@ index c8c3fd5..2a8da27 100644
  void Player_Init(void) {
      Dma_ReadRom(D_869620, D_80206000, D_86F6F0 - D_869620);
 +#ifdef ELTALE_P1_OS
-+    Port_SwapAnimSets((u32)(uptr)player_char_data[0]);
++    Port_SwapAnimSets((u32)(uptr)player_char_data[0], (u32)(uptr)D_80206000, (u32)(uptr)D_80206000 + (u32)(D_86F6F0 - D_869620));
 +#endif
      player_stats = player_default_stats;
      player_state.actor.scale = player_stats.scale;

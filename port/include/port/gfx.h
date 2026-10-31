@@ -35,5 +35,9 @@ int Port_Rt64Start(void);
 int Port_Rt64TakeReset(void);
 /* The data folder for saves and settings (eltale_rt64's ElRt64_DataDir). */
 const char *Port_Rt64DataDir(void);
+/* The quick-save key pressed since the last call: 1 F2 (save), 2 F4 (load), 0 none or no window. */
+int Port_Rt64TakeQuickKey(void);
+/* Show a short message over the game for a few seconds (nothing without the window). */
+void Port_Rt64Notice(const char *text);
 
 #endif

@@ -53,6 +53,13 @@ ELRT64_API int ElRt64_Language(void);
 /* The English font the player chose: 0 the game's own, 1.. port/text/en_fonts.h's. */
 ELRT64_API int ElRt64_TextFont(void);
 
+/* The quick-save key pressed since the last call (with the menu closed): 1 F2 (quick save), 2 F4
+ * (quick load), 0 none. */
+ELRT64_API int ElRt64_TakeQuickKey(void);
+
+/* Show a short message (UTF-8) over the game for a few seconds. */
+ELRT64_API void ElRt64_Notice(const char *text);
+
 /* The pad from the keyboard and the first game controller, in N64 terms: button bits as
  * OSContPad.button, stick -80..80 (y up). Call after ElRt64_Poll. */
 ELRT64_API void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);

@@ -148,8 +148,25 @@ void Port_SwapAnimSet(u32 set) {
     if (valid_set(set)) swap_set(set);
 }
 
-void Port_SwapAnimSets(u32 table) {
-    for (u32 a = table; valid_set(a); a += 0xC) swap_set(a);
+/* A table loaded just now, from the block [lo, hi): a set whose nodes are in that block is swapped
+ * whole; of the others only the header (count, nodes, display lists). Their nodes are in a block
+ * loaded later (the player's, at 0x80200000, comes with each map), so here they hold whatever the
+ * last session left: nothing after a power-on, but after the session restarts (the end of the
+ * ending, a quick load) the last map's data, whose display-list numbers ran the swap of the
+ * display-list table into the set table itself. The anim functions swap the rest on use
+ * (Port_SwapAnimSet), once the nodes are there. */
+void Port_SwapAnimSets(u32 table, u32 lo, u32 hi) {
+    for (u32 a = table; valid_set(a); a += 0xC) {
+        u32 nodes = rd32(a + 4);
+        if (nodes >= lo && nodes < hi) {
+            swap_set(a);
+        } else {
+            Port_Swap16(a);
+            Port_Swap16(a + 2);
+            Port_Swap32(a + 4);
+            Port_Swap32(a + 8);
+        }
+    }
 }
 
 /* The game's own AnimNodes (menu.c) point their tracks at the keyframe tables' RDRAM copies

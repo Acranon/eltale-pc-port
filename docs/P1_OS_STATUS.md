@@ -645,3 +645,55 @@ ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"v
   Japanese 5-pixel column grid so Yes / Cancel sit under the cursor. Note names on the Pak (the
   game's own "エルテイル") stay as stored.
 - Item descriptions wrap to 172 px in the item menu: unchecked in game.
+
+## Quick saves: F2 and F4 (2026-10-31)
+
+F2 takes a quick save, F4 loads it: for playing, and above all for debugging, since a quick save loads
+in any later build (`port/p0/quicksave.c`). It is the game's own save, not a memory snapshot:
+- **Saving** calls the save menu's own `SaveMenu_CaptureGameState` (into its slot 0 and state block,
+  put back after) and keeps the record as `Pak_WriteFile` writes it to the Controller Pak: the
+  0x68-byte SaveHeader big-endian (stats with the current HP and MP, play time, day, map and
+  sub-area, return points, respawn point, options, the cleared flag) and the 0xC8-byte block of
+  chests, spirits, items and bosses. To that it adds what an inn save does not need: the position
+  (x, y, z), heading, the time of day (`env_clock`) and the random seed (`math_rand_seed`).
+- **Loading** restarts the game's session the way the end of the ending does (`core_game_mode = 0`,
+  `core_flags |= 0x8200`: the gameplay loop ends and stops the music, and `Core_MainThread`'s outer
+  loop resets the game: bosses, chests, spirits, player, items, clock, `Core_ResetGameState`). There
+  `Port_QuickLoadApply` does what the title's Continue does after the save menu's Load:
+  `SaveMenu_RestoreGameState`, `Player_SetSpawnFromSaveTable`, `D_8007A172 = 2`,
+  `Bgm_ApplyVolumeOption`, gameplay. The spawn point is the saved place with entry -1 (as the
+  save table's own spawn points are), so `Map_LoadArea` and `Player_Spawn` put the player there and
+  find the floor under it. Then the clock and the seed. The first frame prints where the player is
+  against the file (`P1_QUICKLOAD ... (as saved)`).
+- **When:** F2 only in the field with the player in control: the game's own test for opening the
+  Start menu, and no message, item menu, spell input, level-up screen, inn question, area change,
+  scene or dying player. F4 anywhere in play except during an area change (battles, messages and the
+  item menu are put away by the session reset, as at the end of the ending), and on the title screen.
+  Otherwise the key is refused with a message (on screen, and `P1_QUICK` on stderr). Battles cannot
+  be saved: the save holds no enemies or battle state, and the game's own saves are never taken in one.
+- **File:** `quicksaves/quick0.elq` in the data folder (`%APPDATA%\eltale` or ELTALE_DATA_DIR; headless
+  runs use ELTALE_DATA_DIR or the current folder). "ELTQUICK", format version 1, the PC block's and
+  record's sizes, an FNV-1a hash; the PC block (flags, time saved, map, sub-area, x, y, z, heading,
+  clock, seed); the record (0x80 + 0xE0 bytes, as on the Pak). Every number little-endian, byte by
+  byte, so nothing depends on the build; a reader takes the PC fields it knows, so the block can
+  grow. A file that is not a quick save, of another version, cut short or damaged is refused and the
+  game goes on. The slot number is in the name for more slots later.
+- **Not restored**, as after any Continue: what the session keeps that no save holds (the map is
+  entered afresh: NPCs, enemies, effects; the camera starts behind the player). The floor is found
+  again from x and z, so on stacked floors it is the one the game picks (y is checked, a different
+  one prints `NOT as saved`).
+- **Port fix on the way:** `Player_Init` swapped the player's anim sets at once, but some of their
+  nodes are in the block each map load puts at 0x80200000. After a power-on that memory is empty;
+  after a session restart (a quick load, or the end of the ending) it held the last map's data, and
+  the display-list numbers read from it ran the swap of the player's display-list table into his set
+  table: the player drew with the wrong parts. `Port_SwapAnimSets` now swaps such sets' headers only;
+  the anim functions swap the rest on use, as they already did after a power-on.
+- **Tests:** ELTALE_QUICK_SAVE_AT=VI and ELTALE_QUICK_LOAD_AT=VI save or load slot 0 at the first frame
+  from that VI where it is allowed (`P1_QUICK save waits: <why>` once). `tests/quicksave-walk.input`
+  starts a New Game, reads the opening's messages and walks. p1_checks.sh --tour saves at VI 1500 in
+  one process and loads it from the title in another:
+  `P1_QUICKSAVE map=13 sub=17 x=-11.11 y=4.00 z=36.40 rot=1.131 hp=50/50 mp=15/15 ...` then
+  `P1_QUICKLOAD map=13 sub=17 x=-11.11 y=4.00 z=36.40 rot=1.131 hp=50/50 mp=15/15 ... (as saved)`.
+  Loaded in play (the same run, VI 1700) or from the title, the frames after it draw the same
+  display lists (but for which of the two framebuffers). A quick save taken right after a load has
+  the same record. Loaded during the map tour's map 30 boss battle: back on map 13, as saved.

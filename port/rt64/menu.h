@@ -43,4 +43,10 @@ int text_font();
 // Take the pending request (NONE if there is none).
 Request take_request();
 
+// The quick-save key pressed since the last call: 1 F2 (save), 2 F4 (load), 0 none.
+int take_quick_key();
+
+// Show a short message over the game for a few seconds.
+void notice(const char *text);
+
 } // namespace menu

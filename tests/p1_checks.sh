@@ -1,6 +1,6 @@
 #!/bin/sh
 # The P1 headless checks: New Game to gameplay, the ending, and the ending's camera tour; with --tour
-# also every map, saving and loading, and the Controller Pak manager.
+# also every map, saving and loading, the Controller Pak manager and quick saves.
 # usage: tests/p1_checks.sh path/to/eltale-p1[.exe] rom.z64 [--tour]
 # Each line prints P1_OS_OK (and P1_AUDIO for the first); compare against docs/P1_OS_STATUS.md.
 set -u
@@ -30,4 +30,12 @@ if [ "${3:-}" = "--tour" ]; then
     "$exe" --headless --fast --frames 400 --input tests/pak-manager-delete.input --pak "$pak" --rom "$rom" 2>/dev/null |
         grep 'P1_CPU_FRAME' | tail -1
     rm -f "$pak"
+    # a quick save (F2) after a walk, then a quick load (F4) from the title in a new process
+    echo "quick save and load:"
+    data=$(mktemp -d)
+    ELTALE_DATA_DIR="$data" ELTALE_QUICK_SAVE_AT=1500 "$exe" --headless --fast --frames 800 \
+        --input tests/quicksave-walk.input --rom "$rom" 2>&1 >/dev/null | grep 'P1_QUICKSAVE'
+    ELTALE_DATA_DIR="$data" ELTALE_QUICK_LOAD_AT=100 "$exe" --headless --fast --frames 200 \
+        --input tests/intro-to-title.input --rom "$rom" 2>&1 >/dev/null | grep 'P1_QUICKLOAD'
+    rm -rf "$data"
 fi

@@ -49,6 +49,10 @@ Request request = NONE;
 uint64_t hint_until; // the "F1: menu" hint at start-up, in SDL ticks
 const char *confirm;  // the question a confirmation popup is asking, or null
 Request confirm_request;
+int quick_key;        // F2 (1) or F4 (2), until the game takes it
+std::mutex notice_mutex; // the notice is set on the game's thread and drawn on the present thread
+std::string notice_text;
+uint64_t notice_until; // in SDL ticks
 
 std::filesystem::path settings_path() { return data_dir() / "settings.json"; }
 
@@ -215,6 +219,8 @@ void controls_page() {
             { "C buttons", "I J K L", "Right stick" },
             { "D-pad", "T F G H", "D-pad" },
             { "Menu", "F1", "Back" },
+            { "Quick save", "F2", "" },
+            { "Quick load", "F4", "" },
         };
         for (auto &row : rows) {
             ImGui::TableNextRow();
@@ -264,14 +270,16 @@ void build_menu() {
     }
 }
 
-void build_hint() {
+// The start-up hint and the latest notice (quick save and load), top left.
+void build_hint(bool hint, const std::string &note) {
     const float pad = ImGui::GetFontSize() * 0.6f;
     ImGui::SetNextWindowPos(ImVec2(pad, pad));
     ImGui::SetNextWindowBgAlpha(0.6f);
     ImGui::Begin("hint", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                       ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
                                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
-    ImGui::TextUnformatted("F1 or Back: menu");
+    if (hint) ImGui::TextUnformatted("F1 or Back: menu   F2: quick save   F4: quick load");
+    if (!note.empty()) ImGui::TextUnformatted(note.c_str());
     ImGui::End();
 }
 
@@ -366,6 +374,10 @@ bool handle_event(const SDL_Event &e) {
             open = !open;
             return true;
         }
+        if (!open && (k == SDLK_F2 || k == SDLK_F4)) {
+            quick_key = k == SDLK_F2 ? 1 : 2;
+            return true;
+        }
         if (k == SDLK_F11 || (k == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT))) {
             set_fullscreen(!settings.fullscreen);
             if (app) save_settings();
@@ -387,14 +399,20 @@ bool is_open() { return open && request == NONE; }
 
 void frame() {
     test_tick();
-    const bool hint = SDL_GetTicks64() < hint_until && !open;
-    if (!imgui || (!open && !hint)) {
+    const uint64_t now = SDL_GetTicks64();
+    const bool hint = now < hint_until && !open;
+    std::string note;
+    {
+        std::lock_guard<std::mutex> lock(notice_mutex);
+        if (now < notice_until && !open) note = notice_text;
+    }
+    if (!imgui || (!open && !hint && note.empty())) {
         shown = false;
         return;
     }
     imgui->newFrame(app->framebufferGraphicsWorker.get());
     if (open) build_menu();
-    else build_hint();
+    else build_hint(hint, note);
     imgui->endFrame();
     shown = true;
 }
@@ -406,6 +424,18 @@ int text_font() { return settings.font; }
 float volume() {
     if (settings.mute_in_background && !focused) return 0.0f;
     return settings.volume / 100.0f;
+}
+
+int take_quick_key() {
+    int k = quick_key;
+    quick_key = 0;
+    return k;
+}
+
+void notice(const char *text) {
+    std::lock_guard<std::mutex> lock(notice_mutex);
+    notice_text = text ? text : "";
+    notice_until = SDL_GetTicks64() + 4000;
 }
 
 Request take_request() {

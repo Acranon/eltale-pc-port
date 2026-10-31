@@ -15,4 +15,10 @@ void Port_OverrideStartMode(void);
 /* ELTALE_MAP_TOUR: called once per gameplay frame. */
 void Port_MapTourStep(void);
 
+/* Quick saves (port/p0/quicksave.c): Port_QuickFrame at the end of each gameplay and title frame
+ * takes F2/F4 (and the ELTALE_QUICK_*_AT tests); Port_QuickLoadApply, after the session's reset,
+ * puts a requested quick load in place as the title's Continue would. */
+void Port_QuickFrame(void);
+void Port_QuickLoadApply(void);
+
 #endif

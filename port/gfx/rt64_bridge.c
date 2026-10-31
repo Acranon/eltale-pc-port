@@ -15,6 +15,7 @@
 extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
 extern void (*Port_ViHook)(u32 framebuffer);
 void Port_OsRequestStop(void);
+void Port_Rt64Notice(const char *text);
 
 static int (*rt_init)(const char *, int, int);
 static void (*rt_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
@@ -23,6 +24,10 @@ static int (*rt_poll)(void);
 static const char *(*rt_data_dir)(void);
 static int (*rt_language)(void);
 static int (*rt_text_font)(void);
+static int (*rt_take_quick_key)(void);
+static void (*rt_notice)(const char *);
+static int quick_key;
+static unsigned quick_key_age; /* retraces since the key was pressed */
 static int reset_request;
 static void (*rt_keep)(uint32_t, uint32_t);
 static void (*rt_pad)(uint16_t *, int8_t *, int8_t *);
@@ -62,6 +67,14 @@ static void present(u32 framebuffer) {
         reset_request = status >= 2 ? status : 0;
         Port_OsRequestStop();
     }
+    /* F2/F4: the game takes the key at the end of a gameplay or title frame (Port_QuickFrame); one
+     * not taken soon was pressed somewhere else (a menu, a scene) */
+    int key = rt_take_quick_key ? rt_take_quick_key() : 0;
+    if (key) quick_key = key, quick_key_age = 0;
+    if (quick_key && ++quick_key_age > 8) {
+        Port_Rt64Notice(quick_key == 1 ? "Quick save: only in play" : "Quick load: only in play or on the title screen");
+        quick_key = 0;
+    }
 }
 
 int Port_Rt64TakeReset(void) {
@@ -77,6 +90,16 @@ int Port_Rt64Language(void) { return rt_language ? rt_language() : -1; }
 
 /* The menu's English font (0 the game's own), 0 without the window. */
 int Port_Rt64TextFont(void) { return rt_text_font ? rt_text_font() : 0; }
+
+int Port_Rt64TakeQuickKey(void) {
+    int key = quick_key;
+    quick_key = 0;
+    return key;
+}
+
+void Port_Rt64Notice(const char *text) {
+    if (rt_notice) rt_notice(text);
+}
 
 int Port_Rt64Start(void) {
 #ifdef _WIN32
@@ -100,6 +123,8 @@ int Port_Rt64Start(void) {
     rt_data_dir = (const char *(*)(void))SYM("ElRt64_DataDir");
     rt_language = (int (*)(void))SYM("ElRt64_Language");
     rt_text_font = (int (*)(void))SYM("ElRt64_TextFont");
+    rt_take_quick_key = (int (*)(void))SYM("ElRt64_TakeQuickKey");
+    rt_notice = (void (*)(const char *))SYM("ElRt64_Notice");
     if (!rt_init || !rt_draw || !rt_present || !rt_poll || rt_init("Eltale Monsters", 1280, 960) != 0) {
         fprintf(stderr, "RT64: setup failed\n");
         return -1;
