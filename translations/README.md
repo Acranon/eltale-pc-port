@@ -38,7 +38,7 @@ How it works: docs/P1_OS_STATUS.md, "English text".
 them from your ROM into `out/images/` with a review page (catalog.html: a brief for the artist, who
 makes each picture, lettering families). The artist's English art (out/images/sol-en/, local) is
 fitted to the game by `tools/images/fit_art.py` (original size and colours, the original bullets on
-the pause-menu headings). Status: all in the game except the logo (being redesigned): the title menu strip and 22 labels
+the pause-menu headings). Status: all in the game, the logo included (art/en/title_center_image.png): the title menu strip and 22 labels
 (art/en, the artist's), the prologue pages, warning screens and epilogue page (art/en/pages.json),
 the world maps (art/en/maps.json) and the spell names (`spell.*` rows in en.v2.tsv, the HUD font).
 

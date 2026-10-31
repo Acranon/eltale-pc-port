@@ -358,6 +358,41 @@ def hud_sheet(rom):
     return out, pal
 
 
+def logo_picture(path, w, h):
+    """The artist's logo at the game's size (194x76, like the Japanese one): shrunk with averaging,
+    hard-edged (the N64's one-bit clear), and 255 colours of its own; returns a palette-index
+    picture ("P") and the palette as RGBA5551 halfwords in host (little-endian) order."""
+    a = Image.open(path).convert("RGBA")
+    a = a.crop(a.getchannel("A").point(lambda v: 255 if v > 128 else 0).getbbox())
+    s = min(w / a.width, h / a.height)
+    small = a.resize((max(1, round(a.width * s)), max(1, round(a.height * s))), Image.LANCZOS)
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    canvas.alpha_composite(small, ((w - small.width) // 2, (h - small.height) // 2))
+    opaque = canvas.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
+    q = canvas.convert("RGB").quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    pal = q.getpalette()[:255 * 3]
+    out = Image.new("P", (w, h), 0)
+    op, qp, mp = out.load(), q.load(), opaque.load()
+    for y in range(h):
+        for x in range(w):
+            if mp[x, y]:
+                op[x, y] = qp[x, y] + 1
+    rgba = [(0, 0, 0, 0)] + [(pal[i * 3], pal[i * 3 + 1], pal[i * 3 + 2], 255) for i in range(len(pal) // 3)]
+    rgba += [(0, 0, 0, 0)] * (256 - len(rgba))
+    out.putpalette([c for col in rgba for c in col[:3]])
+    tlut = bytearray()
+    for r, g, b, al in rgba:
+        v = (r >> 3) << 11 | (g >> 3) << 6 | (b >> 3) << 1 | (1 if al else 0)
+        tlut += bytes((v & 0xFF, v >> 8))
+    preview = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    pp = preview.load()
+    for y in range(h):
+        for x in range(w):
+            if op[x, y]:
+                pp[x, y] = rgba[op[x, y]]
+    return out, tlut, preview
+
+
 def title_strip(path, pal):
     """The artist's strip at 12 px tall in the original palette; its three pieces by the gaps."""
     a = Image.open(path).convert("RGBA")
@@ -453,6 +488,26 @@ def main():
         codes[ord(ch)] = n
     lines.append("/* ASCII -> the HUD font's glyph code (255: none) */")
     lines.append("static const unsigned char en_hud_codes[128] = { %s };" % ", ".join(map(str, codes)))
+    # the logo (title screen and the prologue's copy): its own 255 colours, so its palette is
+    # replaced too (a native u16 array: host-order halfwords); entry 0 is clear
+    logo_path = os.path.join(art, "title_center_image.png")
+    if os.path.exists(logo_path):
+        logo, logo_tlut, logo_preview = logo_picture(logo_path, 194, 76)
+        if png_dir:
+            logo_preview.save(os.path.join(png_dir, "title_center_image.png"))
+        logo_data = bytearray()
+        lp = logo.load()
+        for y in range(76):
+            for x in range(194):
+                logo_data.append(lp[x, y])
+        lines += c_array("en_img_logo", logo_data)
+        lines += c_array("en_img_logo_tlut", logo_tlut)
+        for tex, tlut, rom_tex, rom_tlut in (("title_center_image_tex", "title_center_image_tlut", 0xDB0C70, 0xDB0A70),
+                                             ("D_80218800_ovl_intro", "D_80218600_ovl_intro", 0xDD29E0, 0xDD27E0)):
+            lines.append("#define en_img_%s en_img_logo" % tex)
+            lines.append("#define en_img_%s en_img_logo_tlut" % tlut)
+            table.append((tex, tex, rom_tex, len(logo_data)))
+            table.append((tlut, tlut, rom_tlut, len(logo_tlut)))
     title_pal = palette(rom, TITLE_TLUT, 16)
     strip, pieces = title_strip(os.path.join(art, "title_menu_atlas.png"), title_pal)
     if png_dir:
