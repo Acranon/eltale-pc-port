@@ -168,13 +168,16 @@ wins were: real depth, 240 fps from the game's own data, and fixes at the source
    - the message loader at vram 0x8000A0F8 (US func_80008A00), with its 0x4B0 buffer;
    - names in code and data tables.
 2. **Dump** the script to UTF-8 with a stable id per message, grouped by scene: about 330 dialogue blocks
-   (1,561 lines), plus UI strings. Tools only; the dump is never committed.
-3. **Align** the ~224 US blocks (1,057 lines) to Eltale by order, control codes and structure. Mark each
-   line `same`, `changed` or `new`, with PAL English as a second reference.
+   (1,561 lines), plus UI strings, sign and examine text, and names in data tables. Tools only; the dump
+   is never committed.
+3. **Full translation from the Japanese** (decided 2026-10-31). The English is our own, so English play
+   needs only the Eltale ROM. Quest 64's script (US, PAL) and TCRF's ending translation are references
+   for meaning and tone, never copied: lines that match Quest 64 are rewritten in our own words.
 4. **Translate:**
-   - Claude drafts the new and changed lines in the US/PAL names and tone;
+   - Claude drafts every line from the Japanese;
    - the user rewrites for impact;
-   - columns: `id | jp | literal | us_ref | draft | final`.
+   - the translation files (our English, keyed by message id) are committed; Japanese stays in the ROM;
+   - columns in the working sheet: `id | jp | literal | draft | final | notes`.
 5. **Render** English natively. With the source, the message and menu code is ours to change: a real
    English text engine and font, and editable script files. No ROM font hacks.
 6. **Image text:** logos and menu graphics redrawn through a texture-override folder.
