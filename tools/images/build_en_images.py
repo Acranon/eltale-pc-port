@@ -364,10 +364,27 @@ def logo_picture(path, w, h):
     picture ("P") and the palette as RGBA5551 halfwords in host (little-endian) order."""
     a = Image.open(path).convert("RGBA")
     a = a.crop(a.getchannel("A").point(lambda v: 255 if v > 128 else 0).getbbox())
-    s = min(w / a.width, h / a.height)
+    # two pixels smaller than the slot: room for a dark outline and a drop shadow (as the Quest 64
+    # logo has), so the gold reads on the title screen's gold background
+    s = min((w - 3) / a.width, (h - 3) / a.height)
     small = a.resize((max(1, round(a.width * s)), max(1, round(a.height * s))), Image.LANCZOS)
+    letters = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    letters.alpha_composite(small, ((w - 3 - small.width) // 2 + 1, (h - 3 - small.height) // 2 + 1))
+    lm = letters.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    canvas.alpha_composite(small, ((w - small.width) // 2, (h - small.height) // 2))
+    cp, lp = canvas.load(), lm.load()
+    for y in range(h):
+        for x in range(w):
+            if lp[x, y]:
+                continue
+            near = any(0 <= x + dx < w and 0 <= y + dy < h and lp[x + dx, y + dy]
+                       for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+            shadow = x >= 2 and y >= 2 and lp[x - 2, y - 2]
+            if near:
+                cp[x, y] = (48, 26, 8, 255)
+            elif shadow:
+                cp[x, y] = (24, 14, 6, 255)
+    canvas.alpha_composite(letters)
     opaque = canvas.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
     q = canvas.convert("RGB").quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     pal = q.getpalette()[:255 * 3]
