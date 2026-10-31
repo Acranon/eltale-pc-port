@@ -25,6 +25,24 @@ sentence endings, dialect), nuance that v1 cut to fit restored; then an independ
 every row against the Japanese. 315 rows differ from v1. Rules: American spelling; full item
 names (Traveler's White Wings); swearing allowed where the Japanese is genuinely rough.
 
+## In the game (2026-10-31)
+
+v2 is the script the game uses (`text/en.tsv` next to the exe, built from en.v2.tsv). F1 menu,
+Game: Text English / Japanese, and English font: the game's own (default, the owner's and testers'
+choice) or Royalty Mono, Quest Square, Pixel Sans, Retro Sans, Rune Mono (third_party/fonts, CC0).
+How it works: docs/P1_OS_STATUS.md, "English text".
+
+## Text in pictures
+
+`docs/IMAGE_TEXT.md` lists the 45 pictures with Japanese in them; `tools/images/extract.py` decodes
+them from your ROM into `out/images/` with a review page (catalog.html: a brief for the artist, who
+makes each picture, lettering families). The artist's English art (out/images/sol-en/, local) is
+fitted to the game by `tools/images/fit_art.py` (original size and colours, the original bullets on
+the pause-menu headings). Status: title menu strip and 22 labels done and accepted pending an
+in-game look; the logo is being redesigned; the prologue pages, warning screens, epilogue page,
+world maps and the spell-name font are ours to make in code. None are in the game yet (next: a
+replacement-image folder the port loads, and the wider English title-menu strip).
+
 ## Open questions for the owner
 
 - npc.28F8, npc.2970: a small child says トーゾク (a word she doesn't know): "bannit", or plain

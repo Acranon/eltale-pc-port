@@ -618,5 +618,12 @@ ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"v
 - **Tools:** `tools/text/preview.py` draws messages as the game will; `tools/rdp2d.py` draws the
   2D part of a dumped frame (`ELTALE_FRAME_IMAGE=1 ELTALE_DUMP_IMAGE=<first>+<step>`), which is how
   the English dialogue was checked in the real engine.
+- **Fonts:** font byte 0xC1 + n selects set n: 0 the original (above), 1-5 the optional pixel fonts
+  (third_party/fonts, CC0) drawn in the game's style by `tools/text/gen_fonts.py` into
+  `port/text/en_fonts.h`, pages of 256 x height at RDRAM 0x807F0800+. A text's font travels in its
+  bytes, so a change in the menu applies from the next text. Rows per window follow the font's line
+  height; the game's own row and column breaking is off for English windows. `ELTALE_FONT=n`.
+  `tools/text/fontlab.py` compares fonts in the window. A generated bold original was rejected.
 - **Not yet English:** the Controller Pak manager (it draws its own glyphs), spell names (their own
-  HUD font), and text inside pictures (`docs/IMAGE_TEXT.md`).
+  HUD font), and text inside pictures (`docs/IMAGE_TEXT.md`; art in progress, see
+  translations/README.md). Item descriptions wrap to 172 px in the item menu: unchecked in game.
