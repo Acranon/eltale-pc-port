@@ -28,6 +28,13 @@ for obj in objects:
         elif len(words) == 3 and words[1] != "U":
             defined.add(words[2])
 symbols = sorted(s for s in undefined - defined if raw_address.fullmatch(s))
+# N64 objects the port keeps natively: a raw label into one would write or read RDRAM the renderer
+# never sees (camera.c's guOrtho once filled RDRAM 0x80301000 instead of port_gfx_frames)
+NATIVE_ONLY = [(0x80301000, 0x8031C5A0, "the graphics frames (port_gfx_frames, port/boot_probe.h)")]
+bad = [(s, why) for s in symbols for lo, hi, why in NATIVE_ONLY
+       if lo <= int(raw_address.fullmatch(s).group(1), 16) < hi]
+if bad:
+    sys.exit("".join(f"gen_abs_symbols: {s} is {why}: declare it through the port's native object\n" for s, why in bad))
 if asm:
     dst.write_text("".join(f".globl {s}\n.set {s}, 0x{raw_address.fullmatch(s).group(1)}\n"
                            for s in symbols))

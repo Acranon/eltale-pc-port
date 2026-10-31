@@ -69,5 +69,10 @@ static inline uint16_t Port_N64U16(const void *rec, int off) {
 static inline uint32_t Port_N64U32(const void *rec, int off) {
     return (uint32_t)Port_N64U16(rec, off) << 16 | Port_N64U16(rec, off + 2);
 }
+static inline float Port_N64F32(const void *rec, int off) {
+    union { uint32_t u; float f; } v;
+    v.u = Port_N64U32(rec, off);
+    return v.f;
+}
 
 #endif

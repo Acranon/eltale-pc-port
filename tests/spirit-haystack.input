@@ -1,0 +1,14 @@
+# The spirit in the haystack (map 0 sub-area 1), from the user's quick save (out/bugsaves/compass-spirit,
+# not committed; copy it first). Title (Start), then the quick load at VI 100; stick right walks into the
+# haystack until the spirit is in front (VI 138), A takes it, C-up puts the free level into the first element.
+#   ELTALE_DATA_DIR=<copy> ELTALE_QUICK_LOAD_AT=100 ELTALE_SPIRIT_LOG=1 eltale-p1 --headless --fast --frames 140
+#       --input tests/spirit-haystack.input --rom ...
+# prints P1_SPIRIT front=1, found flag=1, levels 1 1 1 1 -> 2 1 1 1 (docs/P1_OS_STATUS.md)
+5 0x1000 0 0
+7 0 0 0
+120 0 80 0
+137 0 0 0
+150 0x8000 0 0
+152 0 0 0
+190 0x0008 0 0
+192 0 0 0

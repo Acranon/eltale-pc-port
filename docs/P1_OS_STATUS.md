@@ -697,3 +697,31 @@ in any later build (`port/p0/quicksave.c`). It is the game's own save, not a mem
   Loaded in play (the same run, VI 1700) or from the title, the frames after it draw the same
   display lists (but for which of the two framebuffers). A quick save taken right after a load has
   the same record. Loaded during the map tour's map 30 boss battle: back on map 13, as saved.
+
+## The compass and the spirits (2026-10-31)
+
+Two bugs the user found in play, both from a quick save (map 0 sub-area 1, the stone room with the
+haystack). Fixed on the way:
+- **The 2D projection was all zeros.** `Camera_InitForMap` builds the HUD's orthographic matrix
+  into `D_80301000[i].data.ortho`, but camera.c did not include `port/boot_probe.h`, so its
+  `D_80301000` was the raw linker label (RDRAM 0x80301000), not `port_gfx_frames`: the matrix went
+  to RDRAM the renderer never reads, and the frame image copied the native, zero `ortho`. Texture
+  rectangles take no matrix, so the HUD looked whole, but every quad drawn under that projection
+  collapsed to nothing: the compass disc (ring, N, coloured dots, turned by `camera_state.yaw`),
+  the element icons' max-level glow and gain flash, the element choice flash and the fade quad.
+  main.h now maps `D_80301000` to `port_gfx_frames` for every file, and `gen_abs_symbols.py`
+  refuses a raw label inside the frames (0x80301000..0x8031C5A0), so this cannot come back.
+- **Spirits were at the map's origin.** `spirit_map_placements` points at `SpiritDef` records in
+  the map's block (N64 big-endian), and `Spirit_LoadForMap` read their x and z as native floats:
+  1165.0 came out as a denormal near 0. The spirit existed and spawned its sparkles (the rising
+  bubble) every frame, at the origin, out of sight, and `Spirit_FindInFront` never matched, so it
+  could not be taken. It reads them with `Port_N64F32` now (the flag id is a byte). It was the one
+  map record type still read raw: chests, NPCs and the area records are decoded, text spots are
+  native tables.
+- `ELTALE_SPIRIT_LOG=1` prints `P1_SPIRIT` lines: each sub-area's spirits as loaded, the one in front
+  of the player, collected flags and element levels (=2 adds the player's position every frame).
+  `tests/spirit-haystack.input` with the user's quick save walks into the haystack and takes it:
+  `front=1`, `found flag=1`, `levels 1 1 1 1 -> 2 1 1 1`.
+- `tools/rdp2d.py` now also draws textured triangles under an orthographic projection (the compass
+  disc; texel colours only, no combiner); `--no-hud-tris` turns that off.
+- The checks' hashes are unchanged (they hash the display lists, not the matrices they point at).

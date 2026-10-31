@@ -108,8 +108,50 @@ static void load_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     } else if (core_game_mode == 2) *buttons = 0x8000;
 }
 
+/* ELTALE_SPIRIT_LOG=1 (or 2, see below): the spirits of each sub-area as loaded (P1_SPIRIT at), the one in front of the
+ * player when it changes (front), its collected flags (found) and the element levels (levels). */
+#include "game/map/spirit.h"
+static void spirit_log(void) {
+    static int on = -1, map = -1, sub = -1;
+    static SpiritObj *front;
+    static u8 flags[0x10], levels[4];
+    if (on < 0) on = getenv("ELTALE_SPIRIT_LOG") ? atoi(getenv("ELTALE_SPIRIT_LOG")) : 0;
+    if (!on) return;
+    if (on == 2) /* =2: the player every frame too */
+        fprintf(stderr, "P1_SPIRIT player=%.2f,%.2f,%.2f rot=%.3f core_flags=%x vi=%llu\n", player_state.actor.x,
+                player_state.actor.y, player_state.actor.z, player_state.actor.rot, (unsigned)core_flags,
+                (unsigned long long)Port_OsViCount());
+    if (map != map_id || sub != map_subarea) {
+        map = map_id;
+        sub = map_subarea;
+        for (s32 i = 0; i < spirit_count; i++)
+            fprintf(stderr, "P1_SPIRIT at map=%d sub=%d flag=%d x=%.2f y=%.2f z=%.2f collected=%d player=%.2f,%.2f,%.2f\n", map,
+                    sub, spirit_objects[i].flagId, spirit_objects[i].x, spirit_objects[i].y, spirit_objects[i].z,
+                    spirit_objects[i].collected, player_state.actor.x, player_state.actor.y, player_state.actor.z);
+        memcpy(flags, spirit_collected_flags, sizeof flags);
+        memcpy(levels, player_stats.element_levels, sizeof levels);
+    }
+    if (front != player_front_spirit) {
+        front = player_front_spirit;
+        fprintf(stderr, "P1_SPIRIT front=%d vi=%llu\n", front ? front->flagId : -1, (unsigned long long)Port_OsViCount());
+    }
+    if (memcmp(flags, spirit_collected_flags, sizeof flags)) {
+        for (s32 i = 0; i < 0x80; i++)
+            if ((spirit_collected_flags[i >> 3] ^ flags[i >> 3]) & (1 << (i & 7)))
+                fprintf(stderr, "P1_SPIRIT found flag=%d vi=%llu\n", i, (unsigned long long)Port_OsViCount());
+        memcpy(flags, spirit_collected_flags, sizeof flags);
+    }
+    if (memcmp(levels, player_stats.element_levels, sizeof levels)) {
+        fprintf(stderr, "P1_SPIRIT levels %d %d %d %d -> %d %d %d %d vi=%llu\n", levels[0], levels[1], levels[2], levels[3],
+                player_stats.element_levels[0], player_stats.element_levels[1], player_stats.element_levels[2],
+                player_stats.element_levels[3], (unsigned long long)Port_OsViCount());
+        memcpy(levels, player_stats.element_levels, sizeof levels);
+    }
+}
+
 void Port_MapTourStep(void) {
     static int load_test = -1;
+    spirit_log();
     if (load_test < 0) load_test = getenv("ELTALE_LOAD_TEST") != NULL;
     if (load_test) {
         fprintf(stderr, "P1_LOAD map=%d sub=%d hp=%d/%d level=%d vi=%llu\n", map_id, map_subarea, player_stats.hp,
