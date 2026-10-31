@@ -146,6 +146,8 @@ void Port_TextInit(void) {
     const uint8_t *rom = Port_HostRom();
     for (int p = 0; p < 3; p++) measure(p, rom + FONT_ROM + p * PAGE_BYTES);
     measure(EXTRA_PAGE, en_extra_page);
+    for (int i = 0; en_extra_order[i]; i++)
+        if (en_extra_width[i]) glyph_width[EXTRA_PAGE][i] = en_extra_width[i];
 
     char path_buf[1024];
     const char *path = text_path(path_buf, sizeof path_buf);
@@ -222,6 +224,7 @@ static int is_open_quote(const char *text, const char *p) {
 /* the page and glyph for one character (quotes by position), or -1 */
 static int glyph_of(const char *text, const char *p, int *page) {
     unsigned char c = (unsigned char)*p;
+    if (c == '.' && p[1] == '.') c = 1; /* a dot inside "...": the spaced one */
     if (c == '"') {
         *page = 2;
         return is_open_quote(text, p) ? 28 : 27;
