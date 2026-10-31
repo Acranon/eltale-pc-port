@@ -46,7 +46,7 @@ typedef struct {
     int wrapped_width, wrapped_set;
 } Entry;
 
-typedef struct { uint8_t s, w, xoff, adv; } Metric;
+typedef struct { uint16_t s; uint8_t w, xoff, adv; } Metric; /* s: up to 303 on the game's 304-wide pages */
 
 typedef struct {
     int height, line, space;
@@ -120,7 +120,7 @@ static void measure(FontSet *f, int page, int g, const uint8_t *pixels) {
                 right = x;
             }
     int w = left < 0 ? 3 : right - left + 1;
-    f->metric[page][g] = (Metric){ (uint8_t)(g * 10 + (left < 0 ? 0 : left)), (uint8_t)w, 0, (uint8_t)w };
+    f->metric[page][g] = (Metric){ (uint16_t)(g * 10 + (left < 0 ? 0 : left)), (uint8_t)w, 0, (uint8_t)w };
 }
 
 static void map_code(FontSet *f, int code, int page, int index) {
