@@ -3,7 +3,8 @@
     python tools/text/runtime_text.py translations/en.v2.tsv decomp/assets.yaml out/.../text/en.tsv
 
 Each output row is "<ROM offset hex>\t<English>": the offset of the Japanese string the row replaces
-(from the id, as tools/text/dump.py made it), the English in ASCII with \\n a line break, \\f a page
+(from the id, as tools/text/dump.py made it; spell names, which have no Japanese string to
+match, get 0x2000000 + element * 16 + index, the "can't use" label 0x20000FF), the English in ASCII with \\n a line break, \\f a page
 break and \\2 a Yes/No choice (port/text/en_text.c reads it).
 """
 import os
@@ -25,6 +26,9 @@ def main():
             at = BASES[kind] + int(rest, 16)
         elif kind == "name":
             at = int(rest, 16)
+        elif kind == "spell":
+            # spell names (the battle HUD's own font, not a ROM string): 0x2000000 + element * 16 + index
+            at = 0x20000FF if rest == "locked" else 0x2000000 + int(rest.split(".")[0]) * 16 + int(rest.split(".")[1])
         elif kind == "ui":
             asset, off = rest.rsplit(".", 1)
             at = assets[asset] + int(off, 16)

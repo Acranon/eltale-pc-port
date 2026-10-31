@@ -16,7 +16,7 @@ the display-list end command and hash.
 
 Windows is the primary development path. Use a MinGW-targeting Clang
 (`clang -dumpmachine` should print `x86_64-w64-windows-gnu`), Python 3 with
-PyYAML, and Git:
+PyYAML (and, for the English pictures, Pillow, NumPy and fontTools), and Git:
 
 ```powershell
 git submodule update --init

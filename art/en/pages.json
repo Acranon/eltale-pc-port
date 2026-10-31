@@ -1,0 +1,16 @@
+{
+ "_about": "English for the pictures that are mostly text, drawn by tools/images/build_en_images.py in the game's style (paragraphs separated by a blank line; lines wrap to the picture's width). 'yes_no' puts the two choices where the Japanese ones are (the cursor positions are fixed in code).",
+ "prologue_anim_8": {"style": "prologue", "text": "~ Celtland ~\n\nAn island where the power of the spirits lives and breathes in every place.\n\nHere dwell the Spiritcallers, who make pacts with the spirits and borrow their power to work magic. Jean-Jacques, an apprentice Spirit Mage of the Spirit Sanctum of Melrode, is one of them."},
+ "prologue_anim_12": {"style": "prologue", "text": "~ Stonia ~\n\nThe great northern kingdom of magic, home of the Spirit Sanctum of Melrode.\n\nIt is ruled by King Scottfort, whom the people call a hero."},
+ "prologue_anim_17": {"style": "prologue", "text": "~ Angulus ~\n\nThe merchant kingdom of central Celtland. Ruled by Queen Diana, it is the fairest and richest land in all Celtland."},
+ "prologue_anim_22": {"style": "prologue", "text": "~ Veragoon ~\n\nThe kingdom of the sword at the island's southern tip, a land of iron and fire, ruled by the ambitious King Geas, who prizes might above all."},
+ "prologue_anim_29": {"style": "prologue", "text": "The three kingdoms were bound by treaty, and their peoples lived in calm and peace."},
+ "prologue_anim_34": {"style": "prologue", "text": "But one night, a book hidden deep in the Spirit Sanctum was stolen and vanished."},
+ "prologue_anim_32": {"style": "prologue", "text": "It was the beginning of a peril such as Celtland had never known."},
+ "ending_sprite_anim_1": {"style": "prologue", "text": "Only a handful know that it was a boy of ten who saved Celtland. Knowing nothing of it, the people return to their calm and peaceful lives. In time the ruined towns will heal, will be rebuilt, and will grow anew. In time the wounded will rise again and walk on, hand in hand.\n\nAnd people will feel it: the warmth of fire, the gentle wind on the skin, the coolness of flowing water, and the rich bounty of the earth...\n\nSo long as people never forget to speak with the spirits, the world shall never perish.\n\nSo long as we walk with the spirits who watch over the world..."},
+ "intro_nopak_screen": {"style": "warning", "text": "No Controller Pak is inserted. You can play as you are, but you will not be able to save your game. Is that all right?", "yes_no": ["Yes", "No"]},
+ "intro_pak_help": {"style": "warning", "text": "Turn the power off, insert a Controller Pak, then turn the power on again."},
+ "intro_pak_full_screen": {"style": "warning", "text": "The Controller Pak is full. Saving this game needs 1 note and 2 pages.\nTo save on this Controller Pak, erase data you no longer need in the Controller Pak Menu to make room."},
+ "intro_no_controller": {"style": "warning", "text": "Turn the power off and connect a controller."},
+ "intro_pak_error_screen": {"style": "warning", "text": "Something other than a Controller Pak is inserted. You can play as you are, but you will not be able to save. Is that all right?", "yes_no": ["Yes", "No"]}
+}

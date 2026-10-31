@@ -584,10 +584,14 @@ static uint64_t hash_display_list(const Gfx *dl, unsigned words) {
 /* Set by the host: sees each graphics task before it completes (the renderer, or a trace). */
 void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
 
+/* Called before each graphics task (the English pictures follow the language setting). */
+void (*Port_FrameHook)(void);
+
 void osSpTaskStartGo(OSTask *task) {
     if (task != loaded_task) Port_HostFatal("starting an unloaded RSP task");
     loaded_task = NULL;
     if (task->t.type == M_GFXTASK) {
+        if (Port_FrameHook) Port_FrameHook();
         unsigned words = task->t.data_size / sizeof(Gfx);
         if (!task->t.data_ptr || !words || words > 10000)
             Port_HostFatal("invalid graphics task display list");

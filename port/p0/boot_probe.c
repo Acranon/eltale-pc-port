@@ -256,6 +256,11 @@ int main(int argc, char **argv) {
 #ifdef ELTALE_P1_OS
     if (window && Port_Rt64Start() != 0) return 1;
     Port_TextInit();
+    {
+        extern void (*Port_FrameHook)(void);
+        Port_FrameHook = Port_ImagesUpdate;
+        Port_ImagesUpdate();
+    }
     /* a window keeps its Controller Pak in the data folder unless --pak names one */
     static char default_pak[1024];
     if (window && !pak) {

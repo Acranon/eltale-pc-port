@@ -62,6 +62,7 @@ def main() -> None:
     if args.p1_os:
         run([sys.executable, "tools/text/runtime_text.py", "translations/en.v2.tsv", "decomp/assets.yaml",
              str(OUT / "text/en.tsv")])
+        run([sys.executable, "tools/images/build_en_images.py", str(args.rom), str(OUT / "en_images.inc")])
     includes = [
         f"-I{OUT / 'include'}", f"-I{OUT}", "-Iport/include", "-I.", "-Iwork/src",
         "-Idecomp/include", "-Idecomp/src",
@@ -96,7 +97,7 @@ def main() -> None:
     if args.p1_os:
         sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]
         sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c", "port/data/magic.c",
-                    "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "port/text/en_text.c", "decomp/src/libultra/io/vitbl.c"]
+                    "port/gfx/vi.c", "port/gfx/rt64_bridge.c", "port/text/en_text.c", "port/text/en_images.c", "decomp/src/libultra/io/vitbl.c"]
         # libultra's sinf/cosf keep their double constants as big-endian word pairs: the host libm's instead
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))
                     if p.name not in ("sinf.c", "cosf.c")]

@@ -594,10 +594,10 @@ ui.save_menu_slot_map_label_13.00	Epona's House
 ui.save_menu_slot_map_label_14.00	Pirate Ship
 ui.save_menu_slot_map_label_15.00	Blanick Castle
 ui.save_menu_slot_map_label_16.00	Floating Sanctum
-ui.pak_menu_delete_confirmation_message.00	⏎    Erase the data. Are you sure?⏎⏎⏎⏎⏎            Yes           Cancel
+ui.pak_menu_delete_confirmation_message.00	⏎Erase the data. Are you sure?⏎⏎⏎⏎⏎            Yes           Cancel
 ui.pak_menu_reinitialize_confirmation_message.00	⏎No Controller Pak is inserted.⏎Please insert a Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
 ui.pak_menu_operation_error_message.00	⏎The data could not be erased.⏎⏎⏎⏎⏎                    Reconnect
-ui.pak_menu_repair_confirmation_message.00	The Controller Pak is damaged. Repairing⏎it may erase the data on the⏎Controller Pak.⏎                Repair it?⏎⏎⏎            Repair        Cancel
+ui.pak_menu_repair_confirmation_message.00	The Controller Pak is damaged. Repairing⏎it may erase the data on the⏎Controller Pak. Repair it?⏎⏎⏎            Repair        Cancel
 ui.pak_menu_state9_confirmation_message.00	Please reinsert the Controller Pak.⏎Choosing "Quit" exits the menu, but new⏎game data cannot be saved.⏎⏎⏎⏎            Reconnect     Quit
 ui.pak_menu_state10_confirmation_message.00	⏎Repair failed. Please insert another⏎Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
 ui.npc_rest_choice_row0.00	Yes
@@ -613,3 +613,64 @@ ui.title_menu_state9_message.00	Please insert a Controller Pak.
 ui.title_menu_state10_message.00	Repairing the Controller Pak.⏎It will not be used.
 ui.title_confirmation_row0_text.00	Yes
 ui.title_confirmation_row1_text.00	No
+spell.0.0	Fire Ball Lv1
+spell.0.1	Fire Ball Lv2
+spell.0.2	Power Rod Lv1
+spell.0.3	Homing Arrow Lv1
+spell.0.4	Hot Steam Lv1
+spell.0.5	Fire Ball Lv3
+spell.0.6	Compression
+spell.0.7	Power Rod Lv2
+spell.0.8	Fire Pillar
+spell.0.9	Homing Arrow Lv2
+spell.0.10	Fire Bomb
+spell.0.11	Vampire Touch
+spell.0.12	Magma Ball
+spell.0.13	Extinction
+spell.0.14	Hot Steam Lv2
+spell.1.0	Rock Lv1
+spell.1.1	Rock Lv2
+spell.1.2	Spirit Armor Lv1
+spell.1.3	Rolling Rock Lv1
+spell.1.4	Weakness Lv1
+spell.1.5	Rock Lv3
+spell.1.6	Magnet Rock
+spell.1.7	Spirit Armor Lv2
+spell.1.8	Rock Combo
+spell.1.9	Confusion Magic
+spell.1.10	Weakness Lv2
+spell.1.11	Rock Shower
+spell.1.12	Magic Barrier
+spell.1.13	Rolling Rock Lv2
+spell.1.14	Wide Weakness
+spell.2.0	Water Pillar Lv1
+spell.2.1	Water Pillar Lv2
+spell.2.2	Healing Lv1
+spell.2.3	Soul Search Lv1
+spell.2.4	Water Pillar Lv3
+spell.2.5	Ice Gas
+spell.2.6	Ice Knife
+spell.2.7	Exit
+spell.2.8	Escape
+spell.2.9	Return
+spell.2.10	Healing Lv2
+spell.2.11	Soul Search Lv2
+spell.2.12	Walking Water
+spell.2.13	Drain Magic
+spell.2.14	Invalidity
+spell.3.0	Wind Cutter Lv1
+spell.3.1	Wind Cutter Lv2
+spell.3.2	Restriction Lv1
+spell.3.3	Avoidance Lv1
+spell.3.4	Silence Lv1
+spell.3.5	Wind Cutter Lv3
+spell.3.6	Large Cutter
+spell.3.7	Restriction Lv2
+spell.3.8	Wind Bomb
+spell.3.9	Avoidance Lv2
+spell.3.10	Cyclone
+spell.3.11	Slow Enemy
+spell.3.12	Wind Walk
+spell.3.13	Silence Lv2
+spell.3.14	Ultimate Wind
+spell.locked	Sealed

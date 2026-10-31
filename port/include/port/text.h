@@ -46,6 +46,18 @@ int Port_TextLayoutMessage(uint8_t *out, int cap, const uint8_t *jp, int width, 
 /* Build the next message from pieces (the item-get message: prefix + item name + suffix). */
 void Port_TextSetPending(const uint8_t *const *pieces, int n);
 
+/* port/text/en_images.c: swap the pictures with text in them to the language's (English ones
+ * made by tools/images/build_en_images.py); cheap when nothing changed, called every frame. */
+void Port_ImagesUpdate(void);
+/* The title menu's English strip and its three items' (s, width), or 0 while the text is Japanese. */
+int Port_TitleStrip(uint8_t **texels, int *width, int *height, int pieces[3][2]);
+
+/* The English name of spell `index` of `element` (-1, -1: the "can't use" label), or NULL. */
+const char *Port_TextSpell(int element, int index);
+/* The same in the battle HUD's font (en_images.c), or NULL while the text is Japanese. */
+const uint8_t *Port_HudSpellName(int element, int index);
+const uint8_t *Port_HudSpellLocked(void);
+
 /* The width in pixels of one line of game text (Japanese: 10 a glyph; English: its font's). */
 int Port_TextLineWidth(const uint8_t *s);
 

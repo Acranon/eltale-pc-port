@@ -1,0 +1,41 @@
+{
+ "_about": "English place names for the pause menu's world maps (map_region_0..5, 244x185). Each label: the box the Japanese covers (x0, y0, x1, y1, painted over with matching map from elsewhere on the same picture), the English, and where it goes: 'left' x (the text starts there), 'centre' x, or 'right' x (it ends there), and its top y. 'title' labels use the large white style.",
+ "map_region_0": [
+  {"box": [6, 7, 106, 22], "text": "Holy Plain", "title": true, "left": 8, "top": 8},
+  {"box": [158, 4, 201, 16], "text": "Impaness", "left": 161, "top": 5},
+  {"box": [70, 94, 106, 106], "text": "Darlam", "centre": 88, "top": 95},
+  {"box": [107, 164, 175, 177], "text": "Jeanbat Forest", "left": 109, "top": 165}
+ ],
+ "map_region_1": [
+  {"box": [9, 8, 62, 23], "text": "Darlam", "title": true, "left": 11, "top": 9},
+  {"box": [24, 22, 73, 37], "text": "Flats", "title": true, "left": 26, "top": 23},
+  {"box": [130, 7, 197, 21], "text": "Jeanbat Forest", "left": 132, "top": 8},
+  {"box": [15, 87, 74, 98], "text": "Glengo Forest", "left": 16, "top": 88}
+ ],
+ "map_region_2": [
+  {"box": [7, 7, 56, 22], "text": "West", "title": true, "left": 9, "top": 8},
+  {"box": [18, 21, 80, 36], "text": "Angulus", "title": true, "left": 20, "top": 22},
+  {"box": [143, 12, 193, 23], "text": "Blue Cape", "left": 145, "top": 12},
+  {"box": [143, 24, 185, 34], "text": "Lalapool", "left": 145, "top": 24},
+  {"box": [29, 143, 88, 154], "text": "Task Hazard", "right": 89, "top": 144},
+  {"box": [59, 158, 95, 169], "text": "Haliel", "right": 94, "top": 159},
+  {"box": [136, 161, 211, 173], "text": "Windward Forest", "left": 138, "top": 162}
+ ],
+ "map_region_3": [
+  {"box": [20, 9, 132, 26], "text": "Rideen Suburbs", "title": true, "left": 22, "top": 11},
+  {"box": [156, 27, 206, 38], "text": "Rideen Castle", "centre": 181, "top": 28},
+  {"box": [89, 166, 171, 178], "text": "Veragoon Tunnel", "centre": 130, "top": 167}
+ ],
+ "map_region_4": [
+  {"box": [10, 160, 98, 176], "text": "Dingam Desert", "title": true, "left": 12, "top": 162},
+  {"box": [129, 8, 211, 20], "text": "Veragoon Tunnel", "left": 131, "top": 9},
+  {"box": [50, 61, 84, 71], "text": "Grinos", "left": 52, "top": 62},
+  {"box": [6, 85, 64, 96], "text": "Boiled Hole", "left": 8, "top": 86}
+ ],
+ "map_region_5": [
+  {"box": [8, 8, 118, 23], "text": "Veragoon Moor", "title": true, "left": 10, "top": 10},
+  {"box": [158, 54, 216, 65], "text": "Boiled Hole", "left": 160, "top": 55},
+  {"box": [82, 79, 124, 91], "text": "Blanick", "left": 84, "top": 80},
+  {"box": [18, 102, 76, 114], "text": "Blanick Castle", "left": 20, "top": 103}
+ ]
+}

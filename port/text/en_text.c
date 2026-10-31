@@ -62,6 +62,7 @@ static FontSet sets[SETS];
 static char pending[MAX_TEXT];
 static int has_pending;
 static int forced_lang = -1, forced_font = -1; /* ELTALE_LANG, ELTALE_FONT */
+static char *spell_text[16][16], *spell_locked; /* rows 0x2000000 + element * 16 + index, 0x20000FF */
 
 static uint64_t hash_bytes(const uint8_t *s) {
     uint64_t h = 1469598103934665603ull;
@@ -214,6 +215,7 @@ void Port_TextInit(void) {
     const uint8_t *rom = Port_HostRom();
     init_original(rom);
     init_ttf_sets();
+    Port_TextFontLoaded(); /* now too: the Controller Pak manager draws text before the game loads its font */
 
     char path_buf[1024];
     const char *path = text_path(path_buf, sizeof path_buf);
@@ -242,6 +244,14 @@ void Port_TextInit(void) {
             else *w++ = *r;
         }
         *w = 0;
+        if (at == 0x20000FF) {
+            spell_locked = strdup(text);
+            continue;
+        }
+        if (at >= 0x2000000 && at < 0x2000100) {
+            spell_text[(at >> 4) & 15][at & 15] = strdup(text);
+            continue;
+        }
         if (at >= 0x1000000) continue;
         if (entry_count == cap) {
             cap = cap ? cap * 2 : 1024;
@@ -460,6 +470,12 @@ int Port_TextLayoutMessage(uint8_t *out, int cap, const uint8_t *jp, int width, 
     int rows = (height - sets[k].height) / sets[k].line + 1;
     layout(k, out, cap, text, width, rows < 1 ? 1 : rows);
     return 1;
+}
+
+const char *Port_TextSpell(int element, int index) {
+    if (!Port_TextEnglish()) return NULL;
+    if (element < 0) return spell_locked;
+    return element < 16 && index >= 0 && index < 16 ? spell_text[element][index] : NULL;
 }
 
 int Port_TextLineWidth(const uint8_t *s) {

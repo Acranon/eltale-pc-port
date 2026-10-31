@@ -624,6 +624,22 @@ ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"v
   bytes, so a change in the menu applies from the next text. Rows per window follow the font's line
   height; the game's own row and column breaking is off for English windows. `ELTALE_FONT=n`.
   `tools/text/fontlab.py` compares fonts in the window. A generated bold original was rejected.
-- **Not yet English:** the Controller Pak manager (it draws its own glyphs), spell names (their own
-  HUD font), and text inside pictures (`docs/IMAGE_TEXT.md`; art in progress, see
-  translations/README.md). Item descriptions wrap to 172 px in the item menu: unchecked in game.
+- **Pictures** (`port/text/en_images.c`): the build makes `en_images.inc` from the ROM and `art/en`
+  (`tools/images/build_en_images.py`): every picture at its original size, format and palette,
+  swapped for the Japanese while the language is English (checked before each graphics task, so the
+  menu switch applies at once): in the native image for data compiled from the ROM, in the loaded
+  ROM for what the game reads later (the maps), and in RDRAM too for the common block's HUD font.
+  The artist's labels are shrunk to size; the pause-menu headings get the original bullets; the
+  prologue pages (Quest Square) and warning screens and the epilogue page (the game's font) are
+  drawn from `art/en/pages.json`; the world maps have their Japanese names painted over with
+  matching map from the same picture and English drawn on (`art/en/maps.json`). The title menu's
+  English strip is wider: at RDRAM 0x807F8000, drawn by the title screen itself, each item starting
+  where the Japanese one does. The logo stays Japanese for now.
+- **Spell names:** the battle HUD's 8x9 font gets Latin letters (Royalty Mono shapes, the kana's
+  colours) and the names come from `spell.*` rows in en.v2.tsv (0x83 marks English: 6-pixel
+  advance). The "can't use" label is "Sealed".
+- **Controller Pak manager:** its pictures are swapped like the rest; its messages draw English
+  through the same fonts (`PakMenu_DrawText`), and a run of spaces snaps the next word to the
+  Japanese 5-pixel column grid so Yes / Cancel sit under the cursor. Note names on the Pak (the
+  game's own "エルテイル") stay as stored.
+- Item descriptions wrap to 172 px in the item menu: unchecked in game.
