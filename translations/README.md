@@ -45,20 +45,14 @@ replacement-image folder the port loads, and the wider English title-menu strip)
 
 ## Open questions for the owner
 
-- npc.28F8, npc.2970: a small child says トーゾク (a word she doesn't know): "bannit", or plain
-  "bandit"?
-- npc.5BB8: a woman remembers "the warmth of" a man from the Sanctum (likely Bart): keep the hint
-  as written, or soften it?
-- ぼうや / ぼうず ("boy") is "lad", "sweetie" (the flirty Mint Leaves woman), "Child" (an
-  innkeeper) or "Kid" (a bounty hunter) by speaker: fine, or one word throughout?
-- npc.2E70 / npc.3080: the king says "Sir Bart" in one and "Bart" in the other.
-- npc.7B08, npc.7BC0: ウフフ is "Hee hee"; "Tee-hee" may suit the flirty speaker better.
-- spot.0960: the "Old Bridgeman" portrait is a guess (the bridge builders' father).
-- spot.0818: "Big Soft Kingly Bed" or "Plush King-Size Bed"?
-- Item-get message: "Obtained <Item>!" (no articles needed). "You got a/the <Item>!" would need
-  a per-item article table in code.
-- Controller Pak terms: the game says "note" for a save file on the Pak (the N64 term). Keep, or
-  "save file"?
+Settled in v2: "bandit" (not "bannit"), "Sir Bart" in both of the king's lines, full item names,
+"Soft, Plushy King's Bed", Watercaller. Still open (each v2 chunk's checker notes in
+out/text/review.html list the rest):
+- ending.01C4: Bart's "my little Jean-Jacques" adds the name and "my".
+- Endearments the Japanese doesn't say ("dear", "sweetie", "little one") for a few warm speakers.
+- spot.0960: the Old Bridgeman portrait (likely Lloyd and Jeff's father, or a nickname).
+- spot.0628: "The Upright Spirit Mage" or "The Proper Spirit Mage".
+- Controller Pak terms: "note" (the N64 term) or "save file".
 
 ## To check in game
 
