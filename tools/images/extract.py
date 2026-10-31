@@ -360,6 +360,26 @@ GROUPS = [("title", "Title screen"), ("intro", "Boot splashes and prologue"), ("
           ("other", "Other")]
 
 
+OWNERS = {"sol": "For Sol", "claude": "Claude makes this (text in the game's own style)", "done": "Done"}
+BRIEF = """<section class=brief><h2>Brief for the artist (Sol)</h2>
+<p>We are translating Eltale Monsters (N64, 1999) into English. These are the game's pictures that have Japanese
+text in them. The cards marked <b>For Sol</b> are yours; the rest Claude makes in code (long text, maps, fonts),
+so leave those alone.</p>
+<ul>
+<li><b>Match the original.</b> Same colours, outline, shading and mood as the image on the card, with the English
+on the card in place of the Japanese. Nothing else changes: no extra text, decoration or background.</li>
+<li><b>Shape and size.</b> Keep the original's proportions exactly (the card gives them) and draw it bigger than
+the original, 4x or more, on a <b>transparent background</b>. We shrink it to the game's size and put it in
+the original's colours ourselves, so don't worry about exact pixels or palette.</li>
+<li><b>It must read when small.</b> Most of these are 9 to 16 pixels tall in the game. Bold, simple letter shapes
+and a strong outline survive shrinking; fine texture, thin lines, noise and wavy detail do not.</li>
+<li><b>Fit the space.</b> If the English does not fit at a readable size, use the shorter wording the card
+suggests rather than squeezing the letters.</li>
+<li><b>One file per card</b>, named as the card says (<code>&lt;name&gt;.png</code>), all in one folder.</li>
+<li><b>The title logo</b> is the one open design question: see its card.</li>
+</ul></section>"""
+
+
 def write_catalog(out, manifest, notes):
     by_id = {m["id"]: m for m in manifest}
     text_ids = [k for k in notes.get("images", {})]
@@ -378,12 +398,16 @@ p.lead{color:var(--mute);margin:0 0 16px}nav a{color:var(--accent);margin-right:
 .where{font-size:13px;color:var(--mute)}.ja{font-size:16px;margin:8px 0 2px;white-space:pre-wrap}.en{font-size:16px;font-weight:600;white-space:pre-wrap}
 .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin-top:8px}.note{font-size:13px;border-left:3px solid var(--accent);padding-left:8px;margin-top:8px}
 .grid{display:flex;flex-wrap:wrap;gap:8px}.thumb{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px;font:11px ui-monospace,Consolas,monospace;color:var(--mute);max-width:100%}
+.badge{display:inline-block;font-size:11px;font-weight:600;border-radius:99px;padding:2px 9px;margin-bottom:6px}
+.b-sol{background:#2f6fde;color:#fff}.b-claude{background:#6b6b78;color:#fff}.b-done{background:#2e8b57;color:#fff}
+.brief{background:var(--card);border:1px solid var(--line);border-left:4px solid #2f6fde;border-radius:10px;padding:14px 18px;margin:16px 0}
+.brief h2{margin:0 0 8px;border:0;padding:0}.brief li{margin:4px 0}.deliver{font:12px/1.5 ui-monospace,Consolas,monospace;margin-top:8px}
 .thumb div{background:var(--img);padding:4px;border-radius:4px;overflow:hidden;max-width:100%}.thumb img{image-rendering:pixelated;max-width:100%;display:block}
 """
     h = ["<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>",
          "<title>Eltale Image Text</title><style>%s</style></head><body><main>" % css,
          "<h1>Eltale Monsters: images with Japanese text</h1>",
-         "<p class=lead>%s</p>" % html.escape(notes.get("intro", "")), "<nav>"]
+         "<p class=lead>%s</p>" % html.escape(notes.get("intro", "")), BRIEF, "<nav>"]
     used = [g for g in GROUPS if any(by_id[i]["group"] == g[0] for i in text_ids if i in by_id)]
     for g, title in used:
         h.append("<a href='#%s'>%s</a>" % (g, title))
@@ -401,7 +425,13 @@ p.lead{color:var(--mute);margin:0 0 16px}nav a{color:var(--accent);margin-right:
             if m["stride"] != m["w"]:
                 fmt += " (row stride %d px)" % m["stride"]
             pal = (", palette at %s" % m["tlut_off"]) if m["tlut_off"] else ""
-            h.append("<div class=card><div class=pic><img src='%s' width=%d alt='%s'></div>" % (m["png"], w, i))
+            owner = n.get("owner", "sol")
+            h.append("<div class=card><span class='badge b-%s'>%s</span><div class=pic>" % (owner, OWNERS[owner]))
+            h.append("<img src='%s' width=%d alt='%s'></div>" % (m["png"], w, i))
+            if owner == "sol":
+                cw, ch = m["crop"] or m["w"], m["h"]
+                h.append("<div class=deliver>Deliver: %s.png &middot; transparent PNG &middot; %d:%d shape, e.g. %dx%d (4x)</div>"
+                         % (html.escape(i), cw, ch, cw * 4, ch * 4))
             h.append("<div class=meta>%s &middot; ROM %s &middot; %s%s</div>" % (html.escape(m["tex"]), m["tex_off"], fmt, pal))
             h.append("<div class=where>%s</div>" % html.escape(n.get("where") or m["where"]))
             h.append("<div class=lbl>Japanese</div><div class=ja lang=ja>%s</div>" % html.escape(n["ja"]))
