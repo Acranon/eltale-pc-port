@@ -1,0 +1,615 @@
+npc.0000	"Hello, little Spirit Mage. My name is Shannon. I am journeying all across Celtland.⏎▼⏎It seems you are about to set out on a journey of your own. Perhaps we will meet again somewhere."
+npc.00A8	"I've heard talk of you on my travels. You are no ordinary Spirit Mage, it seems."
+npc.00E8	"You're the Spirit Mage I saw in Impaness, aren't you? I'm amazed you reached Darlam so quickly!⏎▼⏎But you won't get any farther than this. They say a bandit has appeared in the forest near this town and closed off the road through to Lake Lenos.⏎▼⏎How troublesome. I wanted to go to Lake Lenos too..."
+npc.01D8	"How surprising. That is the Earth Orb. Legend has it that only the true Spiritcaller can draw out its power."
+npc.0248	"Across this lake lies Lalapool, City of Water. In Angulus, the merchant nation, it is a town as beautiful as the castle town of Rideen."
+npc.02B0	"We meet again, little Spirit Mage. Did you come to this town too, because the ferry isn't running?⏎▼⏎I can't quite tell what the cause is... but perhaps some ill force is at work on the spirits.⏎▼⏎Beyond Windward Forest to the south lies Haliel, the Wind Town. And this is Lalapool, City of Water.⏎▼⏎You may find some clue in those two towns."
+npc.03D0	"I have heard that whoever gathers all four Spirit Gems can gain tremendous power.⏎▼⏎But they say that unless one is the true Spiritcaller, that power cannot be drawn out."
+npc.0458	"So you've come as far as Haliel too. Windward Forest lies just beside this town, and I have a bad feeling about it.⏎▼⏎The Wind Spirit is restless as well. When you go into the forest, you would do well to be very careful."
+npc.0510	"Have you noticed, little Spirit Mage? The stirring of the spirits has quieted a little.⏎▼⏎But somewhere else, it seems, a far greater power is on the move."
+npc.0588	"What a splendid town Rideen is. So beautiful, so grand...⏎▼⏎Strange, though, isn't it? A human life is such a fleeting thing. So why build a town that could be lived in for a thousand years?⏎▼⏎...I cannot understand it."
+npc.0630	"Spirit Mage, have you seen the state of this town? This is the work of King Geas of Blanick.⏎▼⏎He gained great power, and merely to try it out, he burned the town to the ground and made its people suffer.⏎▼⏎Why do people destroy the very things they took such pains to build?⏎...I cannot understand it."
+npc.0718	"So at last you have gathered all four Spirit Gems. Now, if you are the true Spiritcaller, you should be able to draw out their power.⏎▼⏎Your father, it seems, has already set out for Blanick Castle."
+npc.07C0	"Oh, Jean-Jacques. Little Spirit Mage. Your father... in the battle with King Geas, he...⏎▼⏎No one but you can stop that man now. Do something, Jean-Jacques, please!!"
+npc.0858	"Jean-Jacques. You have been chosen... by the One......⏎▼⏎Just as I thought, you have grown strong. Solvaring, Zelse, Nepty, Fargo... and Geas. I was lending my power to them all.⏎▼⏎So that, by defeating them, you would grow strong enough to wield the Spirit Gems.⏎▼⏎You have gained power enough to open the way to the place where the One awaits!⏎▼⏎Now, here is the Book of Ether. Take it and go on to the Stone Circle ahead. There you will learn what the truth of your journey is."
+npc.09F8	"Go on now, Jean-Jacques. Go and learn the truth...... That is your destiny."
+npc.0A48	"Jean-Jacques. It has been a long journey, hasn't it? I have lived only to lead you here...⏎▼⏎...And my part, too, ends here.⏎▼⏎Strange, isn't it? The One and I were both born of you humans. Yes -- of the ugliness in human hearts.⏎▼⏎And yet you humans tried to make use even of beings like us. Again, out of ugly hearts.⏎▼⏎But by drinking in that ugliness, the One grew mighty... into a being with no heart but the will to destroy.⏎▼⏎That is why we needed Ether. We needed a reason to live, the way you humans live.⏎▼⏎Come now. The One is waiting.⏎▼⏎If you are truly one chosen by the spirits, the true Spiritcaller, then the monsters will vanish from this world, and peace will come once more."
+npc.0C98	"What am I doing here? Keeping an eye out in case monsters come in from the sea. Lord Bart, the town's protector, is away, you see.⏎▼⏎Now there's a splendid Spiritcaller. Hope you grow up to be just like him soon, Jean-Jacques."
+npc.0D48	"Impaness is a town blessed by the spirits, so I reckon there's a spirit or two hiding around here somewhere.⏎▼⏎But hunting for 'em is way too much bother. Not something the likes of me could ever manage."
+npc.0DD8	"I'm a traveler, journeying all across Celtland.⏎▼⏎I hail from Rideen, as it happens. Impaness lies at the far north of Celtland, so getting all the way here was hard going.⏎▼⏎Impaness is a fine town too, but Rideen has the finest castle in all the land."
+npc.0EC0	"Lately I hear monsters have been multiplying along the highway, and that a bandit has turned up in the forest. Whatever can it mean? What a frightening thing.⏎▼⏎Ever since Lord Bart set off on his journey, it's been nothing but news like this."
+npc.0F50	"Your father, Lord Bart, is adored by everyone in town. Why, I've never seen a finer man.⏎▼⏎The people of the Sanctum seldom come down into town, but Lord Bart makes his rounds and is kind enough to look out for everyone's safety."
+npc.1010	"Hey! When I grow up, do you think I could be a Spiritcaller like you?"
+npc.1058	"I'm a pirate, I am! All the treasure in the world is mine! And I ain't scared of no monsters!"
+npc.10A0	"Guess what! There's a great big scaaary rabbit hopping around outside town!"
+npc.10E0	"Jean-Jacques, I'll tell you something good!⏎▼⏎While you hold down the B Button, the camera moves behind you, so it's easier to see!"
+npc.1148	"Hey, hey! Did your daddy say you could play outside?⏎▼⏎My mommy said outside is full of monsters, so it's dangerous. Aren't you scaaared?"
+npc.11E0	"This is a tale from long, long ago, mind you. They say that on account of a certain book, Celtland was struck by a terrible calamity.⏎▼⏎Green lands turned to desert in a single night, and the towns that flourished there simply vanished, or so it's said.⏎▼⏎Which is to say, man must never use what lies beyond the understanding of man."
+npc.12C0	"Baaa~"
+npc.12D0	"Baaaa~"
+npc.12E0	"Was my grandchild out playing happily, eh?⏎▼⏎That we can live here in peace like this is all thanks to the Sanctum's warding magic. We're grateful for it, truly we are."
+npc.1358	"Tired, are you, little Spirit Mage? Why not have a rest at our place? I'll write your travels in the register for you, too.⏎▼⏎Will you be staying?"{F2}
+npc.13D8	"Setting off on a journey, are you? Then I'll give you some Traveler's White Wings.⏎▼⏎Use them, and you can come back to Impaness any time.⏎▼⏎There's just one condition on using the Wings, though.⏎▼⏎The Wings only work in open places, like plains and towns, you see."
+npc.14B8	"Oh, looks like you've still got your Traveler's White Wings. I'll give you some another time."
+npc.1500	"Billy and Frank both keep on playing even after the sun goes down. I wish they'd follow your example, young Spirit Mage."
+npc.1550	"A traveler? Now there's a rare sight, with every road so dangerous of late, eh? .........Oh?⏎▼⏎You seem to carry a rare fate, one such as I have never seen. One an ordinary soul would hardly know what to do with...⏎▼⏎The likes of me cannot see it clearly, mind, but it seems the journey ahead of you is what will carve out that fate."
+npc.1650	"Oh my, is that not a Spirit Gem? The Gems coming together may lead to ill, or it may lead to good. Take heed as you go.⏎▼⏎Let me give you one piece of advice. To move the water, first you must move the wind. That will open a new path, I should think."
+npc.1720	"Down this road lie the town of Darlam and Jeanbat Forest. But I hear tell there's a bandit in that forest.⏎▼⏎A youngster like you had best not wander in there careless-like, eh?"
+npc.17B0	"I heard all about it! A youngster like you, putting an end to that bandit! You'll make a splendid Spiritcaller one of these days, mark my words!"
+npc.1810	"The spirits are hiding all over the place. Try walking into every nook and corner of towns, the outdoors and caves!⏎▼⏎And when you win battles, the spirits lend you their power.⏎▼⏎You're strong, Jean-Jacques, so you'll be just fine!"
+npc.18C0	"When you want to open a treasure chest, go right up close to it. When the '!' mark appears, press the Z Button.⏎▼⏎Inside you'll find items that come in handy on your journey. There are a few here in the Sanctum too, so go have a look!"
+npc.1968	"Jean-Jacques, if you're heading out on a journey, let me teach you how to fight.⏎▼⏎When you meet monsters, a large circle forms around you. That is the battle circle.⏎▼⏎Inside the battle circle, a second, smaller circle forms as well. That one is for moving, and it's called the movement circle.⏎▼⏎You can move freely inside the movement circle, but once you use magic, strike an enemy with your staff, or use an item, you can no longer move.⏎▼⏎Of course, you can also move outside the battle circle. Decide on an action while you're outside it, and you'll escape from the battle.⏎▼⏎If things get dangerous, running away is sometimes necessary too."
+npc.1B78	"Take care out there, Jean-Jacques. Here, these are Mint Leaves. Can't go on a long journey without 'em. Take them with you!"
+npc.1BE0	"When you run out of Mint Leaves, come see me again. I'll give you more any time."
+npc.1C20	"O spirits, protect this one who is still so young. Grant a guiding light upon the path he walks...⏎▼⏎All we can do is pray, but until the day you return, we shall go on praying for your safety.⏎▼⏎In his last letter, Bart wrote that he would cross Lake Lenos and go on to Lalapool.⏎▼⏎I understand how worried you are about Bart, but don't do anything too reckless."
+npc.1D48	"Leave the Sanctum, and from the town of Impaness make your way to the town of Darlam.⏎▼⏎I shall ask the King of Darlam to lend you his strength.⏎▼⏎Hear me: any deed that makes light of your own life, I shall never permit. Return safe to the Sanctum."
+npc.1E18	"In Celtland there are four Spirit Gems. They are said to be needed to quell the calamity unleashed by the Book of Ether.⏎▼⏎Yet until now, only one has ever held all four: a single great Spiritcaller, a thousand years ago.⏎▼⏎That one of them has now come into your hands is a matter of great importance. Never let it go."
+npc.1F28	"So you're setting off on your journey, Jean-Jacques. Everyone at the Sanctum has been worried, so you'd better go have a word with them."
+npc.1F88	"Jean-Jacques, did you know? Spirits hide in all sorts of places. When you get close, a '?' mark appears, so press the Z Button there.⏎▼⏎Four spirit marks will appear. Press whichever one of the C Buttons matches the spirit you want.⏎▼⏎When you do, that spirit lends you its power in its element.⏎▼⏎Of the four C Buttons, the Fire Spirit is C-Up, Water is C-Down, Earth is C-Left and Wind is C-Right!"
+npc.20F0	"Neighhh!"
+npc.2108	"Hey, you heard? A bandit's gone and made himself at home in Jeanbat Forest. And on top of that, they say he stole some precious treasure right out of the castle!⏎▼⏎Of all the outrageous... If even the castle soldiers couldn't handle him, he must be one HUGE brute!"
+npc.21D0	"They say the bandit's gone, but who in the world got rid of him? Even the soldiers couldn't beat him, and they ganged up on him all at once.⏎▼⏎He must be one tremendously HUGE fellow."
+npc.2258	"Damn it! That stinkin' bandit! Him tearin' up the forest means I can't get a lick of work done!⏎▼⏎The castle soldiers ain't worth a thing, neither. Right, then -- I'll go sort him out myself!"
+npc.22E0	"Damn it! That stinkin' bandit! Went and got himself beat before I could get there. Wasn't much to him after all, was there?"
+npc.2338	"*hic* Me, I'm... a clay digger... see... *hic* But right now... *hic* I got the day off!⏎▼⏎*hic* Every now 'n' then... a fella needs... a day off... *hic* Ain't that right, lad... *hic*"
+npc.23E8	"*hic* They say the bandit's been beat... So now I can... *hic* go back to work... without a worry... *hic* that's how it is.⏎▼⏎*hic* Dunno who it was... but here's to whoever done it! Cheers!"
+npc.2490	"I'm a potter, but with that bandit around I can't get my hands on any good clay. At this rate I won't be making any good pots."
+npc.24F8	"The hard part of pottery is the fire -- getting it just right is tricky. It's only when the Fire Spirit and the Earth Spirit join their strength that you get a really good piece."
+npc.2570	"Do you know about Princess Flora? She's ever so lovely, but she's brave, too.⏎▼⏎In this bandit business, I hear she was the very first to try to go and deal with him herself, and the King was in an absolute panic!"
+npc.2610	"My old man's a clay digger, y'know. Digs up some pretty decent clay, too, but then that bandit turned up, didn't he?⏎▼⏎So now he won't do a lick of work. Well, if that's how it's gonna be, he could at least help me clean the house, couldn't he!"
+npc.26C8	"So they've finally gone and got rid of that bandit, eh? Took 'em long enough, didn't it?"
+npc.2728	"Oh my, what a cuuute Spirit Mage! Let me treat you to some juice, sweetie. Here you go -- Morning Dew!"
+npc.2790	"Aww, and I was going to treat you to some Morning Dew, but you've already got some. Next time, then, sweetie!"
+npc.27F0	"They say even the King is having trouble with that bandit in the forest. Who knows when he might come and attack the town? I'm so worried I can't even let my daughter play outside..."
+npc.2878	"The bandit seems to be gone. I'm so glad! Now I can let my daughter go out and play again. Children really ought to play outdoors, after all."
+npc.28F8	"Daddy and Mommy say I'm not allowed to go play outside. 'Cause a bandit came and it's dangerous.⏎▼⏎But what's a bandit?"
+npc.2970	"Guess what, guess what! The bandit's gone! They said I can go play outside now. Yaaay!⏎▼⏎But what's a bandit?"
+npc.29E0	"Have you heard about the bandit of Jeanbat? They say he sneaked into the castle, struck down the soldiers and made off with the treasure.⏎▼⏎That treasure, so I'm told, is called the Earth Orb. It's said that it calmed the calamity that once fell upon Celtland, you know."
+npc.2AA0	"I hear that bandit in the forest has been dealt with, eh? Now then, young one, would you happen to know what became of the castle's treasure?"
+npc.2B10	"You'd be a Spirit Mage from Melrode, then. A long journey all on your own must be hard going. Here, I'll give you these Traveler's Yellow Wings.⏎▼⏎Oh, and one more thing, don't forget: the Wings can't be used in caves or forests."
+npc.2BB8	"Huh, looks like you've already got Traveler's Yellow Wings. Well then, come back when you run out."
+npc.2C10	"Welcome to Darlam, the Earth Town! If you like, why not stay the night?"{F2}
+npc.2C50	"I came across Lake Lenos to buy pottery in this town, see.⏎▼⏎But then a bandit showed up in the forest, and now I can't get back to Lake Lenos. What a mess, honestly..."
+npc.2CE0	"The forest's open again! So I can head home whenever I like now -- so I think I'll take it easy here a little longer."
+npc.2D40	"Welcome to the Darlam tavern! I'll bet you're hungry, aren't you, lad?⏎▼⏎Here, take some Honey Bread. On the road, food's the most important thing there is."
+npc.2DC0	"I'll give you Honey Bread any time you like, dear. Come back when you run out."
+npc.2E00	"Welcome to Darlam Castle. You must be the Spirit Mage from Melrode.⏎▼⏎King Glen Scottfort awaits you in the throne room."
+npc.2E70	"Welcome, Spirit Mage. I have heard the tale from the Spirit Hierarch's envoy. You set out after Sir Bart, who went in search of the Book of Ether, or so I am told.⏎▼⏎The loss of the Book of Ether is a grave matter for this kingdom as well. That tome must never be loosed upon the world.⏎▼⏎But even now, a dire trouble has befallen this castle. A bandit stole the castle's treasure, the Earth Orb, and to crown it all he has closed off the road to Lake Lenos as he pleases.⏎▼⏎I sent soldiers into the forest, but they were no match for him at all. He wields some uncanny magic, and it has us hard-pressed.⏎▼⏎By rights I would lend you soldiers, but I have already lost a great many. One way or another, that bandit must be dealt with."
+npc.3080	"That a child such as you could defeat that bandit... You astonish me. Just as the Spirit Hierarch said, you are no ordinary child.⏎▼⏎I entrust the Earth Orb to you. It is a treasure only a Spiritcaller can wield. It may prove of use in your search for Sir Bart.⏎▼⏎As a small token of my thanks, I have opened the hidden door behind the throne. Take whatever you wish from the treasury beyond."
+npc.31A8	"Welcome, Spirit Mage. We were informed of your coming by the Spirit Hierarch's envoy."
+npc.3210	"A bandit got into this castle the other day. We took him lightly, him being just one man, and then he came at us with some incredible magic.⏎▼⏎Everyone who got close to him was taken down. Maybe we should've kept our distance and chipped away at him bit by bit...⏎▼⏎A kid like you would get sent flying with one punch from him. Well, not that you'd ever think of doing anything that reckless."
+npc.3330	"You're the one who beat the bandit? Really? Spiritcallers sure have some amazing power."
+npc.3388	"Beyond here lies the throne room. You would be the Spirit Mage the Sanctum sent word of. Please, proceed."
+npc.33E0	"A bandit slipped in just recently, so we've taken to checking everyone who visits the castle very strictly.⏎▼⏎Still, I'd think someone from the Sanctum is all right."
+npc.3460	"That's... the Earth Orb...! Surely you don't mean you defeated that bandit! I can scarcely believe it!"
+npc.34B0	"We have heard of your circumstances from the Spirit Hierarch. However, at present the castle faces a grave crisis.⏎▼⏎Whatever it takes, we must recover the stolen Earth Orb."
+npc.3530	"So it was you who defeated the bandit for us! Until now, I had believed there was no power greater than a knight's sword.⏎▼⏎I never imagined the power of magic could be so great. I see it in a new light now."
+npc.35B8	"Oh my, Spirit Mage! This is Princess Flora's chamber. If His Majesty finds you here, there'll be a dreadful to-do!"
+npc.3610	"Barging in without so much as a greeting -- isn't that ruder than the bandit himself? Still, I like you. You're a Spiritcaller, aren't you?⏎▼⏎Has anyone told you about the bandit? He's settled into an old fort no one uses anymore, and he's running riot as if he owned the place.⏎▼⏎If you have the courage, won't you go to the forest and find out what the bandit is up to? If you can use magic, I'd feel so much better.⏎▼⏎The townspeople and the castle soldiers have all lost their nerve... Please, I'm asking you -- lend us your strength."
+npc.3790	"Thank you for protecting the town of Darlam, and everyone in it. You're only a child, yet you have such wonderful power!⏎▼⏎I can't believe you're just an ordinary Spiritcaller. I can't quite put it into words, but I can feel it."
+npc.3840	"Welcome to the lakeside inn. Will you be staying with us?"{F2}
+npc.3878	"I'm awfully fond of Lake Lenos, you see. I stay at this inn quite often.⏎▼⏎I've never seen it myself, but they say there's an island right in the middle of Lake Lenos. Have you ever seen it?"
+npc.3908	"I wouldn't take anything old Griyon down the street says too seriously. You can never tell if it's true or not."
+npc.3968	"Don't recognize your face. Traveling through, are you? I can't imagine heading off on a dangerous journey like that. Stay in town, and the monsters won't come after you."
+npc.39D0	"I did my share of traveling too, when I was young.⏎▼⏎Heard all sorts of stories out on the road, but the most frightening of the lot, no question about it, was the tale of the Day of Calamity.⏎▼⏎Long ago, the nations fought over a book that held tremendous magical power. The fighting went on for decades, but at last one nation came out on top.⏎▼⏎That nation used the power of the book it had finally won. But the very next moment, the heavens split, light from the sky covered the land, and the nation was destroyed in a single day, so they say.⏎▼⏎That day is called the Day of Calamity. But they say a great Spiritcaller quelled that power."
+npc.3B90	"Ever heard the name Crystal Valley? They say it's a place lovely as a dream, where a great many spirits live and breathe.⏎▼⏎I'd like to see a valley that beautiful just once... But nobody knows where it is."
+npc.3C48	"There's a Spiritcaller in this town, Lady Leila. Thanks to her warding magic, we can live here safe and sound like this."
+npc.3CB8	"Lalapool, you know, is called the City of Water. Rideen's splendid too, but Lalapool's the best!"
+npc.3D18	"I'm having my Prim take singing lessons. I want to make her the best singer in all Celtland."
+npc.3D60	"'...When the guarding waters recede... la la la... the path to the Crystal Valley... lu lu lu... shall... la la la... be opened...'⏎▼⏎I'm practicing my song right now. You know what? When I grow up, I want to sing at the castle in Rideen, in front of the prince."
+npc.3E20	"This town, y'see, was made long, long ago by one Spiritcaller.⏎▼⏎When that Spiritcaller dug a well hereabouts, the water came gushing up fit to overflow, and so Lalapool, the town of water, came to be.⏎▼⏎Now, that well the Spiritcaller dug, they call it the Crystal Well, and whoever lays eyes on it gets a curse put on 'em.⏎▼⏎Eh? Or was it something else, now..."
+npc.3F38	"My name is Leila. I am the one who protects this town. I have been awaiting you.⏎▼⏎Are you aware that the wind has ceased in this land? The cause lies near Haliel, the Wind Town.⏎▼⏎This world is made of the four spirits. Should any one of them grow too strong, or wane, the balance is broken.⏎▼⏎And once the balance is broken, there is no telling what may come to pass. I beg you, Spirit Mage, lend us your strength."
+npc.40A0	"Spirit Mage, the wind has returned. Thank you so very much. You are truly the one Lady Epona spoke of...⏎▼⏎Besides protecting this town, I also serve as the messenger who carries the words of Lady Epona of Crystal Valley.⏎▼⏎Lady Epona is a mysterious lady. She has the power to see through all things; there is nothing she does not know.⏎▼⏎Lady Epona awaits you in the valley. She says there is something she wishes to tell you.⏎▼⏎Outside the inn is the room of the Crystal Well. When you are ready, please come to the well. I will lead you to Lady Epona."
+npc.4278	"I have been expecting you. Let us draw back the guarding waters and open the way to the sacred Crystal Valley. Once the waters recede, the mouth of a cave will appear.⏎▼⏎The cave is very long, and there are many monsters, but you must pass through it, so that it may be proven whether you are the true Spiritcaller.⏎▼⏎Lady Epona awaits you in the valley. Now, please hurry. The waters stay drawn back for only a short while.⏎▼⏎May the blessing of the spirits be upon your journey..."
+npc.43D8	"Aiding you on your journey is our duty.⏎▼⏎Though beside the greatness of the destiny you bear, our help is a humble thing indeed..."
+npc.4448	"I ran away from Grinos. On my own... leaving everyone behind.⏎▼⏎What's happening in that town now, I wonder? Oh, Mother..."
+npc.44C0	"You're crossing Lake Lenos? A kid like you, traveling with that kind of courage...⏎▼⏎Then I can't just not go back, can I? I'll go back someday, I swear it. Back to my mother, no matter what..."
+npc.4560	"Ah, young man, a traveler, I see. Then you'll be needing Traveler's Blue Wings. Go on, take them with you.⏎▼⏎Oh--⏎▼⏎The Wings can't be used in caves or forests, mind. Don't forget it."
+npc.45F8	"Aw, come on, young man. And here I was, all set to give you some Traveler's Blue Wings. You've already got 'em."
+npc.4658	"Hey there, lad. This here's an inn that doubles as a tavern. Stay the night, if you've a mind to."{F2}
+npc.46A0	"Hee hee, you're on a dangerous journey, aren't you, little one? Here, have some nice cool Mint Leaves."
+npc.46F0	"Hee hee, so you've already got Mint Leaves, little one. When they run out, you come here. I'll pick some just for you."
+npc.4760	"That lot outside look to be searching for something or other, but I wish they'd hurry up and clear off out of here.⏎▼⏎And anyway, I can't make head or tail of what goes on in young folks' heads these days. That Spiritcaller who came to town the other day.........⏎▼⏎Zelse, I think he said his name was. A Spiritcaller, and he didn't so much as say hello to us. His sort, the spirits won't take a liking to.⏎▼⏎A Spiritcaller, first and foremost, has got to be liked by the spirits.⏎▼⏎To be liked by the spirits, you do good deeds and treat nature with care. Even those monsters that come at you were spirits to begin with.⏎▼⏎Set free the spirits living in the monsters and they'll be on your side. And for that, you've got to build up your strength and train properly.⏎▼⏎......⏎▼⏎By the way, what's your best magic? Me, in the old days they called me Mais the Watercaller.⏎▼⏎My name thundered across all Celtland. Well? Impressive, eh?"
+npc.4A18	"That lot outside still haven't gone home. Honestly, if they don't clear off soon, I'll never get any peace.⏎▼⏎But you, little as you are, seem to be well liked by the spirits. Good. That's the most important thing for a Spiritcaller.⏎▼⏎I was the same, in my day. After all, the name of Mais the Watercaller rang out across all Celtland.⏎▼⏎Mind you, back when we were still active, it was peaceful, not like now.⏎▼⏎It's you young ones who've got to make the world peaceful from here on. So give it your all.⏎▼⏎......⏎▼⏎By the way, what's your best magic? Mine's Healing. I'll teach you sometime, if you like."
+npc.4C10	"Oh ho, well, well. A rare guest indeed. A Spiritcaller... my, that takes me back.⏎▼⏎I was a Spirit Mage myself, once upon a time. I wonder, is the Spirit Hierarch still keeping well?"
+npc.4C90	"Oh ho, well, well. You've grown a size bigger again, haven't you?⏎▼⏎By the way, I feel I've seen that face somewhere before. Could you be Bart's son?⏎▼⏎Now that I think of it, Bart came by here about two weeks ago. Seemed to be looking for something, he did."
+npc.4D70	"You're a Spirit Mage from Melrode, are you? Little as you are, you've done well to come all this way.⏎▼⏎The old folk living here were all Spirit Mages once, you know. Now we live quietly, without using magic.⏎▼⏎By the way, you'd best not get to talking with the old fellow next door. He'll go on and on, he will."
+npc.4E58	"The stirring of the spirits seems to have died away. Was it you who calmed them? You must have a good deal of power after all.⏎▼⏎By the way, you'd best not get to talking with the old fellow next door. He'll go on and on, he will."
+npc.4F00	"A journey of training, is it? Now that's admirable. Here, let me give you some Honey Bread. Come back any time you run out."
+npc.4F68	"A journey of training, is it? Now that's admirable. Come back any time your Honey Bread runs out. I'll have some fresh from the oven for you."
+npc.4FD0	"Hey, you. Seen a silver-haired man with a sharp look in his eye around here?⏎▼⏎Truth is, I couldn't care less about the man himself. It's that jewel of his I've got business with."
+npc.5060	"Damn that Zelse. Where the devil did he vanish to? Ain't he around these parts no more?⏎▼⏎Can't be helped. Guess I'll head on to Rideen or someplace. Can't hang around this town forever."
+npc.50F8	"You know a Spiritcaller called Zelse? Guy uses some scary magic.⏎▼⏎Word is, if you take that jewel he's carrying to Blanick, they'll pay you a fortune for it."
+npc.5180	"Nothing but trouble since I came to this town. I don't care about the money anymore. I just wanna go home."
+npc.51D8	"That rat... Where the heck'd he get off to?⏎▼⏎Hey, boy, you seen a silver-haired Spiritcaller? You spot him, you tell me."
+npc.5258	"Where'd that Zelse get off to? We've looked high and low and still can't find him. Don't tell me he's run off somewhere far away already."
+npc.52C8	"That getup -- you're a Spiritcaller, right? I'm a Spiritcaller too. I'm still in training, but I'm stronger than you!⏎▼⏎But Bart, the Spiritcaller from Melrode, is ten times stronger than me. I wanna get that strong too, and fast.⏎▼⏎Then I'd never lose to some Spiritcaller out in the forest.⏎▼⏎Oops!⏎▼⏎The part about me losing is a secret, okay?"
+npc.53D8	"Wow! You got the Wind Jade! You're a lot more powerful than you look.⏎▼⏎Not that I'm jealous or anything. So there."
+npc.5460	"Have you seen my younger brother? His name is Zelse. He is a Spiritcaller, the same as you. We came here from Grinos, the two of us.⏎▼⏎At long last we reached this town, and yet before long my brother left it.⏎▼⏎His parting words were that someone had given him a jewel, and that he had gained power.........⏎▼⏎What could that jewel he carried mean? Oh, Zelse, where in the world are you........."
+npc.55A0	"You have met Zelse, haven't you? You needn't say anything. It could not be helped.⏎▼⏎My brother and I lived in the town of Grinos. One day, the soldiers of Blanick came pouring into the town, and the whole town became a sea of fire.........⏎▼⏎My brother hated King Geas of Blanick. That is why, he said, he would gain power and take his revenge. That jewel changed him.⏎▼⏎People change once they gain power, don't they? He was such a gentle boy, truly........."
+npc.5730	"Well now, what a sweet little Spirit Mage. Let's see, suppose this old granny gives you some Traveler's Green Wings, hm?"
+npc.5788	"Once you've used up the Traveler's Green Wings, I'll give you more, so don't you worry. Now mind how you go on your travels."
+npc.57E0	"Sonny, looks like you're on a rough journey, aren't you? It's nothing fancy, but there's a warm bed here. Why don't you stay the night at this inn?"{F2}
+npc.5858	"Rideen is the biggest, grandest town in all Celtland. And the finest house in it is this one -- mine! Why, it's got two whole treasure chests!"
+npc.58D8	"Hello there, traveler. This is Rideen, the most prosperous town in Celtland."
+npc.5920	"My daughter is the very same age as Prince Billiam. Ours is a noble family of proper lineage, so I'd say she's a perfect match for the prince.⏎▼⏎If only he'd take a fancy to her, my daughter would be the prince's bride. And then I'd be royalty too... *dreamy sigh*"
+npc.59F0	"Mother wants to make me the prince's bride, it seems. But I can't stand weedy-looking boys like him.⏎▼⏎I want someone brave and strong, with a name known all over Celtland.⏎▼⏎I know about you. You're really strong, aren't you? Do you have a girlfriend?"
+npc.5AD8	"If you leave Rideen and keep climbing up the mountain a good long way, there's an abandoned mine. They say there's some old ruins way down at the back of it."
+npc.5B50	"I hear there was somebody shady down in the ruins. No wonder the mine got abandoned. Can't do any work when it's that dangerous, right?"
+npc.5BB8	"Oh, do come in. Would you be a Spirit Mage, by any chance?⏎▼⏎Someone from the Sanctum came by once before. He seemed to be on a journey, searching for something, but a few days ago he left this house.⏎▼⏎Oh, I can't forget the warmth of that man... If you meet him, I want you to give him a message: 'I'll be waiting.'"
+npc.5CB0	"Have you heard the talk about Fargo? The man who tried to take over Rideen. He can use the most fearsome fire magic.⏎▼⏎Did you see the ruined house on the edge of town? It was a great noble's home, but Fargo's magic burned it down.⏎▼⏎He was shut up in the jail, but he broke out the other day. Where he is now, who knows... I just hope he doesn't come back to this town."
+npc.5DC8	"Fargo's at Boiled Hole, across the desert? Why, Boiled Hole is right near Blanick, isn't it!⏎▼⏎What in the world would he go to a place like that for?"
+npc.5E50	"Have you seen my boys? Fargo the murderer has escaped, you know. It would be dreadful if anything happened.⏎▼⏎Please -- I'm sorry to trouble you, but if you see my boys, could you tell them to come home?"
+npc.5F00	"Hey, you know what? There was a murderer in the jail at the edge of town! He burned everybody to a crisp with fire magic!"
+npc.5F70	"Come play with us! We're practicing how to beat Fargo!"
+npc.5FB8	"Our nation, Angulus, was founded by a great merchant by the name of Hawthorn Shriker.⏎▼⏎Queen Diana, who rules us now, was his wife."
+npc.6038	"Hey, hey, Fargo got out, they said! He's a scary murderer, they said! He's really amazing, they said!⏎▼⏎...But what's a murderer?"
+npc.60A8	"Mom says I gotta go home? Mom's always nagging. I don't wanna go home yet."
+npc.6100	"Traveling, and you so small? Looks like you've come from Impaness, but the road on from here is a hard one.⏎▼⏎Get through the mine south of Rideen and there's a desert. Go on further still...⏎▼⏎and you come to Veragoon, land of the sword and fire. Come to think of it, that Fargo who broke out of jail the other day was from Veragoon too."
+npc.6208	"Oh my, a little traveler. I saw someone dressed much like you once before.⏎▼⏎That person seemed to be heading for the mine... Are you planning to go to the mine too?⏎▼⏎You'd best not, not now. Fargo the murderer may be prowling about. Don't you go doing anything reckless."
+npc.62F8	"I'm a traveling merchant, you see. I've got loads of Smelling Salts going spare, so I'll give you some."
+npc.6350	"I'm a traveling merchant, you see. If you run out of Smelling Salts, just say the word. I've got some going spare."
+npc.63B8	"Tired, are you? I'd think so. It's dangerous out there, and the road's hard. Rest up here, if you like."{F2}
+npc.6420	"I heard a traveler say there's a phantom town out in the desert... Wonder if it's true."
+npc.6470	"A long journey's tough going for a kid. Here, have this: Traveler's Red Wings. With them, you can come back to Rideen any time."
+npc.64D8	"Oh, you've already got Traveler's Red Wings. Well then, I'll give you more once they're gone."
+npc.6530	"Ohohoho... My house is the most splendid house in all of Rideen, you know. You ask why?⏎▼⏎Why, because it has TWO treasure chests! Ohohoho..."
+npc.65B8	"Welcome, Spirit Mage. I have had a letter from Princess Flora of Darlam.⏎▼⏎To think that the Book of Ether should be stolen... A terrible thing has happened indeed.⏎▼⏎Here in our town as well, a most fearsome Fire Spiritcaller by the name of Fargo has escaped, and we are at our wits' end.⏎▼⏎What is more, King Geas of Blanick has been making most unsettling moves.⏎▼⏎I do hope nothing ill comes of it."
+npc.6708	"I thank you for defeating Fargo.⏎▼⏎I see. So Fargo was making for Blanick.⏎▼⏎But what can be happening in Blanick now, I wonder?"
+npc.67A8	"So you're the Spirit Mage Mother was talking about? You're about the same age as me, and you're traveling all by yourself. Wow, that's amazing!⏎▼⏎Mother wants great warriors who can protect the kingdom.⏎▼⏎So when I grow up, I'm going to be a warrior.⏎▼⏎But to do that, do I have to go traveling and training, like you?"
+npc.68B8	"You beat Fargo?! Wow, that's amazing! Maybe I won't be a warrior after all. Maybe I'll be a Spiritcaller like you!"
+npc.6920	"King Geas of Blanick is a warlike king, and a very dangerous one. Only recently he marched his troops on Grinos, the desert town.⏎▼⏎There's no telling when he might attack Rideen as well."
+npc.69C0	"If King Geas of Blanick should ever get his hands on the Book of Ether... oh, it frightens me just to think of it.⏎▼⏎Whatever would become of us?"
+npc.6A48	"The Book of Ether must surely be in King Geas's hands.⏎▼⏎Your father, too, will have gone to Blanick in pursuit of the Book of Ether."
+npc.6AC8	"King Geas, and now Fargo... Why must the people of Blanick be so fond of fighting?⏎▼⏎I cannot stop worrying over when the harm will reach our own kingdom."
+npc.6B50	"Our thanks to you for defeating Fargo.⏎▼⏎Still, King Geas weighs on my mind more than ever. What ambition can he be scheming?⏎▼⏎We must put our troops in order without a moment's delay."
+npc.6C08	"You would be the Spirit Mage of the Spirit Sanctum of Melrode, I take it. Her Majesty Queen Diana is expecting you. Please, go right in."
+npc.6C68	"You are the Spirit Mage? I never imagined you would be such a child. ...Ah, forgive me."
+npc.6CC0	"We had Fargo shut away in a good, solid cell with lock upon lock on it, I tell you.⏎▼⏎And he still got out. Somebody must've helped him.⏎▼⏎He only broke out the other day. So I figure anyone who's come to town lately is a suspect.⏎▼⏎But Rideen's a big town, with folk coming and going all the time... What a fix."
+npc.6DD8	"You beat Fargo -- THE Fargo?! That can't be... A little lad like you beat him?!⏎▼⏎You're one incredible kid. But I suppose that's what a Spiritcaller is, eh? Well, I'll be."
+npc.6E68	"My grandpa was a miner, see, and they say he's the one who dug up the ruins in Veragoon Tunnel.⏎▼⏎But no sooner had the ruins turned up than the monsters started multiplying... and in the end the mine was shut down, so I hear.⏎▼⏎Maybe it's better not to touch old stuff nobody understands, huh?"
+npc.6F38	"A beautiful woman in the ruins of the abandoned mine? What would a beauty be doing in a place like that? If I'd known, I'd have gone myself!⏎▼⏎But wait a sec. Maybe that beauty was really a monster, huh?"
+npc.6FD8	"This is Rideen Castle, where Her Majesty Queen Diana resides: the most beautiful castle in all of Celtland."
+npc.7038	"Nobody wants 'em anymore, see. So you might as well have some Traveler's Black Wings. Take 'em along."
+npc.7090	"Already got Traveler's Black Wings, eh? Once you've used 'em up, come back. I'll give you new ones."
+npc.70E8	"These days King Geas has a Spiritcaller serving him who's like some kind of monster. Guilty, or some such.⏎▼⏎They say he turned up from who knows where not long ago... He's the one who ravaged the town like this. Said it was 'magic research'..."
+npc.7198	"With a war about to start, whatever made you come in from outside? Well, rest a while before you go."{F2}
+npc.71E8	"A month ago, a fearsome Spiritcaller and a suspicious woman came to King Geas... That's when it started. That's when King Geas went wrong.⏎▼⏎Nobody can stop him now. With the terrible magic power he's got hold of, King Geas means to burn Celtland to ashes..."
+npc.72B8	"Thinking of getting into Blanick Castle? Nobody can get through the main gate anymore. I've heard there's a back way in somewhere...⏎▼⏎But what do you mean to do there? Fight King Geas? Hmph... Don't make me laugh, boy."
+npc.7368	"No use struggling now. King Geas is gonna burn everything to the ground. You'd best do whatever you like while you still can."
+npc.73D8	"I got hurt, so I don't have to join this war after all... Not that it matters. They'll get us all anyway..."
+npc.7428	"Everyone who defied King Geas was killed. My little brother's dead too... And the ones left are scared to death of him.⏎▼⏎This town's finished. Nobody's getting out of here alive!⏎▼⏎It's all over!"
+npc.74E8	"You a Spiritcaller? A bearded Spirit Mage who looked like you went off toward the castle."
+npc.7538	"Here, lad, have these Smelling Salts. We've no use for 'em anymore, not us. I've a feeling you need 'em more than we do."
+npc.75A8	"Oh, you've already got Smelling Salts. When they're gone, come back. I'll give you as many as you like. And a kid like you shouldn't be in a hurry to die, hear?"
+npc.7620	"King Geas of Blanick burned this town with his terrible power.⏎▼⏎My son got separated from me then, and nobody knows where he went... Where can he be now, I wonder, and what is he doing?"
+npc.76B8	"Listen to this! My son, the one I thought was lost, has sent me a letter from Lalapool!⏎▼⏎Thank heavens... I'm so glad I waited for him.⏎▼⏎Oh, that's the Fire Ruby, isn't it? With that, you'll be able to go from the desert through Task Hazard to the town of Haliel."
+npc.77A8	"Ever seen that Guilty fellow? They say he's a Spiritcaller, but that's a lie. Any way you look at it, he's a monster!⏎▼⏎He's the one who hauled off everyone who wouldn't obey King Geas, too. And to keep a fiend like that under him...⏎▼⏎What's come over King Geas? He had ambitions, sure, but he used to be a decent king. Is it all Guilty's doing?"
+npc.78D0	"What's to become of this town...? They say it was King Geas who burned Grinos to the ground. There's no knowing when it'll happen here too.⏎▼⏎Do the people of Rideen and Darlam know about any of this, I wonder?⏎▼⏎Are they resting easy, thinking their world is at peace...?"
+npc.79A8	"J-Jean-Jacques... ...All this time since I saw you... you've grown... so strong... Ngh...⏎▼⏎...Geas... is trying to... destroy... Celtland... The Book of Ether... is... Nnngh..."
+npc.7A50	"Jean-Jacques! Bart went on ahead, further in.⏎▼⏎I came to help him, but he said it was dangerous and told me to wait here.⏎▼⏎If you're going on, I can heal you up here first. What'll it be?"{F2}
+npc.7B08	"Fufu... I live here all alone. Hardly anyone ever comes by, you know.⏎▼⏎They say this forest connects, somewhere, with the Blue Cave, the one that leads to a lovely valley.⏎▼⏎But I've heard the way won't open without the spirits' leave."
+npc.7BC0	"Fufu, back again? Could it be you're interested in me?⏎▼⏎Oh my, that's the Water Jewel. If you have that, it means the spirits have given you their leave.⏎▼⏎With it, I believe you can pass along the road to Blue Cape too."
+npc.7C98	"What's a little shrimp like you doin' in a place like this? Kids oughta be off to bed, and quick!"{F2}
+npc.7CF0	"Takes some nerve, boy, climbin' aboard a pirate ship like it's nothin'. Captain's given his say-so, so there's nothin' for it, but normally we'd be tossin' you in the lake.⏎▼⏎Still, if you're a Spiritcaller, maybe you'll be some use sortin' out what's gone wrong with the lake."
+npc.7DB0	"Hey, boy. The lake's back to normal. Thanks. You're somethin' else, for a kid.⏎▼⏎Come to think of it, the captain's taken a real shine to that priestess. He's been goin' to see her day after day lately.⏎▼⏎Honestly, a feisty girl like that... what's he see in her? Beats me, it does."
+npc.7EA8	"That getup -- you're from the Sanctum, right? You know this rude pirate? He makes me so mad!⏎▼⏎All right, sure, it was my slip-up that the Water Jewel got stolen, but it's the one who stole it who messed up the lake!⏎▼⏎Looks like she ran from the Stone Circle up on the hill down to the bottom of the lake. She looked so full of herself!⏎▼⏎If only I'd been stronger, I could've beaten her... Grr, it's so frustrating!"
+npc.7FF8	"Breaking that ward and getting the Water Jewel back... you're no ordinary kid, huh?⏎▼⏎I'll leave that Spirit Gem in your keeping. Got it? Don't you dare lose it.⏎▼⏎The priestesses of Lake Lenos have guarded the Spirit Gem for generations, to hand it to a great Spiritcaller. You're such a shrimp, I can't tell if you're great or not.⏎▼⏎But you're strong, I'll give you that. So please, I'm begging you, take this rude pirate with you!"
+npc.8150	"What the--?! What the--?! Where in blazes did you fall from?⏎▼⏎Tryin' to board my ship? You must have a death wish. This here's a pirate ship out of Nord!⏎▼⏎Nothin' but weird goings-on lately. Spiritcallers fallin' outta the sky, strange currents in the lake, the ship sailin' off on its own...⏎▼⏎It's more'n us pirates can stand. Where in the world are we headed now, anyway?⏎▼⏎No use thinkin' about it. Reckon I'll go rest in my cabin."
+npc.82C8	"Hey, an island like this, out in a place like this? Now that's a shocker!⏎▼⏎And the reason the lake's gone haywire was on this here island all along. Well, if that don't beat all."
+npc.8348	"Heh, so that's the Water Jewel. Bet it'd fetch a fine price. Bein' a pirate, I'd sure like to have it...⏎▼⏎Eh, but this priestess'd chew me out. I'll let it slide.⏎▼⏎Oh yeah, this priestess is a riot to tease. She goes beet red and flies off the handle. Maybe I'll swing by every so often and give her a ribbing."
+npc.8430	"A customer, after all this time! Haven't had one since I took a bearded Spirit Mage gentleman across, a month back.⏎▼⏎Go on, climb aboard. This boat's bound for Lalapool."
+npc.84A8	"This here's the ferry to Lalapool. Go on, climb aboard."
+npc.84E0	"We're in a fix, friend. The boat's stopped dead.⏎▼⏎A strange current's sprung up on the lake, and I can't steer her where I want.⏎▼⏎No way to get the boat moving like this. What a mess..."
+npc.8588	"Good timing. I was just getting ready to cast off.⏎▼⏎Wind's nice and fair, so we'll be in Rideen in no time. Go on, climb aboard."
+npc.8600	"This here's the ferry to Darlam. Go on, climb aboard."
+npc.8638	"Past here, through the cave they call Task Hazard, you'll find the town of Haliel.⏎▼⏎But it's a long, long way to get there, you know. Do rest here before you set off."{F2}
+npc.86C0	"This way leads to Windward Forest, but it's closed right now.⏎▼⏎Somebody smashed the bridge. What a rotten thing to do! That was a fine bridge, and we built it ourselves!⏎▼⏎Come to think of it, they say some shady fellow with power over the wind showed up in the forest. I wonder if he's the one who wrecked the bridge."
+npc.87B0	"Looks like that Spiritcaller in the forest is gone. The wind that stopped is blowing just like before."
+npc.8800	"Want to go this way, sonny? Sorry, can't be done -- the bridge is broken. Looks like it'll take a while to fix.⏎▼⏎If you want to get to Haliel, the only way is through the Task Hazard cave."
+npc.88A0	"Sonny, I've fixed the bridge! Now you can go through the forest to Haliel as you please."
+npc.8900	"It has been quite some time since a guest came over on the ferry. Spirit Mage, if you like, please stay here and rest away your weariness."{F2}
+npc.8970	"So you're Jean-Jacques, are you? Good of you to come. I'm Epona.⏎▼⏎You're carrying the Spirit Gems now. They're things only the true Spiritcaller can use.⏎▼⏎I know the Book of Ether was stolen. A thousand years ago, there was a great war over that book...⏎▼⏎They fought over it without a one of them knowing the truth of the book. No one can handle its power. Summon it, and that's the end -- the world goes racing headlong to ruin.⏎▼⏎That's exactly why it has to be taken back. Use the magic circle in the back room to go to Aqua Island on Lake Lenos.⏎▼⏎The Water Spirit's Gem is there. Go and borrow it from Coron, the priestess who guards it."
+npc.8B68	"Got the Gem, I see. Now mark this. The truth is, the Gems are a double-edged sword. They hold the power of the Book of Ether sealed inside them.⏎▼⏎So handle them badly and you could end up setting that power free. But on the other hand, if you're strong, you can wipe that power out for good.⏎▼⏎Jean-Jacques. Grow strong. From the moment you took up those Gems, the spirits chose you, like it or not.⏎▼⏎I never wanted to make a child like you do such a thing... but the spirits have chosen. That's one thing there's no helping.⏎▼⏎Now, the Stone Circle outside will take you back to Lalapool. Mind how you go. May the spirits be with you always..."
+npc.8D88	"I've been waiting for you, Jean-Jacques. This is the world's dark underside, made from the wicked hearts of men. It's the very last place where I can lend you a hand.⏎▼⏎Past here, no one can help you anymore...⏎▼⏎Well, then -- will you rest a bit before you go?"{F2}
+npc.8E40	"Jean-Jacques! Jean-Jacques! Tired? Tired! Stay over! Stay over?"{F2}
+npc.8E98	"...Someone comes here, after how many hundreds of years... You... you bear the Spirit Gems. Then are you the one I have so long awaited?⏎▼⏎My name is Larva. For bringing about the Day of Calamity, I was cursed, and cannot even die...⏎▼⏎Yes... a thousand years ago...⏎▼⏎Seeking to make the world my own, I used the Book of Ether and called forth a terrible power.⏎▼⏎But it held no power save the power to destroy! A power that envies life, and hates it!⏎▼⏎When Epona, a Spiritcaller who bore the Spirit Gems, chained that power in a prison, I was relieved from the bottom of my heart. For I had come to fear the very power I had summoned...⏎▼⏎You who bear the Gems. You are one charged with a mission... Destroy that power. So long as it exists, I must go on living..."
+npc.90E0	"Oh, a traveler, are you?... The road only grows harder from here on, so rest here a while, if you like."{F2}
+npc.9140	"What did you come to a town like this for? Most everything's burned, but there's still Wonder Remedy left.⏎▼⏎I'll give it to you."
+npc.91B0	"What did you come to a town like this for? Most everything's burned, but there's still Wonder Remedy left.⏎▼⏎But looks like you've already got some."
+npc.9230	"Oh, what has befallen you? Did you lose your way in the desert?⏎▼⏎You must be weary from your long journey. Rest here, if you wish."{F2}
+npc.9298	"I couldn't stand the war, so I fled the town of Blanick. But past here, there's nothing but desert.⏎▼⏎They say long, long ago this was all green grassland, and far to the south there was a beautiful kingdom... Can you believe it?"
+npc.9350	"Luckily, this place didn't burn. Because it's an inn, maybe? We've got beds, so go on and rest."{F2}
+npc.93A8	"...You a traveler? If you're bound for Blanick, rest up here first... What'll it be? Staying the night?"{F2}
+spot.0000	Mammon's World
+spot.0018	A place you have never seen before. Is this the Spirit Sanctum? There is a building very like it. Below the cliff, all is lost in haze; nothing can be seen.
+spot.0078	⏎The Door That Does Not Exist
+spot.0098	Darlam, the Earth Town ->⏎⏎<- Jeanbat Forest
+spot.00D8	⏎Ahead: Jeanbat Forest
+spot.0100	⏎Ahead: Jeanbat Forest
+spot.0128	⏎Ahead: Glengo Forest
+spot.0148	Crystal Fountain
+spot.0160	The spray sparkles in the sunlight. This is the famous fountain of Lalapool, the renowned City of Water.
+spot.01C0	<- Windward Forest⏎⏎Lalapool, the Water Town ->⏎
+spot.0208	⏎Ahead: Windward Forest
+spot.0238	⏎Ahead: Task Hazard
+spot.0260	⏎Welcome to the Town of Haliel
+spot.0288	⏎Ahead: Windward Forest
+spot.02B8	⏎<- Veragoon Tunnel
+spot.02E0	The gate is shut fast. Was this once a nobleman's house, perhaps?
+spot.0328	There seems to be no way through to the other side by this road...
+spot.0360	⏎A door, shut fast
+spot.0388	⏎The gates of Blanick Castle, shut fast
+spot.03B0	Strange Machine
+spot.03C8	It is shaped like nothing you have ever seen. You can feel waves of magic coming from it. Could it be meant to drive something...?
+spot.0418	Fire Spirit Stone
+spot.0430	Could this be a crystal of Fire Spirit Stone...? It floats by some means you have never seen.
+spot.0470	Wind Spirit Stone
+spot.0488	Could this be a crystal of Wind Spirit Stone...? It floats by some means you have never seen.
+spot.04C8	Earth Spirit Stone
+spot.04E0	Could this be a crystal of Earth Spirit Stone...? It floats by some means you have never seen.
+spot.0520	Water Spirit Stone
+spot.0538	Could this be a crystal of Water Spirit Stone...? It floats by some means you have never seen.
+spot.0578	Strange Stone
+spot.0590	You feel strange waves pulsing from deep inside the stone...
+spot.05B8	Spirit Altar
+spot.05D0	It is said that whoever prays here can hear the voices of the spirits.
+spot.0608	⏎A door that will not open, by the look of it
+spot.0628	The Upright Spirit Mage⏎The Strong Spirit Mage⏎How to Become a Spirit Mage
+spot.0678	Fire Spirits Strong Against Water⏎Water Spirits Strong Against Fire
+spot.06B8	Earth Spirits Strong Against Wind⏎Wind Spirits Strong Against Earth
+spot.06F8	~ The First King ~⏎Farren Scottfort
+spot.0738	Pottery and Clay⏎The Right Way to Make Pottery⏎A History of Pottery
+spot.0780	A History of Darlam⏎Shelwood, the Phantom Town⏎The Tale of the Earth Spirit
+spot.07D8	The Secret Library⏎The Secret Bookshelf⏎The Secret Door
+spot.0818	Soft, Plushy King's Bed⏎For Glen Scottfort
+spot.0850	A Mirror That Makes Anyone Look Lovely⏎For Flora Scottfort
+spot.0890	Fluffy-Wuffy Princess Bed⏎For Flora Scottfort
+spot.08D0	⏎- Spirit Fortunes That Come True -
+spot.08F8	Crystal Well
+spot.0910	It seems to control the water level of Lalapool. Its clear, shining water looks ready to brim over at any moment.
+spot.0960	Portrait of the Old Bridgeman
+spot.0978	The face of a man with a mighty beard. He looks just like Lloyd and Jeff.
+spot.09B8	⏎The Windmill That Grinds Sweet Flour
+spot.09E0	⏎The Windmill That Grinds Toasty Flour
+spot.0A00	The Descent of the Spirits
+spot.0A10	A work by the famous artist Alexeides. It was bought from a foreign land, they say, for an outrageous sum.
+spot.0A68	Mining and Commerce⏎Mines and Ruins⏎The Riddle of Shelwood, the Vanished Town
+spot.0AB0	Rideen, Town of Merchants⏎A History of Celtland⏎Spiritcallers and Merchants
+spot.0B00	Fun Business⏎Jolly Business⏎Cheerful Business
+spot.0B38	Chain
+spot.0B48	The chain that held Fargo, the Fire Spiritcaller. Its lock has been broken.
+spot.0B90	Tapestry of Legend
+spot.0BA8	It reads:⏎...Shelwood, the shining realm of green.⏎He who buried it beneath the sand was the King of Ruin,⏎who from the depths of the darkness, by the power of an ancient tome, opened the way.⏎...By the four Gems and one who wields the spirits⏎was he sealed deep within the Dark Prison...
+spot.0C68	⏎<- Dig Site
+spot.0C90	Model of the Island of Celtland
+spot.0CB0	The whole island of Celtland, in miniature. King Geas must use it in his councils of war.
+spot.0D00	⏎Ahead: Holy Plain
+spot.0D28	⏎Ahead: Darlam Flats
+spot.0D50	Darlam Flats ->⏎⏎<- Jeanbat Fort
+spot.0D90	⏎Ahead: West Angulus
+ending.0001	Leon
+ending.000C	"......Bart! Bart!⏎▼⏎Hold on, sir! You're all right now. Come, let's get out of here, quickly. Can you stand?"
+ending.007D	Bart
+ending.0088	"Th-that voice... Leon... is it you? ...Jean-Jacques... What of Jean-Jacques... what has...?"
+ending.00D9	Leon
+ending.00E4	"...I don't know. But the evil aura that has shrouded this castle all this time is gone.⏎▼⏎It's most likely thanks to Jean-Jacques.⏎▼⏎Together with the spirits, he has protected Celtland from an evil being. He is the true Spiritcaller, without a doubt!"
+ending.01B9	Bart
+ending.01C4	"Jean-Jacques...! You -- my little Jean-Jacques -- the true Spiritcaller? Who would have thought... I thought you were only a child...⏎▼⏎Stay safe, Jean-Jacques... Spirits, I beg you, protect my son..."
+ending.0270	Titi
+ending.027C	"Thank you for all your kindness. I am going home to Grinos now. Please keep well, everyone in Haliel."
+ending.02D0	Annette
+ending.02DC	"So you're off, are you? I heard Grinos had burned down... And still you'll go back, dear?"
+ending.0328	Titi
+ending.0334	"Yes. They say it is safe now. It is my home. Even if my house is gone and the land laid waste, I wish to go back.⏎▼⏎Besides, a house can simply be built again. We all intend to make Grinos as it was. However long it takes, surely..."
+ending.0404	Annette
+ending.0410	"Is that so. Well, that's a fine thing, that is. With a heart like that, I'd say the town will be itself again. You do your best, dear."
+ending.0468	Titi
+ending.0474	"Yes.⏎Thank you so very much.⏎▼⏎Zelse... it is sad that he is not here... But I shall do it for him as well... I shall!"
+ending.04D5	Leila
+ending.04E0	"Ah... the hateful will to destroy has vanished... This is your doing, Jean-Jacques, is it not?⏎▼⏎I, Leila, believed in your strength. I sensed your firm will and your gentle heart, and knew that you, surely, would see it through...!⏎▼⏎...And yet I cannot see you... Where are you? Please, oh please, be safe...!⏎▼⏎O spirits, I beseech you, guide the one you have chosen back to us... Carry our prayers to the true Spiritcaller...!"
+ending.0659	Epona
+ending.0664	"Mammon is gone... Jean-Jacques. You've done what I never could, haven't you.⏎▼⏎Mammon, whom I could only seal away... Just to keep him held down, I've clung to life for a thousand years...⏎▼⏎Now, at long last, I can sleep. I've nothing left to regret... I'll leave the rest to you.⏎▼⏎It's the young, full of strength, who'll go on to build a new world. There's no need for me to watch over it.⏎▼⏎You'll be all right. Give it your all...! Jean-Jacques...!"
+ending.07D8	King Scottfort
+ending.07E8	"Word has come from Queen Diana. It seems King Geas has been defeated.⏎▼⏎At the same time, the monsters that had overrun the land are vanishing. A strange thing.⏎▼⏎Who, I wonder, has set the balance of all things right..."
+ending.0898	Flora
+ending.08A4	"Father, I know. ...It's Jean-Jacques. That boy. He really was the true Spiritcaller after all...⏎▼⏎Oh, that's right -- what's become of Jean-Jacques? I heard he went to Blanick Castle. Father, what of Jean-Jacques? Is he safe?"
+ending.096C	King Scottfort
+ending.097C	"......I do not know. They say no one was inside the castle. His father, Bart, was rescued safe and sound, I hear, but...⏎▼⏎Of Jean-Jacques himself, the one who matters most, there is no trace. On the castle roof stood a magic Stone Circle. He may have flown from there to somewhere else.⏎▼⏎If he went to some world unknown to us, and in the battle there... could he have lost his life..."
+ending.0A94	Flora
+ending.0AA0	"No! It isn't true! Jean-Jacques couldn't have...⏎▼⏎No, I won't believe it. He's all right. He's out there somewhere in this world, I know he is!⏎▼⏎Jean-Jacques, can you hear me? I'll be waiting! You'll come back, won't you? Jean-Jacques......!"
+ending.0B68	Shannon
+ending.0B74	"Mammon is gone, and yet I remain in this world... Why, I wonder?⏎▼⏎I was born of the wickedness in human hearts, so I thought I would vanish along with Mammon. Jean-Jacques, is this your doing too?⏎▼⏎Somewhere in my heart, I believed it -- that you would defeat Mammon.⏎▼⏎That humans, that real life, would overcome false life... In truth, that is what I was wishing for.⏎▼⏎Mammon envied humans. He coveted their overflowing vitality, and the human world they bring forth and build.⏎▼⏎But he could never have it, so he hated them. Even though he had such great power, and life eternal...⏎▼⏎And yet, that alone does not mean one is truly alive, does it?⏎▼⏎A rich heart. A heart brimming with feeling. Those who sense the world... humans......⏎▼⏎...Jean-Jacques, I am leaving Celtland. I find I want to know more about humans.⏎▼⏎Let us meet again someday, in some foreign land. Farewell, Jean-Jacques!"
+ending.0E44	Kiliac
+ending.0E50	"...Hey! Hey, you! Get a grip -- you know where you are?⏎▼⏎You sure got a thing for poppin' up outta nowhere, don't ya? And quit showin' up on my ship every single time! What happened to you? What've you been up to?"
+ending.0F00	Coron
+ending.0F08	"I can tell. This kid's gone and done something really amazing. Something nobody could've ever dreamed of...⏎▼⏎I've got to hand it to him! And him such a shrimp, too. This kid turned out to be the true Spiritcaller they talk about!"
+ending.0FA0	Kiliac
+ending.0FAC	"Huh~? This shrimp? Can't believe it. Well, if Coron says so, I'll let it go at that.⏎▼⏎So, uh, what's this 'true Spiritcaller' anyway?"
+ending.1024	Coron
+ending.102C	"Are you an idiot!? You don't even know that? It means a great Spiritcaller.⏎▼⏎And anyway, you! Don't go calling me plain 'Coron' like we're pals.⏎▼⏎And on top of that, you tricked me onto your ship! Put me ashore right now, along with this kid!!"
+ending.10EC	Kiliac
+ending.10F8	"Aw, don't be like that. A trip on a ship's fun once in a while! I'll show ya the kingdom of Nord, where I was born.⏎▼⏎Hey, shrimp. Whaddaya say? Don't ya wanna see what's out past this island?⏎▼⏎I dunno how great you are, but when all's said and done, you're only the best on this puny little island. The world's a big place!!"
+boss.0008	Solvaring
+boss.0015	Zelse
+boss.0020	Nepty
+boss.0031	Sylph
+boss.003C	Fargo
+boss.0048	Guilty
+boss.0058	King Geas
+boss.0064	Demon Lord Mammon
+boss.0070	"What are you? A Spiritcaller whelp? What business have you in the castle of Solvaring, the Beast King! Did the king of Darlam send you to bring me down?⏎▼⏎Fool! The Earth Orb is mine. With it, I shall become king of Stonia!⏎▼⏎Behold my power!"
+boss.0160	"Boy. I bear you no grudge, but here I must defeat you. You will hand over the Spirit Gems you carry.⏎▼⏎With them, I can gain the power to bring him down -- the one who sank the town of Grinos in a sea of fire!⏎▼⏎Come at me, boy!"
+boss.0238	"Oh my. Someone breezed right through my ward, so I wondered who it could be... and it's an adorable little boy.⏎▼⏎Thank you ever so much for bringing the Spirit Gems all this way. But this is where your journey ends, little boy.⏎▼⏎Those Spirit Gems you carry... I'll be having them."
+boss.030C	"I am Sylph... servant of the One. Since we were sealed away together a thousand years ago, I have waited all this time for the One to return...⏎▼⏎I see you hold but three Gems. Heh heh... Very well, Spiritcaller... I shall see for myself whether you are the true Spiritcaller."
+boss.03D0	"Just like that woman said. Waiting here paid off. Brat, kill you and every one of the Gems is mine.⏎▼⏎With all the Gems in hand, I can crush Geas and become king of Celtland!⏎▼⏎I'm the one who'll have everything in this world! Now, hand over those Gems of yours!"
+boss.04E4	"Feh feh feh... Ahh, the smell of fresh, lively spirits... My very favorite... that delicious spirit smell...⏎▼⏎Mmm... boy... it's you, it's the spirits you carry... Feh feh feh... They smell even better than humans...!⏎▼⏎The One told me to serve some human called Geas, and I did, much as I loathed it... Feh feh feh... So good things do come along after all.⏎▼⏎Now... give 'em here give me the spirits come on! Come on! Right now! Now, NOW, right now! GRAAAAAAAAAAAAAAAAHHH!!!"
+boss.0664	"Truly, you Spirit Mages never tire of getting in my way. To send even a child like this to hinder me -- I cannot fathom what the Spirit Hierarch is thinking.⏎▼⏎You seem to have considerable power, but before my might it is of no use whatsoever. If you mean to stop my ambition, then show me...⏎▼⏎the power of a Spiritcaller! I shall crush it, here and now!"
+boss.0768	"......Ha... ha... hahahahaha......⏎HAHAHAHAHAHAHAHAHAHAHAHAHAHA!⏎Jean-Jacques!⏎▼⏎Welcome! I have waited! I have waited! A thousand years since the Spiritcaller Epona shut me away in this Dark Prison...⏎▼⏎How long I have waited! O liberator! You who loose my bonds and give me wings! Now at last I shall soar out of this prison!⏎▼⏎In thanks, I shall spare you any suffering at the end... I will grant you death in an instant!⏎FUHAHAHAHAHAHAHAHAHAHA!!!!!"
+boss.08B8	"A... a, aaaah, a... wh...y...⏎Spirits... why... why do you not choose me...⏎why is this body... crumbling away......?⏎▼⏎...Ooooooh... I... wh.........y.........⏎I, who have hated mankind all this time......⏎▼⏎So this......is......death......⏎A peaceful......⏎sl......eep......"
+item.0000	Spirit Light
+item.000C	Fresh Bread
+item.001C	Honey Bread
+item.002D	Wonder Remedy
+item.0038	Magic Firewater
+item.0044	Morning Dew
+item.0054	Mint Leaves
+item.0060	Smelling Salts
+item.0070	Silent Flute
+item.007C	Siren's Bell
+item.0090	Scapegoat Doll
+item.00A0	Giant's Boots
+item.00AC	Silver Amulet
+item.00BC	Gold Amulet
+item.00CC	Traveler's White Wings
+item.00E0	Traveler's Yellow Wings
+item.00F4	Traveler's Blue Wings
+item.0108	Traveler's Green Wings
+item.011C	Traveler's Red Wings
+item.0130	Traveler's Black Wings
+item.0144	Earth Orb
+item.0154	Wind Jade
+item.0168	Water Jewel
+item.0180	Fire Ruby
+item.0194	Book of Ether
+item.01A4	Key to the Dark Prison
+item.01B8	Holy water imbued with the power of the spirits. Restores all HP.
+item.01E4	Fragrant bread, fresh from the oven. Restores 50 HP.
+item.020C	Soft, sweet, delicious bread. Restores 100 HP.
+item.0238	A secret remedy handed down in Celtland. Restores 150 HP.
+item.025C	One drink and your true power returns in an instant. Restores all MP.
+item.029C	Morning dew gathered on a sacred tree of the forest. Restores 10 MP.
+item.02C4	Its refreshing scent blows your weariness away. Restores 20 MP.
+item.02F0	However tired you are, one whiff snaps you awake. Restores 40 MP.
+item.0320	A strange flute that makes no sound when blown. No enemy can cast spells.
+item.035C	A bell whose lovely chime enthralls all who hear it. No enemy can move.
+item.039C	A doll that takes your place when used in a fight. Lets you escape from battle.
+item.03D8	Lets you cover great distances in a single stride, like the giants of legend. Doubles your movement range in battle.
+item.041C	A charm imbued with warding magic. Raises defense by 50% in battle.
+item.0454	A charm imbued with stronger warding magic. Doubles defense in battle.
+item.0490	Mysterious wings that will carry you to the town of Impaness.
+item.04C0	Mysterious wings that will carry you to the town of Darlam.
+item.04EC	Mysterious wings that will carry you to the town of Lalapool.
+item.051C	Mysterious wings that will carry you to the town of Haliel.
+item.054C	Mysterious wings that will carry you to the town of Rideen.
+item.057C	Mysterious wings that will carry you to the town of Blanick.
+item.05AC	A crystal ball said to hold within it the great power of the Earth Spirit.
+item.05D8	A green jade said to hold within it the great power of the Wind Spirit.
+item.0604	A beautiful jewel said to hold within it the great power of the Water Spirit.
+item.0634	A crimson ruby said to hold within it the great power of the Fire Spirit.
+item.0668	A tome that tells of an unknown power surpassing the spirits.
+item.0690	The key that opens the way to the prison where Demon Lord Mammon is confined.
+name.8D1830	Edgar
+name.8D183C	Cain
+name.8D1844	Tim
+name.8D184C	Sandra
+name.8D1858	Amanda
+name.8D1864	Frank
+name.8D1870	Billy
+name.8D187C	Todd
+name.8D1888	Pete
+name.8D1894	Kitty
+name.8D189C	Ralph
+name.8D18A4	Sheep
+name.8D18AC	Sheep
+name.8D18B4	Exel
+name.8D18C0	Fonda
+name.8D18CC	Gallant
+name.8D18D8	Holly
+name.8D18E4	Marga
+name.8D18EC	Auden
+name.8D18F8	Compta
+name.8D1904	Arakel
+name.8D1910	Prude
+name.8D191C	Serius
+name.8D1928	Spirit King
+name.8D1934	Assi
+name.8D1940	Venel
+name.8D194C	Horse
+name.926AF0	Flora
+name.926AFC	Rupes
+name.926B08	Materia
+name.926B14	Rox
+name.926B20	Clay
+name.926B2C	Lapis
+name.926B38	Petra
+name.926B44	Marble
+name.926B50	Arena
+name.926B5C	Clare
+name.926B64	Coal
+name.926B70	Kissling
+name.926B7C	Graba
+name.926B88	Steve
+name.926B94	Maggie
+name.926BA0	Marmor
+name.926BAC	King Scottfort
+name.926BBC	Grant
+name.926BC8	Gipson
+name.926BD4	Kirks
+name.926BE0	Pasalt
+name.926BEC	Felsen
+name.926BF8	Kate
+name.95D430	Orten
+name.95D43C	Leone
+name.95D448	Narciso
+name.95D458	Rasore
+name.95D464	Rosa
+name.95D470	Iris
+name.95D47C	Camellia
+name.95D488	Prim
+name.95D490	Griyon
+name.95D49C	Leila
+name.95D4A8	Banaban
+name.95D4B4	Giglio
+name.95D4C0	Pabble
+name.95D4C8	Garita
+name.988500	Mais
+name.988508	Gers
+name.988514	Beitzen
+name.988520	Hect
+name.988528	Ryokki
+name.988534	Kevin
+name.988540	Octo
+name.988548	Leon
+name.988554	Titi
+name.988560	Annette
+name.98856C	Raisha
+name.9E1570	Dorrey
+name.9E157C	Hemp
+name.9E1588	Dolgo
+name.9E1594	Nix
+name.9E15A0	Opal
+name.9E15AC	Coral
+name.9E15B4	Jade
+name.9E15C0	Amber
+name.9E15CC	Shelta
+name.9E15D8	Ivory
+name.9E15E4	El
+name.9E15EC	Dio
+name.9E15F8	Ruby
+name.9E1600	Roach
+name.9E160C	Cindy
+name.9E1618	Rhett
+name.9E1620	Crown
+name.9E162C	Talco
+name.9E1638	Ring
+name.9E1640	Tina
+name.9E164C	Queen Diana
+name.9E1658	Billiam
+name.9E1664	Zinc
+name.9E1670	Lenvil
+name.9E167C	Linton
+name.9E1688	Zapha
+name.9E1694	Palu
+name.9E16A0	Raldo
+name.9E16A8	Damon
+name.9E16B0	Ian
+name.A140C0	Tome
+name.A140CC	Corres
+name.A140D8	Bouf
+name.A140E0	Tempera
+name.A140EC	Hitze
+name.A140F8	Werk
+name.A14104	Balenne
+name.A14110	Anchu
+name.A1411C	Soloday
+name.A14128	Fackel
+name.A14134	Sonne
+name.A14140	Ryule
+name.A1414C	Benchy
+name.A14158	Bart
+name.A14164	Leon
+name.A14170	Red Rose Knight
+name.A14180	White Rose Knight
+name.A70240	Kiliac
+name.A7024C	Crux
+name.A70258	Urquhart
+name.A70268	Thelma
+name.A70270	Berda
+name.A7027C	Bjorn
+name.A70288	Macallan
+name.A70294	Morag
+name.A702A0	Coron
+name.A702A8	Droge
+name.A702B8	Lloyd
+name.A702C4	Jeff
+name.A702D0	Efne
+name.A702D8	Epona
+name.A702E4	Chappy
+name.A702F0	Larva
+name.A702FC	Bastion
+name.A70308	Bronze
+name.A70314	Garrison
+name.A70320	Walt
+name.A7032C	Darza
+name.A70338	Pasion
+name.A77F00	Shannon
+ui.npc_area_entry_message.00	"...Jean-Jacques.⏎For all my efforts to stop you, you still⏎mean to set out after your father?⏎▼⏎Gifted as you are, you are⏎still only a child.⏎▼⏎And raised as you were in the Sanctum,⏎you cannot know how perilous⏎a journey can be.⏎▼⏎It has been a month already since Bart,⏎your father, set out in search of the⏎stolen Book of Ether and vanished.⏎Small wonder you are worried, but...⏎▼⏎That book tells of powers beyond mortal⏎understanding. It was kept deep within⏎the Sanctum... Who could have stolen it,⏎and how?⏎▼⏎In the hands of one with an evil heart,⏎towns and nations would perish, the⏎blessing of the spirits would fade, and⏎the Day of Calamity would come again.⏎▼⏎No doubt Bart vanished because he was⏎caught up in the struggle over the book.⏎You too may well meet the same danger.⏎▼⏎If you mean to go even so, then first⏎make for the town of Darlam.⏎The King of Darlam will surely⏎lend you his aid."
+ui.D_80061650.00	New Data
+ui.save_menu_operation_panel_message_0.00	Checking Controller Pak...
+ui.save_menu_operation_panel_message_1.00	Loading data...
+ui.save_menu_operation_panel_message_2.00	Saving data...
+ui.save_menu_operation_panel_message_3.00	Erasing data...
+ui.save_menu_operation_panel_message_4.00	Repairing Controller Pak...
+ui.D_8006C16C.00	Repair
+ui.D_8006C174.00	Reconnect
+ui.D_8006C180.00	Yes
+ui.D_8006C188.00	No
+ui.D_8006C190.00	Overwrite the game data. Are you sure?
+ui.D_8006C1BC.00	Erase the data. Are you sure?
+ui.D_8006C1E0.00	Repairing may erase the data on the⏎Controller Pak. Are you sure?⏎Choose "No" to exit the menu.
+ui.D_8006C258.00	Exit the menu. Are you sure?
+ui.D_8006C280.00	Please insert a Controller Pak.⏎Press the A Button to exit the menu.
+ui.D_8006C2CC.00	No Eltale game data was found.⏎Press the A Button to exit the menu.
+ui.D_8006C2CC.50	No Eltale game data was found.⏎Press the A Button to leave the menu.
+ui.D_8006C370.00	No game data was found.
+ui.D_8006C390.00	The data to erase was not found.
+ui.D_8006C3B8.00	No Controller Pak is inserted.⏎Exit the menu without saving?
+ui.D_8006C408.00	No data to save was found.⏎Continue the game without saving?
+ui.D_8006C458.00	To save, insert another Controller Pak.⏎To go on without saving, choose "No".
+ui.D_8006C4C8.00	The Controller Pak is damaged.⏎Please repair it or reinsert it.
+ui.D_8006C50C.00	Please insert another Controller Pak.⏎Choose "No" to exit the menu.
+ui.D_8006C564.00	The Controller Pak does not have enough⏎free space. Saving this game requires⏎1 note and 2 pages.⏎Press the A Button to exit the menu.
+ui.D_8006C5F8.00	New data cannot be saved, but existing⏎data can be overwritten. Overwrite?
+ui.D_8006C63C.00	Erase other data?
+ui.D_8006C658.00	Continue with the save menu?
+ui.D_8006C678.00	Please insert another Controller Pak.⏎Choose "No" to exit the menu.
+ui.D_8006C6CC.00	The Controller Pak does not have enough⏎free space. Saving this game requires⏎1 note and 2 pages.⏎To save on this Controller Pak, erase⏎unneeded data in the Controller Pak Menu⏎to free up the space needed.⏎To continue the game, press the Start⏎Button or the A Button.⏎To enter the Controller Pak Menu, turn⏎the power off, then turn it on while⏎holding the Start Button.
+ui.D_8006C858.00	Exit the menu. Are you sure?
+ui.D_8006C880.00	Repairing may erase the data on the⏎Controller Pak. Are you sure?⏎Choose "No" to exit the menu.
+ui.save_menu_slot_map_label_0.00	Impaness Inn
+ui.save_menu_slot_map_label_1.00	Darlam Inn
+ui.save_menu_slot_map_label_2.00	Darlam Flats Inn
+ui.save_menu_slot_map_label_3.00	West Angulus Inn
+ui.save_menu_slot_map_label_4.00	Lalapool Inn
+ui.save_menu_slot_map_label_5.00	Task Hazard House
+ui.save_menu_slot_map_label_6.00	Haliel Inn
+ui.save_menu_slot_map_label_7.00	Rideen Suburbs Dock
+ui.save_menu_slot_map_label_8.00	Rideen Inn
+ui.save_menu_slot_map_label_9.00	Grinos Inn
+ui.save_menu_slot_map_label_10.00	Dingam Desert House
+ui.save_menu_slot_map_label_11.00	Veragoon Moor House
+ui.save_menu_slot_map_label_12.00	Blanick Inn
+ui.save_menu_slot_map_label_13.00	Epona's House
+ui.save_menu_slot_map_label_14.00	Pirate Ship
+ui.save_menu_slot_map_label_15.00	Blanick Castle
+ui.save_menu_slot_map_label_16.00	Floating Sanctum
+ui.pak_menu_delete_confirmation_message.00	⏎    Erase the data. Are you sure?⏎⏎⏎⏎⏎            Yes           Cancel
+ui.pak_menu_reinitialize_confirmation_message.00	⏎No Controller Pak is inserted.⏎Please insert a Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
+ui.pak_menu_operation_error_message.00	⏎The data could not be erased.⏎⏎⏎⏎⏎                    Reconnect
+ui.pak_menu_repair_confirmation_message.00	The Controller Pak is damaged. Repairing⏎it may erase the data on the⏎Controller Pak.⏎                Repair it?⏎⏎⏎            Repair        Cancel
+ui.pak_menu_state9_confirmation_message.00	Please reinsert the Controller Pak.⏎Choosing "Quit" exits the menu, but new⏎game data cannot be saved.⏎⏎⏎⏎            Reconnect     Quit
+ui.pak_menu_state10_confirmation_message.00	⏎Repair failed. Please insert another⏎Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
+ui.npc_rest_choice_row0.00	Yes
+ui.npc_rest_choice_row1.00	No
+ui.item_message_prefix.00	 ⏎Obtained 
+ui.item_message_suffix.00	!
+ui.D_8004F260.00	Jean-Jacques escaped from battle...
+ui.D_8004F284.00	Jean-Jacques won the battle!
+ui.title_menu_default_message.00	This Controller Pak has no room for a new⏎game note. To create one, please erase⏎unneeded data.
+ui.title_menu_state7_message.00	The Controller Pak data is corrupted.⏎It will not be used.
+ui.title_menu_state8_message.00	No Controller Pak is inserted. You will⏎not be able to save your game.⏎Start anyway?
+ui.title_menu_state9_message.00	Please insert a Controller Pak.
+ui.title_menu_state10_message.00	Repairing the Controller Pak.⏎It will not be used.
+ui.title_confirmation_row0_text.00	Yes
+ui.title_confirmation_row1_text.00	No

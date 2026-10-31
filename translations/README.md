@@ -14,6 +14,17 @@ own names, then a second verification pass against the Japanese. The owner polis
 The text drawn as pictures (logos, the New Game prologue, the ending's closing pages, menu labels)
 is not in here yet.
 
+## en.v2.tsv: accuracy and voice
+
+`en.v2.tsv` has the same ids, written without the original window limits: a page is flowing text
+(the English text engine wraps it and adds pages when needed) and `⏎` marks only breaks that
+belong to the text (sign lists, inscriptions). Page breaks (`⏎▼⏎`) and `{F2}` stay where the
+Japanese has them. Status (2026-10-31): every row retranslated from the Japanese with the speaker
+of each NPC message known, each speaker given a voice taken from the Japanese cues (pronouns,
+sentence endings, dialect), nuance that v1 cut to fit restored; then an independent check of
+every row against the Japanese. 315 rows differ from v1. Rules: American spelling; full item
+names (Traveler's White Wings); swearing allowed where the Japanese is genuinely rough.
+
 ## Open questions for the owner
 
 - npc.28F8, npc.2970: a small child says トーゾク (a word she doesn't know): "bannit", or plain
