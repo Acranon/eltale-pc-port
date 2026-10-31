@@ -360,6 +360,16 @@ GROUPS = [("title", "Title screen"), ("intro", "Boot splashes and prologue"), ("
           ("other", "Other")]
 
 
+# images that appear together and must share one lettering style
+FAMILIES = {
+    "menu_sprite_26": "Pause-menu headings", "menu_sprite_33": "Pause-menu headings",
+    "menu_sprite_43": "Pause-menu headings", "menu_sprite_45": "Pause-menu headings",
+    "menu_sprite_34": "Options rows", "menu_sprite_35": "Options rows",
+    "menu_sprite_41": "Options choices", "menu_sprite_42": "Options choices",
+    "menu_sprite_86": "Options choices", "menu_sprite_87": "Options choices",
+    "map_region_6_small": "Map name panels", "map_region_7_small": "Map name panels",
+    "map_region_8_small": "Map name panels", "map_region_9_small": "Map name panels",
+}
 OWNERS = {"sol": "For Sol", "claude": "Claude makes this (text in the game's own style)", "done": "Done"}
 BRIEF = """<section class=brief><h2>Brief for the artist (Sol)</h2>
 <p>We are translating Eltale Monsters (N64, 1999) into English. These are the game's pictures that have Japanese
@@ -376,6 +386,11 @@ and a strong outline survive shrinking; fine texture, thin lines, noise and wavy
 <li><b>Fit the space.</b> If the English does not fit at a readable size, use the shorter wording the card
 suggests rather than squeezing the letters.</li>
 <li><b>One file per card</b>, named as the card says (<code>&lt;name&gt;.png</code>), all in one folder.</li>
+<li><b>One style per family.</b> Images in the same family (named on each card) sit together on one
+screen, so they must share one font, one letter height, one weight and one outline: draw a family as one
+batch, from one reference, not each card on its own.</li>
+<li><b>Pause-menu headings</b> (Status, Options, Map, Elements): draw the <b>word only</b>, no grey bullets.
+Claude puts the original bullets back, pixel for pixel, so they match the Japanese exactly.</li>
 <li><b>The title logo</b> is the one open design question: see its card.</li>
 </ul></section>"""
 
@@ -428,6 +443,10 @@ p.lead{color:var(--mute);margin:0 0 16px}nav a{color:var(--accent);margin-right:
             owner = n.get("owner", "sol")
             h.append("<div class=card><span class='badge b-%s'>%s</span><div class=pic>" % (owner, OWNERS[owner]))
             h.append("<img src='%s' width=%d alt='%s'></div>" % (m["png"], w, i))
+            if owner == "sol" and i in FAMILIES:
+                h.append("<div class=deliver>Family: %s</div>" % FAMILIES[i])
+            elif owner == "sol" and i.startswith("pak_"):
+                h.append("<div class=deliver>Family: Controller Pak manager labels</div>")
             if owner == "sol":
                 cw, ch = m["crop"] or m["w"], m["h"]
                 h.append("<div class=deliver>Deliver: %s.png &middot; transparent PNG &middot; %d:%d shape, e.g. %dx%d (4x)</div>"
