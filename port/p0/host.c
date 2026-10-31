@@ -271,6 +271,8 @@ int Port_HostRomSpanMatches(uint32_t rom_offset, uintptr_t ram_address, size_t l
     return memcmp((void *)ram_address, rom_bytes + rom_offset, length) == 0;
 }
 
+const unsigned char *Port_HostRom(void) { return rom_bytes; }
+
 void func_80036AC0(void) { /* osInitialize: P0 host initialization precedes Boot_Main. */ }
 void osCreatePiManager(OSPri pri, OSMesgQueue *q, OSMesg *msgs, s32 n) {
     (void)pri;

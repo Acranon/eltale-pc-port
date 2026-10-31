@@ -257,10 +257,22 @@ void Port_FrameImageTrace(OSTask *task, unsigned frame) {
     PortFrameStats st;
     u32 root;
     Port_BuildFrameImage((u32)(uptr)task->t.data_ptr, &root, &st);
-    /* ELTALE_DUMP_IMAGE=<frame>: write that frame's image to out/frame_<frame>.bin (8 MiB, then the
-     * root display list's address as 4 big-endian bytes), for offline display-list tools */
+    /* ELTALE_DUMP_IMAGE=<frame>[,<frame>...] or <first>+<step>: write those frames' images to
+     * out/frame_<frame>.bin (8 MiB, then the root display list's address as 4 big-endian bytes), for
+     * offline display-list tools (tools/dl_dump.py, tools/rdp2d.py) */
     const char *dump = getenv("ELTALE_DUMP_IMAGE");
-    if (dump && (unsigned)atoi(dump) == frame) {
+    int want = 0;
+    if (dump) {
+        const char *plus = strchr(dump, '+');
+        if (plus) {
+            unsigned first = (unsigned)atoi(dump), step = (unsigned)atoi(plus + 1);
+            want = frame >= first && step && (frame - first) % step == 0;
+        } else {
+            for (const char *p = dump; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL)
+                if ((unsigned)atoi(p) == frame) want = 1;
+        }
+    }
+    if (want) {
         char name[64];
         snprintf(name, sizeof name, "out/frame_%u.bin", frame);
         FILE *f = fopen(name, "wb");

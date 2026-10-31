@@ -34,6 +34,7 @@ struct Settings {
     int volume = 70; // percent
     bool mute_in_background = false;
     bool fullscreen = false;
+    bool english = true; // the game's text: English, or the original Japanese
 };
 
 Settings settings;
@@ -54,6 +55,7 @@ void save_settings() {
     json j;
     j["audio"] = { { "volume", settings.volume }, { "mute_in_background", settings.mute_in_background } };
     j["window"] = { { "fullscreen", settings.fullscreen } };
+    j["game"] = { { "language", settings.english ? "en" : "jp" } };
     j["graphics"] = app->userConfig;
     std::ofstream f(settings_path());
     f << j.dump(4) << "\n";
@@ -85,6 +87,14 @@ void help(const char *text) {
 void game_page() {
     const ImVec2 button(ImGui::GetContentRegionAvail().x * 0.5f, 0);
     if (ImGui::Button("Resume", button)) open = false;
+    ImGui::Spacing();
+    int lang = settings.english ? 0 : 1;
+    const char *langs[] = { "English", "Japanese (original)" };
+    if (ImGui::Combo("Text", &lang, langs, IM_ARRAYSIZE(langs))) {
+        settings.english = lang == 0;
+        save_settings();
+    }
+    help("Applies from the next text the game shows. Pictures with text in them are still Japanese.");
     ImGui::Spacing();
     if (ImGui::Button("Reset game", button)) ask("Reset the game? Anything not saved is lost.", RESET);
     if (ImGui::Button("Reset to the Controller Pak manager", button))
@@ -295,6 +305,7 @@ void load_settings(RT64::Application *application) {
         settings.volume = std::clamp(j.value("/audio/volume"_json_pointer, settings.volume), 0, 100);
         settings.mute_in_background = j.value("/audio/mute_in_background"_json_pointer, settings.mute_in_background);
         settings.fullscreen = j.value("/window/fullscreen"_json_pointer, settings.fullscreen);
+        settings.english = j.value("/game/language"_json_pointer, std::string("en")) != "jp";
         if (j.contains("graphics")) {
             RT64::UserConfiguration cfg = j["graphics"].get<RT64::UserConfiguration>();
             cfg.graphicsAPI = app->userConfig.graphicsAPI;
@@ -379,6 +390,8 @@ void frame() {
     imgui->endFrame();
     shown = true;
 }
+
+bool english() { return settings.english; }
 
 float volume() {
     if (settings.mute_in_background && !focused) return 0.0f;

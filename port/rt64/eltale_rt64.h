@@ -47,6 +47,9 @@ ELRT64_API int ElRt64_Poll(void);
 /* The data folder (saves, settings.json), UTF-8: ELTALE_DATA_DIR, else %APPDATA%\eltale. */
 ELRT64_API const char *ElRt64_DataDir(void);
 
+/* The text language the player chose in the menu: 1 English, 0 Japanese. */
+ELRT64_API int ElRt64_Language(void);
+
 /* The pad from the keyboard and the first game controller, in N64 terms: button bits as
  * OSContPad.button, stick -80..80 (y up). Call after ElRt64_Poll. */
 ELRT64_API void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);

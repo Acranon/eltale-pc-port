@@ -595,3 +595,28 @@ reloaded from its file, and the game boots again. Fiber stacks are fixed slots a
 sound live in the DLL, so nothing else needs undoing. Unattended check: ELTALE_HIDDEN_WINDOW=1
 ELTALE_MENU_TEST=N (opens the menu at frame N, resets into the Pak manager, quits) with
 ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"volume":0}}`.
+
+## English text (2026-10-31)
+
+- **Script:** `translations/en.v2.tsv`; the build turns it into `text/en.tsv` next to the exe
+  (`tools/text/runtime_text.py`: each row keyed by the ROM offset of the Japanese it replaces).
+- **Lookup by content:** `port/text/en_text.c` hashes each Japanese string from the ROM; the game's
+  text is found by its bytes wherever it was copied to (NPC and sign messages, speaker names, the
+  ending, bosses, items, choices, menu strings). Three hooks: `Text_OpenWindow` lays the message
+  out for that window, `Text_DrawEncodedString` swaps strings drawn as they are, `Item_BuildMessage`
+  builds "Obtained <item>!" from its pieces. Untranslated strings stay Japanese
+  (`ELTALE_TEXT_LOG=1` prints them as `P1_TEXT_MISS`).
+- **Font:** font 1 (byte 0xC1) is the game's own Latin glyphs (font pages 0-2) spaced by their
+  inked width, plus the port's page 30 (byte 0x9E, at RDRAM 0x807F0000, past the 4 MiB the game
+  uses) with the glyphs the font lacks (`- * ; % < > ( ) /` and a serifed I), drawn in the same
+  stroke / edge / shadow style (`tools/text/enfont.py --header` makes `port/text/en_glyphs.h`).
+- **Layout:** word wrap to the window's width (width - 20) and rows ((height - 20) / 13), extra
+  pages when a page overflows; the game's own breaking (10-pixel columns) is off for English
+  windows (`TEXT_COLS`). Japanese is untouched: the checks' hashes are unchanged.
+- **Language:** the F1 menu's Game page (settings.json `game.language`, default English);
+  headless runs are Japanese unless `ELTALE_LANG=en`.
+- **Tools:** `tools/text/preview.py` draws messages as the game will; `tools/rdp2d.py` draws the
+  2D part of a dumped frame (`ELTALE_FRAME_IMAGE=1 ELTALE_DUMP_IMAGE=<first>+<step>`), which is how
+  the English dialogue was checked in the real engine.
+- **Not yet English:** the Controller Pak manager (it draws its own glyphs), spell names (their own
+  HUD font), and text inside pictures (`docs/IMAGE_TEXT.md`).

@@ -21,6 +21,7 @@ static void (*rt_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
 static void (*rt_present)(const ElRt64Vi *);
 static int (*rt_poll)(void);
 static const char *(*rt_data_dir)(void);
+static int (*rt_language)(void);
 static int reset_request;
 static void (*rt_keep)(uint32_t, uint32_t);
 static void (*rt_pad)(uint16_t *, int8_t *, int8_t *);
@@ -70,6 +71,9 @@ int Port_Rt64TakeReset(void) {
 
 const char *Port_Rt64DataDir(void) { return rt_data_dir ? rt_data_dir() : "."; }
 
+/* The menu's text language (1 English, 0 Japanese), or -1 without the window. */
+int Port_Rt64Language(void) { return rt_language ? rt_language() : -1; }
+
 int Port_Rt64Start(void) {
 #ifdef _WIN32
     HMODULE lib = LoadLibraryA("eltale_rt64.dll");
@@ -90,6 +94,7 @@ int Port_Rt64Start(void) {
     rt_pad = (void (*)(uint16_t *, int8_t *, int8_t *))SYM("ElRt64_GetPad");
     rt_audio = (void (*)(const int16_t *, uint32_t, uint32_t))SYM("ElRt64_QueueAudio");
     rt_data_dir = (const char *(*)(void))SYM("ElRt64_DataDir");
+    rt_language = (int (*)(void))SYM("ElRt64_Language");
     if (!rt_init || !rt_draw || !rt_present || !rt_poll || rt_init("Eltale Monsters", 1280, 960) != 0) {
         fprintf(stderr, "RT64: setup failed\n");
         return -1;

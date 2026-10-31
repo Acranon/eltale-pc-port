@@ -34,6 +34,9 @@ void frame();
 // The sound's volume now, 0..1 (setting, muted in the background).
 float volume();
 
+// The text language setting: English (true) or the original Japanese.
+bool english();
+
 // Take the pending request (NONE if there is none).
 Request take_request();
 

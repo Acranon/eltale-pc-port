@@ -16,6 +16,7 @@ extern void (*Port_PiDmaHook)(void *dst, u32 size);
 #include "port/controller.h"
 #include "port/os.h"
 #include "port/pak.h"
+#include "port/text.h"
 #endif
 
 #include <setjmp.h>
@@ -254,6 +255,7 @@ int main(int argc, char **argv) {
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
     if (window && Port_Rt64Start() != 0) return 1;
+    Port_TextInit();
     /* a window keeps its Controller Pak in the data folder unless --pak names one */
     static char default_pak[1024];
     if (window && !pak) {
