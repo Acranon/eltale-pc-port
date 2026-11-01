@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 2
+#define EL_RENDER_API_VERSION 3
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -139,6 +139,16 @@ enum {
                           * then Math_MtxFScaleAxes(scale, scale, scale) (shadows) */
     EL_RDX_ACTOR_NODE = 4, /* an actor model's node: Math_MtxRotScaleTrans(the actor's rot in radians, scale,
                               pos), times the node chain at the animation frame (ElRdDraw.inputs: EL_RDI_*) */
+    EL_RDX_AIM_EYE = 5,  /* Math_MtxFAimAt(pos -> the camera's eye), then a roll of rot[2] radians about the view
+                          * axis, then Math_MtxFScaleAxes(scale, more[0], 1) (effect sprites, stat-up markers):
+                          * rebuilt with the interpolated eye, the item keeps facing the camera */
+    EL_RDX_ALIGN_Y_AXES = 6, /* Math_MtxFAlignYToVector(rot = a direction), pos as the translation, then
+                              * Math_MtxFScaleAxes(scale, more[0], more[1]) (streaks, terrain ring segments) */
+    EL_RDX_EFFECT_NODE = 7, /* a model effect's node (effect.c Effect_DrawModelEffectGeometry): the root is
+                             * inputs[EL_RDI_NODE] bit 18 (effect flag 4) ? AlignYToVector(rot = the up vector),
+                             * pos, ScaleAxes(more[0..2] * 0.01) : RotScaleTrans(0, rot[1], 0, 0.01, pos),
+                             * ScaleAxes(more[0..2]); times the node chain at frame inputs[EL_RDI_FRAME]
+                             * (inputs as EL_RDX_ACTOR_NODE's; EL_RDI_ANIM_SET is the effect's AnimSet copy) */
 };
 
 typedef struct ElRdDraw {
@@ -150,6 +160,7 @@ typedef struct ElRdDraw {
     float pos[3], rot[3], scale;
     float tile_offset[2];   /* EL_RDM_TILE_SCROLL tiles: added to SL/TL (10.2 units) */
     uint32_t inputs[4];     /* more of the matrix's inputs, by xform (R6); EL_RDX_ACTOR_NODE: EL_RDI_* */
+    float more[4];          /* more float inputs, by xform (EL_RDX_AIM_EYE, _ALIGN_Y_AXES, _EFFECT_NODE) */
 } ElRdDraw;
 
 /* ElRdDraw.inputs of an EL_RDX_ACTOR_NODE draw */
@@ -162,6 +173,12 @@ enum {
 
 enum {
     EL_RDD_KIND_SHIFT = 56,
+};
+
+/* ElRdDraw.flags */
+enum {
+    EL_RDD_SCREEN = 1 << 0, /* the matrix goes straight to clip space (the camera is not applied): the fade
+                             * quad's ortho x identity, the letterbox */
 };
 
 /* The kinds of draw (the high byte of ElRdDraw.id, and --native-kinds bits: 1 << kind) */

@@ -382,7 +382,8 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             const Recording::State &s = rec->states[it.state];
             GpuDraw &g = gd[i];
             std::memset(&g, 0, sizeof g);
-            mul(it.draw.matrix, cam.projection, g.mvp);
+            if (it.draw.flags & EL_RDD_SCREEN) std::memcpy(g.mvp, it.draw.matrix, sizeof g.mvp);
+            else mul(it.draw.matrix, cam.projection, g.mvp);
             for (int l = 0; l < 3; l++) {
                 to_object(it.draw.matrix, s.lights.dir[l][0], s.lights.dir[l][1], s.lights.dir[l][2], g.light_dir[l]);
                 for (int c = 0; c < 3; c++) g.light_col[l][c] = s.lights.color[l][c] / 255.0f;
@@ -400,6 +401,8 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             // N64 screen-z units per unit of depth (near/w): the viewport's z scale (511, then 32 per
             // unit in the RDP) times the perspective's z/w per 1/w (its m[3][2]), over the near plane
             g.fog[3] = 511.0f * 32.0f * std::fabs(cam.perspective[14]) / g.fog[2];
+            // a screen draw (no Z: the fade, the letterbox) has w = 1: depth 0 keeps it inside the clip volume
+            if (it.draw.flags & EL_RDD_SCREEN) g.fog[2] = 0.0f;
             g.tile_offset[0] = it.draw.tile_offset[0];
             g.tile_offset[1] = it.draw.tile_offset[1];
             // does the mesh's box reach past the far plane? (then the pixel stage cuts there)
