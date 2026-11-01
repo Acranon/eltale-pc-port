@@ -19,6 +19,13 @@ red, other differences yellow.
 its middle REF-wide columns are compared, inside the N64's 8-pixel border only (the 4:3 picture has the
 border, the wide one need not).
 
+--blocks (2D at a scale): REF is ignored; TEST is a folder of dumps made with ELTALE_DUMP_PAIR=1 (frame_N.png at a
+resolution scale, with MSAA or not, and frame_N.1x.png, the same recording at 1x without MSAA; tools/frame_test.py
+--scale). 2D drawn at a scale is the 1x picture's texels as whole blocks, so every block of the big picture must
+equal its 1x pixel. Counted: the N64 pixels whose block differs anywhere (8 bits, BLOCK_LEVEL steps; no 3x3 rule:
+the faults this finds are lines one picture pixel thin). 2D meshes (the compass, the element glows) are drawn at full
+resolution and count, so a baseline holds what they leave.
+
 A baseline is numbers only (never pictures): "frame solid_px" lines and a "sum" line. With
 --baseline the run fails (exit 1) if any frame, or the sum, has more solid pixels than the
 baseline allows; --write-baseline writes the current numbers instead.
@@ -81,6 +88,30 @@ def pairs(ref: Path, test: Path, vi: bool):
     return out
 
 
+BLOCK_LEVEL = 2  # 8-bit steps a picture pixel may be off its 1x pixel (--blocks)
+
+
+def block_pairs(test: Path):
+    out = []
+    for small in sorted(test.glob("*.1x.png")):
+        big = small.with_name(small.name[:-len(".1x.png")] + ".png")
+        if big.is_file():
+            out.append((big.stem, small, big))
+    return out
+
+
+def compare_blocks(small: Path, big: Path):
+    """the N64 pixels whose block in the big picture is not the 1x pixel throughout"""
+    a = np.asarray(Image.open(small).convert("RGB"), dtype=np.int16)
+    b = np.asarray(Image.open(big).convert("RGB"), dtype=np.int16)
+    h, w = a.shape[:2]
+    n = b.shape[0] // h
+    if n < 1 or b.shape[0] != h * n or b.shape[1] != w * n:
+        raise SystemExit(f"{big}: {b.shape[1]}x{b.shape[0]} is not a multiple of {w}x{h}")
+    d = np.abs(b.reshape(h, n, w, n, 3) - a[:, None, :, None, :]).max(axis=(1, 3, 4)) > BLOCK_LEVEL
+    return d, a
+
+
 def read_baseline(path: Path):
     frames, total = {}, None
     for line in path.read_text().splitlines():
@@ -104,9 +135,10 @@ def main() -> int:
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--vi", action="store_true", help="compare the VI pictures (*.vi.png) instead")
     ap.add_argument("--centre", action="store_true", help="TEST is wider: compare its middle, inside the border")
+    ap.add_argument("--blocks", action="store_true", help="2D at a scale: TEST's frame_N.png against its frame_N.1x.png")
     args = ap.parse_args()
 
-    ps = pairs(args.ref, args.test, args.vi)
+    ps = block_pairs(args.test) if args.blocks else pairs(args.ref, args.test, args.vi)
     if not ps:
         print("render_compare: no pictures in common", file=sys.stderr)
         return 2
@@ -114,6 +146,15 @@ def main() -> int:
         args.out.mkdir(parents=True, exist_ok=True)
     results = []
     for name, r, t in ps:
+        if args.blocks:
+            diff, small = compare_blocks(r, t)
+            nd = int(diff.sum())
+            results.append((name, nd, nd))
+            print(f"RENDER_COMPARE {args.name or '-'} {name} blocks_differ={nd}")
+            if args.out and nd:
+                diff_picture(small.astype(np.uint8), diff, diff).resize((small.shape[1] * 2, small.shape[0] * 2),
+                                                                        Image.NEAREST).save(args.out / f"{name}.blocks.png")
+            continue
         a, b = load(r), load(t)
         x0 = 0
         if args.centre:
@@ -139,8 +180,12 @@ def main() -> int:
     if args.baseline and args.write_baseline:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         with open(args.baseline, "w", newline="\n") as f:
-            f.write(f"# render_compare baseline{': ' + args.name if args.name else ''}: solid differing "
-                    f"pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.\n")
+            if args.blocks:
+                f.write(f"# render_compare --blocks baseline{': ' + args.name if args.name else ''}: N64 pixels whose "
+                        f"block differs from the 1x picture, per frame, and their sum. Numbers only.\n")
+            else:
+                f.write(f"# render_compare baseline{': ' + args.name if args.name else ''}: solid differing "
+                        f"pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.\n")
             for name, _, s in results:
                 f.write(f"{name} {s}\n")
             f.write(f"sum {total}\n")

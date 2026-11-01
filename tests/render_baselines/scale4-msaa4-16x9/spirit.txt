@@ -1,0 +1,5 @@
+# render_compare --blocks baseline: spirit: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_55 671
+frame_61 671
+frame_67 671
+sum 2013

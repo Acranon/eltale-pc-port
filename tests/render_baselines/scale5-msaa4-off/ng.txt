@@ -1,0 +1,9 @@
+# render_compare --blocks baseline: ng: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_125 0
+frame_200 0
+frame_225 0
+frame_275 0
+frame_50 0
+frame_600 0
+frame_700 0
+sum 0

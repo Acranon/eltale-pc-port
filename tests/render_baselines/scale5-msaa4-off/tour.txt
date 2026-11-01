@@ -1,0 +1,20 @@
+# render_compare --blocks baseline: tour: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_1179 677
+frame_1288 664
+frame_1397 676
+frame_14041 0
+frame_17856 0
+frame_1942 665
+frame_22780 0
+frame_23869 737
+frame_24088 735
+frame_24633 732
+frame_25287 678
+frame_2704 672
+frame_29145 677
+frame_3031 677
+frame_30344 0
+frame_4775 0
+frame_634 722
+frame_9790 0
+sum 8312
