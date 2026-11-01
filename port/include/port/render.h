@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 6
+#define EL_RENDER_API_VERSION 7
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -214,7 +214,11 @@ typedef struct ElRdFrameInfo {
  * s = s0 + (x - x0) * dsdx, t = t0 + (y - y0) * dtdy, sampled by the material's tile as the RDP does.
  *
  * For R7 (widescreen) each item says where it belongs (EL_RD2D_ANCHOR_*) and gives its screen
- * rectangle; R6 matches items between ticks by id. */
+ * rectangle; R6 matches items between ticks by id. On a picture wider than 4:3 (240 units high, Vw =
+ * 240 x aspect wide) the renderer moves each item by its anchor: CENTRE and WORLD by (Vw - 320) / 2 (the
+ * game's Camera_WorldToScreen x is already right for any aspect in those units), LEFT not at all, RIGHT
+ * by Vw - 320, STRETCH's right edge by Vw - 320; CENTRE items are cut to their 320-wide middle (the
+ * pillarbox: what a 4:3 screen would not show stays hidden). */
 typedef struct ElRd2D {
     uint64_t id;            /* stable over ticks: (kind << 56) | (element << 40) | the item's number in it */
     uint32_t mesh;          /* EL_RD2D_RECT: a rectangle; else a mesh (mesh_upload: 2D triangles) */
@@ -276,6 +280,11 @@ typedef struct ElRenderApi {
      * the far plane go this many times as far, and nd_map.c draws the map objects of the grid cells that far
      * too, drawing only) */
     float (*draw_distance)(void);
+
+    /* R7a (widescreen): the picture's shape, width over height (4/3 exactly: the N64's; wider with the
+     * Graphics page's widescreen switch). The game asks at each tick's start and builds its perspective,
+     * its billboard cone and the HUD's clip for it; 2D stays in 320x240 units, placed by its anchor. */
+    float (*aspect)(void);
 } ElRenderApi;
 
 #ifdef __cplusplus

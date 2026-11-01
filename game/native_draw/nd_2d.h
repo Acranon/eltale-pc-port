@@ -36,6 +36,9 @@ void nd_2d_section(int kind);
 /* Where the next items belong on a wider screen (EL_RD2D_ANCHOR_*), and an element number for their
  * ids (stable over ticks); until the next call or section */
 void nd_2d_element(int element, int anchor);
+/* R7: the HUD's clip columns (Hud_DrawClippedTextureRect's hud_clip_left/right) for the current element: on a
+ * picture wider than 4:3 a WORLD element's reach the picture's sides; else unchanged */
+void nd_2d_clip_x(int32_t *left, int32_t *right);
 
 /* The RDP state, as the gbi macros set it */
 void nd_2d_othermode(uint32_t cmd, uint32_t shift, uint32_t len, uint32_t data);   /* G_SETOTHERMODE_H/L */
@@ -77,6 +80,7 @@ void nd_2d_forget(uintptr_t host, uint32_t bytes);
 #define nd_2d_frame(f) ((void)0)
 #define nd_2d_section(k) ((void)0)
 #define nd_2d_element(e, a) ((void)0)
+#define nd_2d_clip_x(l, r) ((void)0)
 
 #endif
 

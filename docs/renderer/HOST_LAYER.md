@@ -69,7 +69,7 @@ never initialised.
   "game": { "language": "en", "font": 0 },
   "graphics": { "preset": "everything", "resolution": "window", "resolution_scale": 4, "msaa": 4,
     "frame_rate": "fixed", "frame_rate_target": 240, "three_point": true,
-    "scaling": "smooth_pixel_edges", "vsync": true, "widescreen": true, "border": false,
+    "scaling": "smooth_pixel_edges", "vsync": true, "widescreen": "16:9", "border": false,
     "draw_distance": "far", "n64_fog": false, "n64_dither": false, "shader_warmup": true } }
 ```
 
@@ -87,7 +87,7 @@ never initialised.
 | N64 three-point filtering | on | on | on | wired | wired (R2) |
 | Frame rate | original 30 | original 30 | fixed 240 | wired (RT64's interpolation) | wired (R6: pictures between ticks) |
 | Vsync | on | on | on | — | wired |
-| Widescreen | off | off | on | later | R7a (nr/wide): the presets already set `widescreen` |
+| Widescreen (off / 16:9 / match the window) | off | off | 16:9 | later | wired (R7a: NATIVE_DRAW.md, "Widescreen") |
 | N64 border (8 px) | on | off | off | later | wired (R2) |
 | Draw distance | original (1x) | far (2x) | far (2x) | later | wired (R7b; also farther, 3x) |
 | N64 fog | on | on | off | later | wired (R2) |

@@ -37,7 +37,7 @@ Graphics preset_graphics(int preset) {
         g.frame_rate = 0;
         g.three_point = true;
         g.scaling = 0;
-        g.widescreen = false;
+        g.widescreen = 0;
         g.border = true;
         g.draw_distance = 0;
         g.n64_fog = true;
@@ -49,7 +49,7 @@ Graphics preset_graphics(int preset) {
         g.frame_rate = 0;
         g.three_point = true;
         g.scaling = 2;
-        g.widescreen = false;
+        g.widescreen = 0;
         g.border = false;
         g.draw_distance = 1;
         g.n64_fog = true;
@@ -118,6 +118,7 @@ static const std::initializer_list<const char *> resolution_keys = { "original",
 static const std::initializer_list<const char *> frame_rate_keys = { "original", "display", "fixed" };
 static const std::initializer_list<const char *> scaling_keys = { "sharp", "smooth", "smooth_pixel_edges" };
 static const std::initializer_list<const char *> distance_keys = { "original", "far", "farther" };
+static const std::initializer_list<const char *> widescreen_keys = { "off", "16:9", "window" };
 
 static void read_graphics(const cJSON *j, Graphics &g) {
     read_choice(item(j, "resolution"), g.resolution, resolution_keys);
@@ -129,7 +130,10 @@ static void read_graphics(const cJSON *j, Graphics &g) {
     read_bool(item(j, "three_point"), g.three_point);
     read_choice(item(j, "scaling"), g.scaling, scaling_keys);
     read_bool(item(j, "vsync"), g.vsync);
-    read_bool(item(j, "widescreen"), g.widescreen);
+    // the picture's shape: "off", "16:9", "window" (a file from before R7 has true or false: 16:9 or off)
+    const cJSON *wide = item(j, "widescreen");
+    if (cJSON_IsBool(wide)) g.widescreen = cJSON_IsTrue(wide) ? 1 : 0;
+    read_choice(wide, g.widescreen, widescreen_keys);
     read_bool(item(j, "border"), g.border);
     read_choice(item(j, "draw_distance"), g.draw_distance, distance_keys);
     read_bool(item(j, "n64_fog"), g.n64_fog);
@@ -216,7 +220,7 @@ void save_settings() {
     cJSON_AddBoolToObject(gr, "three_point", g.three_point);
     cJSON_AddStringToObject(gr, "scaling", key(scaling_keys, g.scaling));
     cJSON_AddBoolToObject(gr, "vsync", g.vsync);
-    cJSON_AddBoolToObject(gr, "widescreen", g.widescreen);
+    cJSON_AddStringToObject(gr, "widescreen", widescreen_keys.begin()[clampi(g.widescreen, 0, 2)]);
     cJSON_AddBoolToObject(gr, "border", g.border);
     cJSON_AddStringToObject(gr, "draw_distance", key(distance_keys, g.draw_distance));
     cJSON_AddBoolToObject(gr, "n64_fog", g.n64_fog);

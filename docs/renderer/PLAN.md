@@ -127,18 +127,20 @@ the map tour and the ending: 0 flagged; pacing at 240 even, the game at 60 retra
   fallback (no hidden safety nets).
 
 ### R7: Modern options
-**R7b done 2026-11-01** (branch nr/options): resolution scale, MSAA, draw distance, shader warm-up, the N64
-dither and the presets wired; see [NATIVE_DRAW.md](NATIVE_DRAW.md), "Modern options". R7a (widescreen) is
-nr/wide.
-- Resolution scale and MSAA.
-- **Widescreen:**
+**Done 2026-11-01**: R7a (widescreen, branch nr/wide) and R7b (resolution scale, MSAA, draw distance, shader
+warm-up, the N64 dither, the presets; branch nr/options), merged on native/render (render.h v7); see
+[NATIVE_DRAW.md](NATIVE_DRAW.md), "Widescreen" and "Modern options", and HOST_LAYER.md for the preset table.
+- Resolution scale and MSAA: **done** (R7b; a wide picture is wide at every scale).
+- **Widescreen:** **done** (R7a): the switch off / 16:9 / match the window; Everything on is 16:9, the Classic
+  presets 4:3.
   - aspect in the perspective call and in `Camera_WorldToScreen` x;
   - a wider billboard cone;
   - HUD anchored left, right or centre;
   - fade and letterbox at full width;
   - full-screen pictures pillarboxed.
-- **Draw distance:** grid radius, larger object lists, the fog and far plane per map.
-- **Shader warm-up:** the pipeline list made at start, as in KF4, so first visits don't freeze.
+- **Draw distance:** **done** (R7b): the fog and far plane 2x/3x, the map objects of a wider disc drawn (drawing
+  only: the game's own grid search and lists are unchanged).
+- **Shader warm-up:** **done** (R7b): the pipeline list made at start, as in KF4, so first visits don't freeze.
 
 ### R8: Retire
 - Remove RT64 and the frame image from the play build (keep the frame image only for the test

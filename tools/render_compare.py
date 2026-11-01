@@ -15,6 +15,10 @@ Per frame it prints the differing pixels (raw and solid), then the sum and the w
 --out it writes a diff picture per frame that differs: the test picture greyed, solid differences
 red, other differences yellow.
 
+--centre (R7, widescreen): TEST is wider than REF (a 16:9 picture against a 4:3 one of the same frame);
+its middle REF-wide columns are compared, inside the N64's 8-pixel border only (the 4:3 picture has the
+border, the wide one need not).
+
 A baseline is numbers only (never pictures): "frame solid_px" lines and a "sum" line. With
 --baseline the run fails (exit 1) if any frame, or the sum, has more solid pixels than the
 baseline allows; --write-baseline writes the current numbers instead.
@@ -99,6 +103,7 @@ def main() -> int:
     ap.add_argument("--baseline", type=Path, help="numbers file under tests/ to check against (or write)")
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--vi", action="store_true", help="compare the VI pictures (*.vi.png) instead")
+    ap.add_argument("--centre", action="store_true", help="TEST is wider: compare its middle, inside the border")
     args = ap.parse_args()
 
     ps = pairs(args.ref, args.test, args.vi)
@@ -110,12 +115,21 @@ def main() -> int:
     results = []
     for name, r, t in ps:
         a, b = load(r), load(t)
+        x0 = 0
+        if args.centre:
+            x0 = (b.shape[1] - a.shape[1]) // 2
+            b = b[:, x0:x0 + a.shape[1]]
         diff, solid = compare(a, b)
+        if args.centre:
+            inside = np.zeros(diff.shape, dtype=bool)
+            inside[8:-8, 8:-8] = True
+            diff &= inside
+            solid &= inside
         nd, ns = int(diff.sum()), int(solid.sum())
         results.append((name, nd, ns))
         print(f"RENDER_COMPARE {args.name or '-'} {name} differ={nd} solid={ns}")
         if args.out and nd:
-            rgb = np.asarray(Image.open(t).convert("RGB"))
+            rgb = np.asarray(Image.open(t).convert("RGB"))[:, x0:x0 + a.shape[1]]
             diff_picture(rgb, diff, solid).save(args.out / f"{name}.diff.png")
     total = sum(s for _, _, s in results)
     worst = max(results, key=lambda x: x[2])

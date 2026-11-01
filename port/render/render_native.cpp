@@ -46,6 +46,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <string>
@@ -90,6 +91,32 @@ void sleep_until(double until) {
 }
 // the gameplay picture until the game's draws come (R2): a dark slate, so it is clearly ours
 const VkClearColorValue CLEAR = {{0.10f, 0.12f, 0.16f, 1.0f}};
+
+// R7 (widescreen): the picture's shape, width over height. ELTALE_WIDESCREEN (tests; "off" or "4:3", "16:9",
+// "window", or a number) overrides the Graphics page's switch; "window" without a window is 16:9. A window
+// narrower than 4:3 gets 4:3 (bars above and below), wider than 32:9 gets 32:9. Headless (the compare
+// tools' dumps) is 4:3 unless ELTALE_WIDESCREEN says otherwise.
+float wanted_aspect(SDL_Window *window, bool headless = false) {
+    int mode = headless ? 0 : settings.graphics.widescreen;
+    float a = 0;
+    if (const char *e = std::getenv("ELTALE_WIDESCREEN")) {
+        if (!std::strcmp(e, "off") || !std::strcmp(e, "4:3") || !std::strcmp(e, "0")) mode = 0;
+        else if (!std::strcmp(e, "16:9") || !std::strcmp(e, "1")) mode = 1;
+        else if (!std::strcmp(e, "window") || !std::strcmp(e, "2")) mode = 2;
+        else if (std::atof(e) > 0) mode = 3, a = float(std::atof(e));
+    }
+    if (mode == 2) {
+        int w = 0, h = 0;
+        if (window) SDL_GetWindowSizeInPixels(window, &w, &h);
+        a = w > 0 && h > 0 ? float(w) / float(h) : 16.0f / 9.0f;
+    } else if (mode == 1) {
+        a = 16.0f / 9.0f;
+    } else if (mode == 0) {
+        a = 4.0f / 3.0f;
+    }
+    a = a < 4.0f / 3.0f ? 4.0f / 3.0f : a > 32.0f / 9.0f ? 32.0f / 9.0f : a;
+    return render::NativeDraw::aspect_of_1x(a);
+}
 
 class NativeRenderer final : public Renderer {
 public:
@@ -172,6 +199,7 @@ public:
         device.set_context(context);
         device.init_frame_contexts(2);
         headless = true;
+        render::native_draw().set_aspect(wanted_aspect(nullptr, true)); // (the dumps' shape: ELTALE_WIDESCREEN)
         return render::native_draw().init(device);
     }
 
@@ -256,7 +284,8 @@ public:
 
     uint32_t wires() const override {
         return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE |
-               FEATURE_RESOLUTION | FEATURE_MSAA | FEATURE_DRAW_DISTANCE | FEATURE_N64_DITHER | FEATURE_SHADER_WARMUP;
+               FEATURE_RESOLUTION | FEATURE_MSAA | FEATURE_DRAW_DISTANCE | FEATURE_N64_DITHER | FEATURE_SHADER_WARMUP |
+               FEATURE_WIDESCREEN;
     }
 
     // the MSAA counts the GPU can draw (colour and depth) as bits 2, 4, 8
@@ -355,9 +384,14 @@ private:
         opt.n64_dither = settings.graphics.n64_dither;
         return opt;
     }
-    // the game's picture at this size (made again when the scale or the window changes)
+    // the game's picture at this shape and size (made again when the widescreen switch, the scale or the window
+    // changes): R7a's shape (picture_size_1x for wanted_aspect: 240 high, an even width) times R7b's scale, so a
+    // wide picture is wide at every scale. The game is told the shape (aspect) for its next ticks.
     bool ensure_picture() {
-        const uint32_t s = scale_now(), w = PICTURE_W * s, h = PICTURE_H * s;
+        render::native_draw().set_aspect(wanted_aspect(window()));
+        uint32_t w1, h1;
+        render::NativeDraw::picture_size_1x(render::native_draw().aspect(), &w1, &h1);
+        const uint32_t s = scale_now(), w = w1 * s, h = h1 * s;
         if (picture && picture->get_width() == w && picture->get_height() == h) return true;
         device.wait_idle();
         flash.clear();
@@ -433,10 +467,13 @@ private:
             g.resolution = int(k % 3);
             g.resolution_scale = int(2 + k % 3);
             g.draw_distance = int(k % 3);
-            std::fprintf(stderr, "[render] options cycle %llu: msaa %d resolution %d draw distance %d\n", (unsigned long long)k, g.msaa,
-                         g.resolution, g.draw_distance);
+            g.widescreen = int(k / 4 % 3); // (R7a: off, 16:9, the window's; on a different beat from the others)
+            std::fprintf(stderr, "[render] options cycle %llu: msaa %d resolution %d draw distance %d widescreen %d\n",
+                         (unsigned long long)k, g.msaa, g.resolution, g.draw_distance, g.widescreen);
             graphics_changed();
         }
+        // R7a: the shape the game builds its next ticks for, and the picture made that shape and scale (a recording
+        // made for another shape, just after the switch, is drawn into it as it is)
         if (!ensure_picture()) return;
         if (rec) render::pipeline_warm_wait();
         CommandBufferHandle cmd = begin();

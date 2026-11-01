@@ -3,7 +3,7 @@
 a hidden window (ELTALE_HIDDEN_WINDOW=1: vsync off, nothing on the screen), after King's Field IV's tools/pace_test.py.
 
     python tools/pace_test.py --rom ROM [--exe EXE] [--hz 240,120,60] [--frames 1500] [--input FILE] [--sim]
-                              [--saves DIR --save NAME --load-at VI] [--scale N --msaa N --distance far]
+                              [--saves DIR --save NAME --load-at VI] [--scale N --msaa N --distance far --widescreen 16:9]
 
 Each rate is one run of the game (tests/interp-walk.input by default: New Game, then a walk that turns) with the
 Graphics page's frame rate fixed at that rate (a settings.json of the run's own, volume 0) and ELTALE_PRESENT_LOG.
@@ -39,7 +39,7 @@ def run(args, hz):
         settings = {"version": 2, "audio": {"volume": 0}, "game": {"language": "jp"},
                     "graphics": {"frame_rate": "fixed" if hz else "original", "frame_rate_target": hz or 240,
                                  "resolution": "multiple" if args.scale > 1 else "original", "resolution_scale": args.scale,
-                                 "msaa": args.msaa, "draw_distance": args.distance}}
+                                 "msaa": args.msaa, "draw_distance": args.distance, "widescreen": args.widescreen}}
         (d / "settings.json").write_text(json.dumps(settings))
         log = d / "present.log"
         env = dict(os.environ, ELTALE_HIDDEN_WINDOW="1", ELTALE_DATA_DIR=str(d), ELTALE_PRESENT_LOG=str(log))
@@ -78,6 +78,7 @@ def main():
     ap.add_argument("--scale", type=int, default=1, help="R7: the resolution scale (1: 320x240, as before R7)")
     ap.add_argument("--msaa", type=int, default=1, help="R7: MSAA samples (1: off)")
     ap.add_argument("--distance", default="original", help="R7: draw distance (original, far, farther)")
+    ap.add_argument("--widescreen", default="off", help="R7a: the picture's shape (off, 16:9, window; off: 4:3, as before R7)")
     args = ap.parse_args()
     for hz in [int(h) for h in args.hz.split(",")]:
         pics, vis, ok, stats = run(args, hz)

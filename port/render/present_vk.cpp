@@ -403,13 +403,14 @@ bool imgui_textures_pending(ImDrawData *data) {
     return false;
 }
 
-// The picture's place in the window: 4:3, as large as fits, centred (widescreen comes with R7)
-void fit(int width, int height, int *x, int *y, int *w, int *h) {
+// The picture's place in the window: its own shape (4:3, or wider with R7's widescreen), as large as
+// fits, centred
+void fit(int width, int height, int src_w, int src_h, int *x, int *y, int *w, int *h) {
     *w = width;
-    *h = width * 3 / 4;
+    *h = int(int64_t(width) * src_h / src_w);
     if (*h > height) {
         *h = height;
-        *w = height * 4 / 3;
+        *w = int(int64_t(height) * src_w / src_h);
     }
     *x = (width - *w) / 2;
     *y = (height - *h) / 2;
@@ -539,7 +540,7 @@ bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawD
     SwapImage &target = pr.images[index];
 
     int x, y, w, h;
-    fit(int(pr.extent.width), int(pr.extent.height), &x, &y, &w, &h);
+    fit(int(pr.extent.width), int(pr.extent.height), int(source_w), int(source_h), &x, &y, &w, &h);
 
     bool shot = window_rgba != nullptr && pr.can_read;
     if (shot) {
