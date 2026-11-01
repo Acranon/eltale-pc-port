@@ -2203,7 +2203,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..af39c7d 100644
+index ebb5c68..035d524 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -2554,7 +2554,26 @@ index ebb5c68..af39c7d 100644
              s->model++;
              D_8007C2A0++;
          }
-@@ -1040,6 +1142,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -1006,6 +1108,18 @@ void Map_BlendPaletteByClock(void) {
+         map_clock_blend_to = (u16 *)map_clock_tlut_srcs + map_clock_tlut_id * 0x100;
+         map_clock_blend_out = map_clock_tlut;
+     }
++#ifdef ELTALE_P1_OS
++    /* Port: the statics start as if the last palette were 1 with one blend step left, so a first
++     * call in palette 1's hours (0x4F1A..0x6513) set no blend and read through null pointers (and
++     * divided by a zero length). The game never starts there (a New Game, the ending's restart and
++     * a Continue set the clock in palette 0's hours); a quick load can. Such a first call takes
++     * that palette as it is. */
++    if (map_clock_blend_from == NULL) {
++        map_clock_blend_from = map_clock_blend_to = (u16 *)map_clock_tlut_srcs + map_clock_tlut_id * 0x100;
++        map_clock_blend_out = map_clock_tlut;
++        map_clock_blend_left = map_clock_blend_len = 1;
++    }
++#endif
+     if (map_clock_blend_left != 0) {
+         dst = map_clock_blend_out;
+         src = map_clock_blend_from;
+@@ -1040,6 +1154,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;

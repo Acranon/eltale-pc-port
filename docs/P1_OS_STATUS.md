@@ -726,6 +726,24 @@ in any later build (`port/p0/quicksave.c`). It is the game's own save, not a mem
   Loaded in play (the same run, VI 1700) or from the title, the frames after it draw the same
   display lists (but for which of the two framebuffers). A quick save taken right after a load has
   the same record. Loaded during the map tour's map 30 boss battle: back on map 13, as saved.
+- **Fixed 2026-11-01: a quick save from the evening crashed a load from the title.** The user's quick
+  save (clock 22134) crashed every build, main included and either renderer or headless, when loaded
+  before any map had been drawn in the process (F4 on the title, or `ELTALE_QUICK_LOAD_AT=100`): a
+  null read in `Map_BlendPaletteByClock`. Its statics start as if palette 1 (the evening's,
+  clock 0x4F1A..0x6513) were already blended in, with one step left, so a first call in those hours
+  set no blend and read the null `map_clock_blend_from` (and would have divided by a zero length).
+  The game never gets there (a New Game, a Continue and the ending's restart all start in palette 0's
+  hours); a quick load can. map.c (port only) now takes that palette as it is on such a first call.
+  Merely having the file in the data folder does nothing: nothing reads it before F4. The quick save
+  needs nothing else in the data folder (no Pak image). Loaded in play after a map had been drawn, the
+  same file always worked.
+- **Other times and builds:** p1_checks.sh --tour rewrites the walk's quick save with
+  `tools/quicksave.py edit` and loads each from the title: `--clock 0x5676` (the evening) and
+  `--pc-extra 16` (a later build's longer PC block) load as saved; `--version 2`, `--truncate 300`
+  and `--damage` are refused (`P1_QUICK Quick load refused: a quick save of another format` / `the
+  quick save is cut short` / `the quick save is damaged`) and the title goes on. A record longer than
+  this build's is refused as "a quick save of a later format". `tools/quicksave.py info` prints a
+  file's fields.
 
 ## The compass and the spirits (2026-10-31)
 

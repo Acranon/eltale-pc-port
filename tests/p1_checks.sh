@@ -41,5 +41,18 @@ if [ "${3:-}" = "--tour" ]; then
         --input tests/quicksave-walk.input --rom "$rom" 2>&1 >/dev/null | grep 'P1_QUICKSAVE'
     ELTALE_DATA_DIR="$data" ELTALE_QUICK_LOAD_AT=100 "$exe" --headless --fast --frames 200 \
         --input tests/intro-to-title.input --rom "$rom" 2>&1 >/dev/null | grep 'P1_QUICKLOAD'
+    # that quick save rewritten (tools/quicksave.py) and loaded from the title: saved in the evening
+    # (the first map frame of the process in the evening palette's hours), as a later build with a
+    # longer PC block writes it, and of another version, cut short or damaged (refused, play goes on)
+    echo "quick saves of other times and builds:"
+    keep="$data/keep.elq"
+    cp "$data/quicksaves/quick0.elq" "$keep"
+    for edit in "--clock 0x5676" "--pc-extra 16" "--version 2" "--truncate 300" "--damage"; do
+        python3 tools/quicksave.py edit "$keep" "$data/quicksaves/quick0.elq" $edit
+        printf '%s: ' "$edit"
+        ELTALE_DATA_DIR="$data" ELTALE_QUICK_LOAD_AT=100 "$exe" --headless --fast --frames 200 \
+            --input tests/intro-to-title.input --rom "$rom" 2>&1 >/dev/null | grep 'P1_QUICK\|P1 crash' | tr '\n' ' '
+        echo
+    done
     rm -rf "$data"
 fi
