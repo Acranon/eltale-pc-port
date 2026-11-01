@@ -421,7 +421,24 @@ private:
         if (log) std::fprintf(log, "P %.6f %.4f %c\n", now, v, kind);
         count_rate(now);
         if (sim) return;
+        // ELTALE_OPTIONS_CYCLE=N (a test): every N pictures the next MSAA count, resolution and draw distance, as
+        // changing them in the F1 menu would (the targets and pipelines made again in play)
+        static const long cycle = std::getenv("ELTALE_OPTIONS_CYCLE") ? std::atol(std::getenv("ELTALE_OPTIONS_CYCLE")) : 0;
+        static uint64_t pictures = 0;
+        if (cycle > 0 && ++pictures % uint64_t(cycle) == 0) {
+            const uint64_t k = pictures / uint64_t(cycle);
+            static const int counts[] = { 1, 2, 4, 8 };
+            Graphics &g = settings.graphics;
+            g.msaa = counts[k % 4];
+            g.resolution = int(k % 3);
+            g.resolution_scale = int(2 + k % 3);
+            g.draw_distance = int(k % 3);
+            std::fprintf(stderr, "[render] options cycle %llu: msaa %d resolution %d draw distance %d\n", (unsigned long long)k, g.msaa,
+                         g.resolution, g.draw_distance);
+            graphics_changed();
+        }
         if (!ensure_picture()) return;
+        if (rec) render::pipeline_warm_wait();
         CommandBufferHandle cmd = begin();
         if (rec) {
             render::native_draw().render(*cmd, *picture, rec, options());

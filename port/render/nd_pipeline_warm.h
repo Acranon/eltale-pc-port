@@ -19,6 +19,9 @@ void pipeline_warm_open(Vulkan::Device &device, const std::string &data_dir, boo
 // The pipelines of the lists for this MSAA sample count, made on threads of their own (once per count; a
 // settings change starts another count's). Nothing when warm-up is off.
 void pipeline_warm_start(uint32_t samples);
+// Before a picture that draws: waits (at most a few seconds) for the pipelines being made ahead, so no draw makes
+// one of them a second time while they are made (at the start: the title or the intro waits a moment, not play)
+void pipeline_warm_wait();
 // Each picture: the cache and the data folder's list written a while after pipelines were made
 void pipeline_warm_tick();
 // The Graphics page's lines (ImGui)

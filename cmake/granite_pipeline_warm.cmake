@@ -21,6 +21,11 @@ function(eltale_granite_pipeline_warm granite)
         "\tif (holyland_on_compile) holyland_on_compile(device, compile, false, end_ts - start_ts, mode == CompileMode::Sync, res == VK_SUCCESS && pipeline != VK_NULL_HANDLE); // (holyland)" FALSE)
     eltale_granite_edit(${dev} "const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool compatible)"
         "extern void (*holyland_on_render_pass)(Util::Hash hash, const RenderPassInfo &info); // (holyland: cmake/granite_pipeline_warm.inc)" TRUE)
+    # (Eltale, R7) a render pass's hash names its attachments' sample counts too: Granite leaves them out, so
+    # passes at MSAA 2x, 4x and 8x were one pass (the first made) and a change of MSAA in play drew into the
+    # wrong one; the pipeline list keeps a pass per count
+    eltale_granite_replace(${dev} "\t\th.u32(info.color_attachments[i]->get_image().get_swapchain_layout());\n\t}\n"
+        "\t\th.u32(info.color_attachments[i]->get_image().get_swapchain_layout());\n\t\th.u32(info.color_attachments[i]->get_image().get_create_info().samples); // (eltale: MSAA)\n\t}\n\tif (info.depth_stencil)\n\t\th.u32(info.depth_stencil->get_image().get_create_info().samples); // (eltale: MSAA)\n")
     eltale_granite_replace(${dev} "\t\tret = render_passes.emplace_yield(hash, hash, this, info);\n"
         "\t{\n\t\tret = render_passes.emplace_yield(hash, hash, this, info);\n\t\tif (compatible && holyland_on_render_pass) holyland_on_render_pass(hash, info); // (holyland)\n\t}\n")
 endfunction()

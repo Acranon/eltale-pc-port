@@ -103,7 +103,7 @@ struct PipelineWarm {
     size_t cache_saved_size = 0;
     std::atomic<int> total{0}, done{0}, ready{0}, stale{0}, running{0};
     std::atomic<bool> stop{false};
-    double seconds_build = 0;
+    double seconds_build = 0, waited_ms = 0;
     std::atomic<uint64_t> play_made{0}, play_ns{0}, play_max_ns{0}, play_new{0}, ahead_ns{0};
     std::atomic<uint64_t> made{0};
     uint64_t made_saved = 0;
@@ -523,6 +523,16 @@ void pipeline_warm_start(uint32_t samples) {
     pw.threads.emplace_back(pw_run, std::move(jobs), threads);
 }
 
+void pipeline_warm_wait() {
+    if (!pw.device || pw.running.load() <= 0) return;
+    const auto start = std::chrono::steady_clock::now();
+    while (pw.running.load() > 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(5))
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    pw.waited_ms += ms;
+    std::fprintf(stderr, "[nd] waited %.0f ms for the pipelines made ahead\n", ms);
+}
+
 void pipeline_warm_tick() {
     if (!pw.device) return;
     const uint64_t made = pw.made.load();
@@ -550,8 +560,9 @@ void pipeline_warm_close() {
     pw.threads.clear();
     pw_save_cache();
     pw_save_list();
-    std::printf("P1_PIPELINES ahead=%d cache=%d stale=%d ahead_ms=%.1f made_in_play=%llu play_ms=%.1f play_max_ms=%.1f new=%llu\n",
-                pw.done.load(), pw.ready.load(), pw.stale.load(), double(pw.ahead_ns.load()) / 1e6,
+    std::printf("P1_PIPELINES ahead=%d cache=%d stale=%d ahead_ms=%.1f build_s=%.2f waited_ms=%.0f made_in_play=%llu "
+                "play_ms=%.1f play_max_ms=%.1f new=%llu\n",
+                pw.done.load(), pw.ready.load(), pw.stale.load(), double(pw.ahead_ns.load()) / 1e6, pw.seconds_build, pw.waited_ms,
                 (unsigned long long)pw.play_made.load(), double(pw.play_ns.load()) / 1e6, double(pw.play_max_ns.load()) / 1e6,
                 (unsigned long long)pw.play_new.load());
     std::fflush(stdout);
