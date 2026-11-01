@@ -1,5 +1,6 @@
 #!/bin/sh
-# The P1 headless checks: New Game to gameplay, the ending, and the ending's camera tour; with --tour
+# The P1 headless checks: the English text's fit (tools/text/fit_check.py), New Game to gameplay, the
+# ending, and the ending's camera tour; with --tour
 # also every map, saving and loading, the Controller Pak manager and quick saves.
 # usage: tests/p1_checks.sh path/to/eltale-p1[.exe] rom.z64 [--tour]
 # Each line prints P1_OS_OK (and P1_AUDIO for the first); compare against docs/P1_OS_STATUS.md.
@@ -7,6 +8,9 @@ set -u
 exe=$1
 rom=$2
 cd "$(dirname "$0")/.."
+# every English string against the window it is drawn in, in all six fonts (no game run)
+echo "english fit:"
+python3 tools/text/fit_check.py "$rom" 2>&1 | tail -1
 echo "new-game:"
 "$exe" --headless --fast --frames 700 --input tests/title-new-game.input --rom "$rom" 2>/dev/null | grep 'P1_OS_OK\|P1_AUDIO'
 echo "ending (mode 5):"

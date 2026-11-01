@@ -345,7 +345,7 @@ boss.030C	"I am Sylph... servant of the One. Since we were sealed away together 
 boss.03D0	"Just like that woman said. Waiting here paid off. Brat, kill you and every one of the Gems is mine.⏎▼⏎With all the Gems in hand, I can crush Geas and become king of Celtland!⏎▼⏎I'm the one who'll have everything in this world! Now, hand over those Gems of yours!"
 boss.04E4	"Feh feh feh... Ahh, the smell of fresh, lively spirits... My very favorite... that delicious spirit smell...⏎▼⏎Mmm... boy... it's you, it's the spirits you carry... Feh feh feh... They smell even better than humans...!⏎▼⏎The One told me to serve some human called Geas, and I did, much as I loathed it... Feh feh feh... So good things do come along after all.⏎▼⏎Now... give 'em here give me the spirits come on! Come on! Right now! Now, NOW, right now! GRAAAAAAAAAAAAAAAAHHH!!!"
 boss.0664	"Truly, you Spirit Mages never tire of getting in my way. To send even a child like this to hinder me -- I cannot fathom what the Spirit Hierarch is thinking.⏎▼⏎You seem to have considerable power, but before my might it is of no use whatsoever. If you mean to stop my ambition, then show me...⏎▼⏎the power of a Spiritcaller! I shall crush it, here and now!"
-boss.0768	"......Ha... ha... hahahahaha......⏎HAHAHAHAHAHAHAHAHAHAHAHAHAHA!⏎Jean-Jacques!⏎▼⏎Welcome! I have waited! I have waited! A thousand years since the Spiritcaller Epona shut me away in this Dark Prison...⏎▼⏎How long I have waited! O liberator! You who loose my bonds and give me wings! Now at last I shall soar out of this prison!⏎▼⏎In thanks, I shall spare you any suffering at the end... I will grant you death in an instant!⏎FUHAHAHAHAHAHAHAHAHAHA!!!!!"
+boss.0768	"......Ha... ha... hahahahaha......⏎HAHAHAHAHAHAHAHAHAHA!⏎Jean-Jacques!⏎▼⏎Welcome! I have waited! I have waited! A thousand years since the Spiritcaller Epona shut me away in this Dark Prison...⏎▼⏎How long I have waited! O liberator! You who loose my bonds and give me wings! Now at last I shall soar out of this prison!⏎▼⏎In thanks, I shall spare you any suffering at the end... I will grant you death in an instant!⏎FUHAHAHAHAHAHAHAHAHAHA!!!!!"
 boss.08B8	"A... a, aaaah, a... wh...y...⏎Spirits... why... why do you not choose me...⏎why is this body... crumbling away......?⏎▼⏎...Ooooooh... I... wh.........y.........⏎I, who have hated mankind all this time......⏎▼⏎So this......is......death......⏎A peaceful......⏎sl......eep......"
 item.0000	Spirit Light
 item.000C	Fresh Bread
@@ -569,12 +569,12 @@ ui.D_8006C408.00	No data to save was found.⏎Continue the game without saving?
 ui.D_8006C458.00	To save, insert another Controller Pak.⏎To go on without saving, choose "No".
 ui.D_8006C4C8.00	The Controller Pak is damaged.⏎Please repair it or reinsert it.
 ui.D_8006C50C.00	Please insert another Controller Pak.⏎Choose "No" to exit the menu.
-ui.D_8006C564.00	The Controller Pak does not have enough⏎free space. Saving this game requires⏎1 note and 2 pages.⏎Press the A Button to exit the menu.
+ui.D_8006C564.00	The Controller Pak does not have⏎enough free space. Saving this game⏎requires 1 note and 2 pages.⏎Press the A Button to exit the menu.
 ui.D_8006C5F8.00	New data cannot be saved, but existing⏎data can be overwritten. Overwrite?
 ui.D_8006C63C.00	Erase other data?
 ui.D_8006C658.00	Continue with the save menu?
 ui.D_8006C678.00	Please insert another Controller Pak.⏎Choose "No" to exit the menu.
-ui.D_8006C6CC.00	The Controller Pak does not have enough⏎free space. Saving this game requires⏎1 note and 2 pages.⏎To save on this Controller Pak, erase⏎unneeded data in the Controller Pak Menu⏎to free up the space needed.⏎To continue the game, press the Start⏎Button or the A Button.⏎To enter the Controller Pak Menu, turn⏎the power off, then turn it on while⏎holding the Start Button.
+ui.D_8006C6CC.00	The Controller Pak does not have⏎enough free space. Saving this game⏎requires 1 note and 2 pages.⏎To save on this Controller Pak, erase⏎unneeded data in the Controller Pak⏎Menu to free up the space needed.⏎To continue the game, press the Start⏎Button or the A Button.⏎To enter the Controller Pak Menu, turn⏎the power off, then turn it on while⏎holding the Start Button.
 ui.D_8006C858.00	Exit the menu. Are you sure?
 ui.D_8006C880.00	Repairing may erase the data on the⏎Controller Pak. Are you sure?⏎Choose "No" to exit the menu.
 ui.save_menu_slot_map_label_0.00	Impaness Inn
@@ -595,18 +595,18 @@ ui.save_menu_slot_map_label_14.00	Pirate Ship
 ui.save_menu_slot_map_label_15.00	Blanick Castle
 ui.save_menu_slot_map_label_16.00	Floating Sanctum
 ui.pak_menu_delete_confirmation_message.00	⏎Erase the data. Are you sure?⏎⏎⏎⏎⏎            Yes           Cancel
-ui.pak_menu_reinitialize_confirmation_message.00	⏎No Controller Pak is inserted.⏎Please insert a Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
+ui.pak_menu_reinitialize_confirmation_message.00	⏎No Controller Pak is inserted.⏎Please insert one.⏎⏎⏎⏎            Reconnect     Quit
 ui.pak_menu_operation_error_message.00	⏎The data could not be erased.⏎⏎⏎⏎⏎                    Reconnect
-ui.pak_menu_repair_confirmation_message.00	The Controller Pak is damaged. Repairing⏎it may erase the data on the⏎Controller Pak. Repair it?⏎⏎⏎            Repair        Cancel
-ui.pak_menu_state9_confirmation_message.00	Please reinsert the Controller Pak.⏎Choosing "Quit" exits the menu, but new⏎game data cannot be saved.⏎⏎⏎⏎            Reconnect     Quit
-ui.pak_menu_state10_confirmation_message.00	⏎Repair failed. Please insert another⏎Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
+ui.pak_menu_repair_confirmation_message.00	The Controller Pak is⏎damaged. Repairing it may⏎erase the data on it.⏎Repair the Controller Pak?⏎⏎⏎            Repair        Cancel
+ui.pak_menu_state9_confirmation_message.00	Please reinsert the⏎Controller Pak. "Quit" exits⏎the menu, but new game⏎data cannot be saved.⏎⏎⏎            Reconnect     Quit
+ui.pak_menu_state10_confirmation_message.00	⏎Repair failed. Please insert⏎another Controller Pak.⏎⏎⏎⏎            Reconnect     Quit
 ui.npc_rest_choice_row0.00	Yes
 ui.npc_rest_choice_row1.00	No
 ui.item_message_prefix.00	 ⏎Obtained 
 ui.item_message_suffix.00	!
 ui.D_8004F260.00	Jean-Jacques escaped from battle...
 ui.D_8004F284.00	Jean-Jacques won the battle!
-ui.title_menu_default_message.00	This Controller Pak has no room for a new⏎game note. To create one, please erase⏎unneeded data.
+ui.title_menu_default_message.00	This Controller Pak has no room⏎for a new game note. To create one,⏎please erase unneeded data.
 ui.title_menu_state7_message.00	The Controller Pak data is corrupted.⏎It will not be used.
 ui.title_menu_state8_message.00	No Controller Pak is inserted. You will⏎not be able to save your game.⏎Start anyway?
 ui.title_menu_state9_message.00	Please insert a Controller Pak.

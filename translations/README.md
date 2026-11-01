@@ -66,9 +66,36 @@ out/text/review.html list the rest):
   `BBBED8` Cry Shell; and two choices: the ocean sunfish as "Sunfish" (Pink / Magma Sunfish, not
   "Mambo"), and "Gel" (not "Jel").
 
+## Fitting the windows
+
+`python tools/text/fit_check.py rom.z64` measures every row in all six English fonts against the window
+it is drawn in and prints `FIT_CHECK_OK`, or `FIT_OVER <font> <id> ...` for each row that does not fit
+(and `FIT_CHECK_FAIL`). Run it after editing a row. The limits (2026-11-01):
+- Message windows (npc, spot, ending, boss): wrapped and paged by the game; a single word must fit
+  220 pixels (the original font's letters are about 7-8 pixels).
+- Item names: 222 pixels; descriptions wrap in a frame that grows to fit (docs/P1_OS_STATUS.md,
+  "Windows that grow").
+- Save menu and title screen messages (`ui.D_8006C...`, `ui.title_menu_...`): their `⏎` lines are kept
+  and a line wider than 296 pixels is wrapped; the window grows to the text. Keep lines under ~38
+  characters so none wraps with one word left over. Title messages with Yes / No (states 7 and 8): at
+  most 4 lines.
+- Controller Pak manager (`ui.pak_menu_...`): the window cannot grow. Exactly 7 rows: the text in rows
+  0-3 (at most 222 pixels, about 28 characters), rows 4 and 5 empty, the buttons in row 6.
+- Battle HUD names (`spell.*`, `monster.*`): 17 characters.
+
+Before the windows grew (2026-11-01) the check listed, in the original font: every item description
+(3 to 7 lines in a 2-line frame) and the seven longest item names (Traveler's ... Wings, Key to the Dark
+Prison); 21 of the save menu's messages, the two choice words Repair / Reconnect and all five of the
+title's messages (up to 312 pixels in a 192 to 252-pixel window); four Controller Pak manager messages
+(the repair question in 6 rows, so its buttons fell in the upper window); and Mammon's laugh as one
+255-pixel word (now "HAHAHAHAHAHAHAHAHAHA!"). The optional fonts, narrower, overflowed the same windows
+less often; in Rune Mono and Quest Square the Controller Pak manager's buttons landed in the upper
+window. Rows rewritten to fit: the four Controller Pak manager messages above (reflowed into rows 0-3;
+"Please insert a Controller Pak." became "Please insert one."), Mammon's laugh, and the line breaks of
+`ui.D_8006C564`, `ui.D_8006C6CC` and `ui.title_menu_default_message`.
+
 ## To check in game
 
-- Item descriptions run up to ~40 characters a line: the item window may be narrower.
 - The Controller Pak manager's button rows are laid out with spaces to sit under the cursor.
 - Two leftover English battle strings ("Brian escape from battle...") now say Jean-Jacques; they
   may be unused.

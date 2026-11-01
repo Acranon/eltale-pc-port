@@ -1820,7 +1820,7 @@ index cc5330a..975387d 100644
  }
 +#endif
 diff --git a/src/game/item/item.c b/src/game/item/item.c
-index 5e43dc3..b3e25b9 100644
+index 5e43dc3..44ea740 100644
 --- a/src/game/item/item.c
 +++ b/src/game/item/item.c
 @@ -1,3 +1,7 @@
@@ -1839,14 +1839,151 @@ index 5e43dc3..b3e25b9 100644
  
  /*
   * Items: the 150-slot inventory (item_inventory), the in-field inventory menu with its icon cache,
-@@ -354,8 +359,14 @@ void Item_UpdateInventoryMenu(void) {
+@@ -201,6 +206,58 @@ extern u8 D_803AC660[];
+ extern void* D_803AB288[];
+ extern void* D_803AB2F0[];
+ 
++#ifdef ELTALE_P1_OS
++/* English item menu (port): the Japanese description frame holds two lines of 17 glyphs, the
++ * English needs more. The frame is wider (centred on the 4:3 screen) and as tall as the longest
++ * description needs in the current font; the item row and its icons, cursor and arrows move down
++ * by as much. ITEM_EN_* are the frame; the labels and the name keep their places in it. */
++enum { ITEM_EN_X = 24, ITEM_EN_W = 272, ITEM_DESCS = 26 };
++#define ITEM_EN_TEXT_W (ITEM_EN_W - 9) /* the description at frame x + 6, 3 pixels short of the edge */
++
++/* How far the item row moves down: 0 in Japanese. The tallest description in the current font,
++ * measured again when the font changes (the English's font byte, after its 0xA0). */
++static s32 Item_EnglishMenuDrop(void) {
++    static s32 font = -1;
++    static s32 drop;
++    const u8 *s;
++    s32 i;
++    s32 w;
++    s32 h;
++    s32 most = 0;
++
++    if (!Port_TextEnglish()) {
++        return 0;
++    }
++    s = Port_TextTranslate(Port_N64Ptr(D_803AB2F0, 0));
++    if (s[0] == 0xA0 && s[1] != font) {
++        for (i = 0; i < ITEM_DESCS; i++) {
++            Port_TextFit(Port_N64Ptr(D_803AB2F0, i), ITEM_EN_TEXT_W, &w, &h);
++            if (h > most) {
++                most = h;
++            }
++        }
++        /* the text from y 0x5A and 5 pixels under it, as in the Japanese (two lines end at 0x75, the
++         * frame at 0x7A) */
++        drop = 0x5A + most + 5 - (0x44 + 0x36);
++        if (drop < 0) {
++            drop = 0;
++        }
++        font = s[1];
++    }
++    return drop;
++}
++
++/* One of the menu's labels ("Name", "Item": tiles of the menu sheet D_8039AFB0, as D_803AA998 and
++ * D_803AA940 load and draw them) at (x, y). */
++static void Item_DrawMenuLabel(s32 s0, s32 s1, s32 x, s32 y) {
++    gDPLoadTextureTile(gfx_dl_head++, D_8039AFB0, G_IM_FMT_CI, G_IM_SIZ_8b, 176, 0, s0, 16, s1, 28, 0,
++                       G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
++                       G_TX_NOLOD, G_TX_NOLOD);
++    gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, (x + s1 - s0 + 1) << 2, (y + 13) << 2, G_TX_RENDERTILE,
++                        s0 << 5, 16 << 5, 0x400, 0x400);
++}
++#endif
++
+ 
+ void Item_UpdateInventoryMenu(void) {
+     volatile s32 n;
+@@ -217,12 +274,30 @@ void Item_UpdateInventoryMenu(void) {
+     u8 freeSlots[8];
+     s32 y;
+     s32 b;
++#ifdef ELTALE_P1_OS
++    s32 en = Port_TextEnglish();
++    s32 dy = Item_EnglishMenuDrop();
++#endif
+ 
+     gSPDisplayList(gfx_dl_head++, D_803AA7C0);
++#ifdef ELTALE_P1_OS
++    if (en) {
++        Item_DrawMenuFrame(0x46, 0x7F + dy, 0xB2, 0x16);
++        Item_DrawMenuFrame(ITEM_EN_X, 0x44, ITEM_EN_W, 0x36 + dy);
++        Item_DrawMenuLabel(80, 109, 75, 133 + dy);
++        Item_DrawMenuLabel(110, 149, ITEM_EN_X + 3, 72);
++    } else {
++        Item_DrawMenuFrame(0x46, 0x7F, 0xB2, 0x16);
++        Item_DrawMenuFrame(0x48, 0x44, 0xAD, 0x36);
++        gSPDisplayList(gfx_dl_head++, D_803AA940);
++        gSPDisplayList(gfx_dl_head++, D_803AA998);
++    }
++#else
+     Item_DrawMenuFrame(0x46, 0x7F, 0xB2, 0x16);
+     Item_DrawMenuFrame(0x48, 0x44, 0xAD, 0x36);
+     gSPDisplayList(gfx_dl_head++, D_803AA940);
+     gSPDisplayList(gfx_dl_head++, D_803AA998);
++#endif
+     x = input_stick_x;
+     if (x > 5) {
+         x -= 5;
+@@ -329,12 +404,19 @@ void Item_UpdateInventoryMenu(void) {
+                 gDPLoadTLUT_pal256(gfx_dl_head++, D_803AC660);
+                 hl = 0;
              }
++#ifdef ELTALE_P1_OS
++            gSPTextureRectangle(gfx_dl_head++, x, 0x20C + dy * 4, x + 0x40, 0x24C + dy * 4, G_TX_RENDERTILE, 0, 0, 0x400, 0x400);
++#else
+             gSPTextureRectangle(gfx_dl_head++, x, 0x20C, x + 0x40, 0x24C, G_TX_RENDERTILE, 0, 0, 0x400, 0x400);
++#endif
+             x += 0x44;
+             n--;
+         }
+         x = item_menu_cursor * 0x44 + 0x1D4;
+         y = 0x1F0 - (u16)((sins(item_menu_bob_phase & 0x7FFF) >> 13) << 2);
++#ifdef ELTALE_P1_OS
++        y += dy * 4;
++#endif
+         gSPDisplayList(gfx_dl_head++, D_803AA828);
+         gSPTextureRectangle(gfx_dl_head++, x, y, x + 0x30, y + 0x30, G_TX_RENDERTILE, 0x9C0, 0, 0x400, 0x400);
+         if (count == 8) {
+@@ -342,6 +424,18 @@ void Item_UpdateInventoryMenu(void) {
+             gDPLoadTextureTile(gfx_dl_head++, D_8039AFB0, G_IM_FMT_CI, G_IM_SIZ_8b, 176, 0, 90, 0, 146, 13, 0,
+                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                G_TX_NOLOD, G_TX_NOLOD);
++#ifdef ELTALE_P1_OS
++            if (item_menu_scroll != 0) {
++                gSPTextureRectangle(gfx_dl_head++, 0x218, 0x250 + dy * 4, 0x234, 0x26C + dy * 4, G_TX_RENDERTILE, 0xE00, 0, 0x400, 0x400);
++                gSPTextureRectangle(gfx_dl_head++, (0x77 - (b >> 13)) * 4, 0x248 + dy * 4, (0x85 - (b >> 13)) * 4, 0x274 + dy * 4,
++                                    G_TX_RENDERTILE, 0xEE0, 0, 0x400, 0x400);
++            }
++            if (item_inventory[item_menu_scroll + 8] != 0xFF) {
++                gSPTextureRectangle(gfx_dl_head++, 0x348, 0x250 + dy * 4, 0x364, 0x26C + dy * 4, G_TX_RENDERTILE, 0xE00, 0, 0x400, 0x400);
++                gSPTextureRectangle(gfx_dl_head++, ((b >> 13) + 0xDA) * 4, 0x248 + dy * 4, ((b >> 13) + 0xE8) * 4, 0x274 + dy * 4,
++                                    G_TX_RENDERTILE, 0x10A0, 0, 0x400, 0x400);
++            }
++#else
+             if (item_menu_scroll != 0) {
+                 gSPTextureRectangle(gfx_dl_head++, 0x218, 0x250, 0x234, 0x26C, G_TX_RENDERTILE, 0xE00, 0, 0x400, 0x400);
+                 gSPTextureRectangle(gfx_dl_head++, (0x77 - (b >> 13)) * 4, 0x248, (0x85 - (b >> 13)) * 4, 0x274,
+@@ -352,10 +446,22 @@ void Item_UpdateInventoryMenu(void) {
+                 gSPTextureRectangle(gfx_dl_head++, ((b >> 13) + 0xDA) * 4, 0x248, ((b >> 13) + 0xE8) * 4, 0x274,
+                                     G_TX_RENDERTILE, 0x10A0, 0, 0x400, 0x400);
+             }
++#endif
          }
          gSPDisplayList(gfx_dl_head++, D_1000388);
 +#ifdef ELTALE_P1_OS
-+        Text_DrawEncodedString(0x77, 0x48, Port_N64Ptr(D_803AB288, item_inventory[item_menu_scroll + item_menu_cursor]));
-+        /* English: the description wrapped to the panel (the Japanese is two lines of 17 glyphs) */
-+        Text_DrawEncodedString(0x4E, 0x5A, (u8 *)Port_TextTranslateWrapped(Port_N64Ptr(D_803AB2F0, item_inventory[item_menu_scroll + item_menu_cursor]), 172));
++        if (en) {
++            /* English: the name after the label, the description wrapped to the wider frame */
++            Text_DrawEncodedString(ITEM_EN_X + 47, 0x48, Port_N64Ptr(D_803AB288, item_inventory[item_menu_scroll + item_menu_cursor]));
++            Text_DrawEncodedString(ITEM_EN_X + 6, 0x5A, (u8 *)Port_TextTranslateWrapped(Port_N64Ptr(D_803AB2F0, item_inventory[item_menu_scroll + item_menu_cursor]), ITEM_EN_TEXT_W));
++        } else {
++            Text_DrawEncodedString(0x77, 0x48, Port_N64Ptr(D_803AB288, item_inventory[item_menu_scroll + item_menu_cursor]));
++            Text_DrawEncodedString(0x4E, 0x5A, Port_N64Ptr(D_803AB2F0, item_inventory[item_menu_scroll + item_menu_cursor]));
++        }
 +#else
          Text_DrawEncodedString(0x77, 0x48, D_803AB288[item_inventory[item_menu_scroll + item_menu_cursor]]);
          Text_DrawEncodedString(0x4E, 0x5A, D_803AB2F0[item_inventory[item_menu_scroll + item_menu_cursor]]);
@@ -1854,7 +1991,7 @@ index 5e43dc3..b3e25b9 100644
          if ((input_pressed_buttons & 0xA000) && Item_TryUse(item_inventory[item_menu_scroll + item_menu_cursor])) {
              p = &item_inventory[item_menu_scroll + item_menu_cursor];
              for (n = 0x95 - item_menu_scroll - item_menu_cursor; n != 0; n--) {
-@@ -475,7 +486,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
+@@ -475,7 +581,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
      Sfx_Play(0, 0x3B, 0xFF);
  }
  
@@ -2778,18 +2915,118 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..87b3346 100644
+index f2ae77c..3b8a0aa 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
-@@ -13,6 +13,7 @@
+@@ -13,6 +13,52 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "game/ui/menu.h"
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
++#ifdef ELTALE_P1_OS
++#include "port/text.h"
++
++/* English (port): the panels are sized for the Japanese's 10-pixel glyphs. A message wider than
++ * SAVE_EN_TEXT_W wraps to it, and its panel grows about its centre to hold it with the Japanese
++ * insets (the text at x + 6, y + 6; 6 pixels to the right, 5 below). Japanese: unchanged. */
++enum { SAVE_EN_TEXT_W = 296 };
++
++static u8 *SaveMenu_FitPanel(u8 *msg, s32 *x, s32 *y, s32 *w, s32 *h) {
++    int bx = *x;
++    int by = *y;
++    int bw = *w;
++    int bh = *h;
++    int tw;
++    int th;
++    const u8 *s = Port_TextFit(msg, SAVE_EN_TEXT_W, &tw, &th);
++
++    if (tw != 0) {
++        Port_TextGrowBox(&bx, &by, &bw, &bh, tw + 12, th + 11, 6);
++        *x = bx;
++        *y = by;
++        *w = bw;
++        *h = bh;
++    }
++    return (u8 *)s;
++}
++
++/* The choice panel (two rows, the cursor at x 258, past the words): wide enough for the longer
++ * English row, growing to the left. */
++static void SaveMenu_FitChoices(u8 *a, u8 *b, s32 *x, s32 *w) {
++    int tw;
++    int th;
++    int most;
++
++    Port_TextFit(a, 200, &most, &th);
++    Port_TextFit(b, 200, &tw, &th);
++    if (tw > most) {
++        most = tw;
++    }
++    if (most + 12 > *w) {
++        *x += *w - (most + 12);
++        *w = most + 12;
++    }
++}
++#endif
  
  
  /*
-@@ -974,7 +975,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -112,10 +158,18 @@ void SaveMenu_Update(void) {
+ void SaveMenu_DrawOperationPanel(void) {
+     u8 unused[4];
+     s16 *r = save_menu_operation_panel_rects[save_menu_operation_panel_index];
++#ifdef ELTALE_P1_OS
++    s32 x = r[0];
++    s32 y = r[1];
++    s32 w = r[2];
++    s32 h = r[3];
++    u8 *msg = SaveMenu_FitPanel(save_menu_operation_panel_messages[save_menu_operation_panel_index], &x, &y, &w, &h);
++#else
+     s16 x = r[0];
+     s16 y = r[1];
+     s16 w = r[2];
+     s16 h = r[3];
++#endif
+ 
+     Menu_DrawSprite(0, x, y, w, h);
+     Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
+@@ -128,7 +182,11 @@ void SaveMenu_DrawOperationPanel(void) {
+     Menu_DrawSprite(0x38, x + 1, y + 2, 1, h - 4);
+     Menu_DrawSprite(0x39, x + 1, y + h - 2, w - 2, 1);
+     Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
++#ifdef ELTALE_P1_OS
++    Text_DrawEncodedString(x + 6, y + 6, msg);
++#else
+     Text_DrawEncodedString(x + 6, y + 6, save_menu_operation_panel_messages[save_menu_operation_panel_index]);
++#endif
+     SaveMenu_SetTextDrawState();
+ }
+ 
+@@ -246,6 +304,9 @@ void SaveMenu_UpdateDialog(void) {
+     } else {
+         msg = save_menu_dialog_messages_load_delete[save_menu_dialog_index];
+     }
++#ifdef ELTALE_P1_OS
++    msg = SaveMenu_FitPanel(msg, &x, &y, &w, &h);
++#endif
+     Menu_DrawSprite(0, x, y, w, h);
+     Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
+     Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
+@@ -362,6 +423,13 @@ void SaveMenu_UpdateDialog(void) {
+             w = save_menu_dialog_rects[2][2];
+             h = save_menu_dialog_rects[2][3];
+         }
++#ifdef ELTALE_P1_OS
++        if (save_menu_flags & 0x10) {
++            SaveMenu_FitChoices(save_menu_dialog_messages_save[1], save_menu_dialog_messages_save[0], &x, &w);
++        } else {
++            SaveMenu_FitChoices(save_menu_dialog_messages_save[2], save_menu_dialog_messages_save[3], &x, &w);
++        }
++#endif
+         Menu_DrawSprite(0, x, y, w, h);
+         Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
+         Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
+@@ -974,7 +1042,7 @@ void SaveMenu_SaveSelectedFile(void) {
          SaveMenu_CaptureGameState(idx);
      }
      id = save_menu_selected_slot;
@@ -2798,7 +3035,7 @@ index f2ae77c..87b3346 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -996,7 +997,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -996,7 +1064,7 @@ void SaveMenu_SaveSelectedFile(void) {
          save_menu_flags &= ~0x2000;
          return;
      }
@@ -5139,7 +5376,7 @@ index a87243b..2fd2eb6 100644
  
  /* ovl_intro .data 80212250..80212270 (the rest of the slab is still asm): 250, 254,
 diff --git a/src/overlays/pakmenu/pakmenu.c b/src/overlays/pakmenu/pakmenu.c
-index 145e9b5..1117a4b 100644
+index 145e9b5..fe04e32 100644
 --- a/src/overlays/pakmenu/pakmenu.c
 +++ b/src/overlays/pakmenu/pakmenu.c
 @@ -1,3 +1,6 @@
@@ -5221,13 +5458,15 @@ index 145e9b5..1117a4b 100644
                      rowOff = (arg * 0x130) / 2;
                          rowOff = rowOff * 13;
                      break;
-@@ -1444,6 +1478,13 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
+@@ -1444,6 +1478,15 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
                      switch (arg) {
                          case 0:
                              curX = x;
 +#ifdef ELTALE_P1_OS
 +                            if (font >= 1) {
-+                                curY += Port_TextLineHeight(font);
++                                /* every English font on the original font's 14-pixel rows: the
++                                 * messages' last row (Yes / Cancel ...) is the lower window's */
++                                curY += 14;
 +                                col = spaces = 0;
 +                                break;
 +                            }
@@ -5235,7 +5474,7 @@ index 145e9b5..1117a4b 100644
                              curY += pak_menu_font_metrics[font].line_height;
                              break;
                          case 30:
-@@ -1451,7 +1492,34 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
+@@ -1451,7 +1494,34 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
                      }
                      break;
              }
@@ -5271,7 +5510,7 @@ index 145e9b5..1117a4b 100644
              f = &pak_menu_font_metrics[font];
              if (*str == 0x7F) {
                  curX += f->advance + spacing;
-@@ -1479,4 +1547,9 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
+@@ -1479,4 +1549,9 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
          }
      } while (*++str != 0xFF);
      }
@@ -5294,7 +5533,7 @@ index 009c33d..74cf310 100644
  /*
   * Title overlay: entry, per-frame update, the phase state machine, button handling.
 diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
-index d3ba9ee..f8c72d0 100644
+index d3ba9ee..cc79610 100644
 --- a/src/overlays/title/title_draw.c
 +++ b/src/overlays/title/title_draw.c
 @@ -6,6 +6,10 @@
@@ -5377,7 +5616,21 @@ index d3ba9ee..f8c72d0 100644
  void Title_DrawScreenAndMoveCursor(s32 arg0) {
      static s32 title_cursor_anim_frame = 0;
      static s8 D_8020F4D4_ovl_title = 0;
-@@ -284,9 +298,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -157,6 +171,13 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+     s8 t;
+     s8 dx;
+     s8 dy;
++#ifdef ELTALE_P1_OS
++    const u8 *en_msg;
++    int en_w;
++    int en_h;
++    s32 bx;
++    s32 bw;
++#endif
+ 
+     if (title_draw_initialized == 0) {
+         title_cursor_anim_frame = 0;
+@@ -284,9 +305,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
              gSPDisplayList(gfx_dl_head++, title_menu_sprite_setup_dl);
              gDPPipeSync(gfx_dl_head++);
              gDPLoadTLUT_pal16(gfx_dl_head++, 0, title_menu_atlas_tlut);
@@ -5404,3 +5657,59 @@ index d3ba9ee..f8c72d0 100644
              if (arg0 == 3 || arg0 == 5) {
                  gDPPipeSync(gfx_dl_head++);
                  GFX_WORDS(0xB900031D, 0x504240);
+@@ -318,6 +356,47 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+                 } else if (arg0 == 10) {
+                     title_current_message = title_menu_state10_message;
+                 }
++#ifdef ELTALE_P1_OS
++                /* English (port): the box (0x3E, 0x28, 0xC4 x 0x67) grows about its centre to the message's
++                 * width, the message wrapped to at most 296 pixels; Japanese: the same box */
++                en_msg = Port_TextFit(title_current_message, 296, &en_w, &en_h);
++                bx = 0x3E;
++                bw = 0xC4;
++                if (en_w + 12 > bw) {
++                    bx = 160 - (en_w + 12) / 2;
++                    bw = en_w + 12;
++                }
++                gDPPipeSync(gfx_dl_head++);
++                gDPLoadTLUT_pal256(gfx_dl_head++, text_window_tlut);
++                gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
++                Text_DrawTexturedRect(0, bx, 0x28, bw, 0x67);
++                Text_DrawTexturedRect(3, bx + bw, 0x2A, 2, 0x67);
++                Text_DrawTexturedRect(3, bx + 2, 0x8F, bw, 2);
++                gDPPipeSync(gfx_dl_head++);
++                Text_DrawTexturedRect(3, bx, 0x28, bw, 1);
++                Text_DrawTexturedRect(3, bx, 0x8E, bw, 1);
++                Text_DrawTexturedRect(3, bx, 0x28, 1, 0x67);
++                Text_DrawTexturedRect(3, bx + bw - 1, 0x28, 1, 0x67);
++                gDPPipeSync(gfx_dl_head++);
++                gDPSetTextureLUT(gfx_dl_head++, G_TT_RGBA16);
++                GFX_WORDS(0xB900031D, 0x504240);
++                gDPLoadTLUT_pal256(gfx_dl_head++, title_message_box_border_tlut);
++                gDPPipeSync(gfx_dl_head++);
++                gDPLoadTextureTile(gfx_dl_head++, title_message_box_top_left_border_tex, G_IM_FMT_CI, G_IM_SIZ_8b, 4, 4, 0, 0, 3, 3, 0, G_TX_CLAMP, G_TX_CLAMP, 0, 0, 0, 0);
++                gSPTextureRectangle(gfx_dl_head++, (bx + 2) << 2, 42 << 2, (bx + bw - 2) << 2, 43 << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++                gDPPipeSync(gfx_dl_head++);
++                gDPLoadTextureTile(gfx_dl_head++, title_message_box_top_left_border_tex, G_IM_FMT_CI, G_IM_SIZ_8b, 4, 4, 0, 0, 3, 3, 0, G_TX_CLAMP, G_TX_CLAMP, 0, 0, 0, 0);
++                gSPTextureRectangle(gfx_dl_head++, (bx + 2) << 2, 42 << 2, (bx + 3) << 2, 140 << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++                gDPPipeSync(gfx_dl_head++);
++                gDPLoadTextureTile(gfx_dl_head++, title_message_box_bottom_right_border_tex, G_IM_FMT_CI, G_IM_SIZ_8b, 4, 4, 0, 0, 3, 3, 0, G_TX_CLAMP, G_TX_CLAMP, 0, 0, 0, 0);
++                gSPTextureRectangle(gfx_dl_head++, (bx + 2) << 2, 141 << 2, (bx + bw - 2) << 2, 142 << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++                gDPPipeSync(gfx_dl_head++);
++                gDPLoadTextureTile(gfx_dl_head++, title_message_box_bottom_right_border_tex, G_IM_FMT_CI, G_IM_SIZ_8b, 4, 4, 0, 0, 3, 3, 0, G_TX_CLAMP, G_TX_CLAMP, 0, 0, 0, 0);
++                gSPTextureRectangle(gfx_dl_head++, (bx + bw - 2) << 2, 42 << 2, (bx + bw - 1) << 2, 142 << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++                gDPPipeSync(gfx_dl_head++);
++                gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
++                Text_DrawEncodedString(bx + 6, 0x2E, (u8 *)en_msg);
++#else
+                 gDPPipeSync(gfx_dl_head++);
+                 gDPLoadTLUT_pal256(gfx_dl_head++, text_window_tlut);
+                 gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
+@@ -348,6 +427,7 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+                 gDPPipeSync(gfx_dl_head++);
+                 gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
+                 Text_DrawEncodedString(0x44, 0x2E, title_current_message);
++#endif
+                 if (arg0 == 8 || arg0 == 7 || arg0 == 11 || arg0 == 12 || arg0 == 13 || arg0 == 14) {
+                     Text_DrawEncodedString(0x94, 0x73, title_confirmation_row0_text);
+                     Text_DrawEncodedString(0x94, 0x80, title_confirmation_row1_text);

@@ -510,3 +510,44 @@ int Port_TextLineWidth(const uint8_t *s) {
     }
     return x > best ? x : best;
 }
+
+/* The widest line of an encoded English string and its lines' height (rows * line, the last a glyph's) */
+static void measure_encoded(const uint8_t *s, int *width, int *height) {
+    int font = 0, lines = 1;
+    for (const uint8_t *p = s; *p != 0xFF; p++)
+        if (*p >= 0xC0 && *p < 0xE0 && (*p & 0x1F) >= 1 && (*p & 0x1F) < 16) font = *p & 0x1F;
+        else if (*p == 0xE0 || *p == 0xF0) lines++;
+    FontSet *f = set_of(font);
+    *width = Port_TextLineWidth(s);
+    *height = (lines - 1) * f->line + f->height;
+}
+
+const uint8_t *Port_TextFit(const uint8_t *jp, int max_width, int *width, int *height) {
+    *width = *height = 0;
+    if (!Port_TextEnglish()) return jp;
+    const uint8_t *s = Port_TextTranslate(jp);
+    if (s == jp) return jp;
+    measure_encoded(s, width, height);
+    if (*width > max_width) {
+        s = Port_TextTranslateWrapped(jp, max_width);
+        measure_encoded(s, width, height);
+    }
+    return s;
+}
+
+void Port_TextGrowBox(int *x, int *y, int *w, int *h, int need_w, int need_h, int margin) {
+    if (need_w > 320 - 2 * margin) need_w = 320 - 2 * margin;
+    if (need_h > 240 - 2 * margin) need_h = 240 - 2 * margin;
+    if (need_w > *w) {
+        *x -= (need_w - *w + 1) / 2;
+        *w = need_w;
+    }
+    if (need_h > *h) {
+        *y -= (need_h - *h + 1) / 2;
+        *h = need_h;
+    }
+    if (*x < margin) *x = margin;
+    if (*x + *w > 320 - margin) *x = 320 - margin - *w;
+    if (*y < margin) *y = margin;
+    if (*y + *h > 240 - margin) *y = 240 - margin - *h;
+}

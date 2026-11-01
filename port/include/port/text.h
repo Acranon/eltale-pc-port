@@ -65,4 +65,18 @@ const uint8_t *Port_HudMonsterName(const uint8_t *jp);
 /* The width in pixels of one line of game text (Japanese: 10 a glyph; English: its font's). */
 int Port_TextLineWidth(const uint8_t *s);
 
+/* ---- English windows that grow to their text (port/text/en_text.c) ----
+ * The Japanese windows are sized for 10-pixel glyphs; the English is longer. Where a string is drawn
+ * as it is into a fixed box (the save menu, the title's messages, the item menu), the game asks
+ * these first and grows the box. Japanese: no change (the hashes of the checks stay). */
+
+/* The string to draw for `jp` and the room it needs: in English, `jp`'s English with each line wider
+ * than `max_width` pixels word-wrapped to it, *width its widest line and *height its lines' height
+ * ((lines - 1) * line height + glyph height); otherwise `jp` itself and 0 x 0. */
+const uint8_t *Port_TextFit(const uint8_t *jp, int max_width, int *width, int *height);
+
+/* Grow the box (*x, *y, *w, *h) about its centre to at least need_w x need_h, kept inside the 4:3
+ * screen's 320 x 240 less `margin` on each side. */
+void Port_TextGrowBox(int *x, int *y, int *w, int *h, int need_w, int need_h, int margin);
+
 #endif

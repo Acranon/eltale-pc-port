@@ -646,9 +646,34 @@ ELTALE_DATA_DIR pointing at a scratch folder holding settings.json `{"audio":{"v
   advance). The "can't use" label is "Sealed".
 - **Controller Pak manager:** its pictures are swapped like the rest; its messages draw English
   through the same fonts (`PakMenu_DrawText`), and a run of spaces snaps the next word to the
-  Japanese 5-pixel column grid so Yes / Cancel sit under the cursor. Note names on the Pak (the
+  Japanese 5-pixel column grid so Yes / Cancel sit under the cursor. Its rows are 14 pixels apart in
+  every English font (the original font's; before 2026-11-01 they followed the font, and in Rune Mono
+  or Quest Square the button row landed in the upper window): a message is 7 rows, the text in rows
+  0-3, the buttons in row 6. Note names on the Pak (the
   game's own "エルテイル") stay as stored.
-- Item descriptions wrap to 172 px in the item menu: unchecked in game.
+- **Windows that grow (2026-11-01):** the windows a string is drawn into as it is were sized for the
+  Japanese's 10-pixel glyphs, and much of the English ran past them (the item description's third
+  line over the item row, the save menu's "Press the A Button to exit the menu."). In English only
+  (Japanese draws the same commands as before):
+  - **Item menu** (item.c): the description frame is 272 wide (x 24, centred on the 4:3 screen) and
+    as tall as the tallest of the 26 descriptions needs in the current font (measured again when the
+    font changes); the description wraps to 263 pixels, the name sits after the "Name" label, and the
+    item row (frame, "Item" label, icons, cursor, arrows) moves down by as much as the frame grew
+    (27 pixels in the original font: 4 lines).
+  - **Save menu** (save_menu.c) dialogs and operation panels: `Port_TextFit` wraps a message line
+    wider than 296 pixels and `Port_TextGrowBox` grows the panel about its centre to the text plus
+    the Japanese insets (6 around, 5 below), inside the screen less 6. The Yes / No (Repair /
+    Reconnect) panel grows to the left, so its rows stay clear of the cursor at x 258.
+  - **Title screen** messages (title_draw.c): the box (0x3E, 0x28, 0xC4 x 0x67) widens about the
+    centre to the message, wrapped at 296.
+  - `tools/text/fit_check.py ROM` measures every English row in all six fonts against the room the
+    window it is drawn in gives (the grown windows' limits) and prints FIT_CHECK_OK or the rows that
+    do not fit; run it after any change to en.v2.tsv or a font (tests/p1_checks.sh runs it first:
+    `english fit: FIT_CHECK_OK`). The rows it once listed:
+    translations/README.md, "Fitting the windows".
+  - `ELTALE_SAVE_MENU_AT=VI` (port/p0/quicksave.c, headless tests) opens the save menu in the field as
+    an innkeeper's "Yes" does; with a quick save and `--pak` holding a save it shows "Overwrite the
+    game data?" and its Yes / No panel, and B then "Exit the menu?".
 
 ## Quick saves: F2 and F4 (2026-10-31)
 

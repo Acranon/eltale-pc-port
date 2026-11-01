@@ -275,7 +275,8 @@ void Port_QuickLoadApply(void) {
 }
 
 /* ELTALE_QUICK_SAVE_AT=VI / ELTALE_QUICK_LOAD_AT=VI (headless tests): a quick save or load in slot 0
- * at the first frame at or after that VI where it is allowed (P1_QUICK says once why it waits). */
+ * at the first frame at or after that VI where it is allowed (P1_QUICK says once why it waits);
+ * ELTALE_SAVE_MENU_AT=VI opens the save menu as an inn does. */
 static int test_due(const char *name, int *done) {
     if (*done) return 0;
     const char *v = getenv(name);
@@ -305,6 +306,17 @@ void Port_QuickFrame(void) {
         else if (!said_wait++) fprintf(stderr, "P1_QUICK save waits: %s\n", why);
     }
     if (test_due("ELTALE_QUICK_LOAD_AT", &load_done) && load_allowed()) load_done = 1, key = 2;
+    /* ELTALE_SAVE_MENU_AT=VI (headless tests of the save menu's English): open the inn's save menu
+     * in the field, as an innkeeper's "Yes" does (player.c) */
+    static int save_menu_done;
+    if (test_due("ELTALE_SAVE_MENU_AT", &save_menu_done) && !field_blocked()) {
+        save_menu_done = 1;
+        core_flags |= 0x480;
+        core_transition_timer = 0x23;
+        core_fade_out_time = 0x1E;
+        player_respawn_map = map_id;
+        player_respawn_subarea = map_subarea;
+    }
     if (key == 1) quick_save(0);
     else if (key == 2) quick_load(0);
 }
