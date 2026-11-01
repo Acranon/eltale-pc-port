@@ -31,7 +31,7 @@ constexpr size_t MATERIAL_CAP = size_t(1) << 16;
 constexpr size_t TEXEL_CAP = size_t(1) << 24;    // 64 MiB of texels
 constexpr size_t PALETTE_CAP = 4096 * 256;
 
-enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4 };
+enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4, OPT_DECAL = 8 };
 
 struct GpuTile {
     uint32_t texels, wh, fmt, mode;
@@ -95,16 +95,21 @@ GpuTile gpu_tile(const ElRdTile &t) {
     return g;
 }
 
+// Z_MODE decal with the Z compare on: the RDP's two-sided test, done in the pixel stage (OPT_DECAL)
+bool is_decal(const ElRdMaterial &m) {
+    return (m.geometry & 1) && (m.othermode_l & 0x10) && (m.othermode_l >> 10 & 3) == 3;
+}
+
+bool writes_depth(const ElRdMaterial &m) { return (m.geometry & 1) && (m.othermode_l & 0x20); }
+
 // The GPU pipeline state a material's othermode and geometry bits ask for
 void apply_state(CommandBuffer &cmd, const ElRdMaterial &m) {
     const uint32_t ol = m.othermode_l, geom = m.geometry;
     const bool zbuf = geom & 1; // G_ZBUFFER
-    const bool zcmp = zbuf && (ol & 0x10), zupd = zbuf && (ol & 0x20);
-    const bool decal = (ol >> 10 & 3) == 3;
+    const bool decal = is_decal(m);
+    const bool zcmp = zbuf && (ol & 0x10) && !decal, zupd = zbuf && (ol & 0x20);
     cmd.set_depth_test(zcmp || zupd, zupd);
-    cmd.set_depth_compare(zcmp ? (decal ? VK_COMPARE_OP_GREATER_OR_EQUAL : VK_COMPARE_OP_GREATER) : VK_COMPARE_OP_ALWAYS);
-    cmd.set_depth_bias(decal);
-    if (decal) cmd.set_depth_bias(4.0f, 1.5f);
+    cmd.set_depth_compare(zcmp ? VK_COMPARE_OP_GREATER : VK_COMPARE_OP_ALWAYS);
     VkCullModeFlags cull = 0;
     if (geom & 0x2000) cull |= VK_CULL_MODE_BACK_BIT;
     if (geom & 0x1000) cull |= VK_CULL_MODE_FRONT_BIT;
@@ -200,7 +205,8 @@ bool NativeDraw::init(Device &dev) {
     frag.output_mask = 1;
     frag.push_constant_size = sizeof(Push);
     frag.sets[0].storage_buffer_mask = 1u << 1 | 1u << 2 | 1u << 3 | 1u << 4;
-    for (int b = 0; b < 5; b++) {
+    frag.sets[0].sampled_image_mask = 1u << 5;
+    for (int b = 0; b < 6; b++) {
         vert.sets[0].meta[b].array_size = 1;
         frag.sets[0].meta[b].array_size = 1;
     }
@@ -213,13 +219,21 @@ bool NativeDraw::init(Device &dev) {
         return false;
     palettes.write(0, std::vector<uint32_t>(PALETTE_CAP).data(), PALETTE_CAP * 4);
     palettes.used = PALETTE_CAP * 4;
-    ImageCreateInfo zi = ImageCreateInfo::transient_render_target(W, H, VK_FORMAT_D32_SFLOAT);
+    // the depth buffer, and its copy for decals (both GENERAL: a render pass, a copy and sampling all
+    // use them without layout changes)
+    ImageCreateInfo zi = ImageCreateInfo::render_target(W, H, VK_FORMAT_D32_SFLOAT);
+    zi.layout = ImageLayout::General;
+    zi.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
     depth = dev.create_image(zi);
-    return bool(depth);
+    ImageCreateInfo ci = zi;
+    ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    depth_before = dev.create_image(ci);
+    return bool(depth) && bool(depth_before);
 }
 
 void NativeDraw::shutdown() {
     depth.reset();
+    depth_before.reset();
     dump_picture.reset();
     vertices.buffer.reset();
     materials.buffer.reset();
@@ -383,6 +397,9 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             g.fog[0] = s.fog_mul;
             g.fog[1] = s.fog_off;
             g.fog[2] = cam.near_plane > 0 ? cam.near_plane : 1.0f;
+            // N64 screen-z units per unit of depth (near/w): the viewport's z scale (511, then 32 per
+            // unit in the RDP) times the perspective's z/w per 1/w (its m[3][2]), over the near plane
+            g.fog[3] = 511.0f * 32.0f * std::fabs(cam.perspective[14]) / g.fog[2];
             g.tile_offset[0] = it.draw.tile_offset[0];
             g.tile_offset[1] = it.draw.tile_offset[1];
             // does the mesh's box reach past the far plane? (then the pixel stage cuts there)
@@ -431,7 +448,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     rp.depth_stencil = &depth->get_view();
     rp.clear_attachments = 1;
     rp.store_attachments = 1;
-    rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+    rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
     rp.clear_depth_stencil.depth = 0.0f; // reversed Z
     rp.clear_color[0] = opt.border ? VkClearColorValue{ { 0, 0, 0, 1 } } : clear_colour;
     cmd.begin_render_pass(rp);
@@ -441,7 +458,8 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         v.color = clear_colour;
         cmd.clear_quad(0, { inner, 0, 1 }, v, VK_IMAGE_ASPECT_COLOR_BIT);
     }
-    if (!gd.empty()) {
+    // the state a render pass starts with (again after a decal's depth copy)
+    auto setup = [&]() {
         cmd.set_opaque_state();
         cmd.set_program(program);
         cmd.set_storage_buffer(0, 0, *vertices.buffer);
@@ -454,12 +472,54 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         // the RDP samples a pixel at its top-left corner, the GPU at its centre: the picture moves half a pixel
         cmd.set_viewport({ 0.5f, 0.5f, float(W), float(H), 0, 1 });
         cmd.set_scissor(opt.border ? inner : VkRect2D{ { 0, 0 }, { W, H } });
+        cmd.set_texture(0, 5, depth_before->get_view(), StockSampler::NearestClamp);
+    };
+    // A decal reads the depth as it was before it (the RDP's test is two-sided: depth_before): copied
+    // when the first decal comes, and again when depth was written since.
+    auto copy_depth = [&]() {
+        cmd.end_render_pass();
+        cmd.image_barrier(*depth, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+                          VK_ACCESS_2_TRANSFER_READ_BIT);
+        cmd.image_barrier(*depth_before, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
+                          VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        cmd.copy_image(*depth_before, *depth);
+        cmd.image_barrier(picture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                          VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+        cmd.image_barrier(*depth, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COPY_BIT, 0,
+                          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+        cmd.image_barrier(*depth_before, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COPY_BIT,
+                          VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                          VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        RenderPassInfo again = rp;
+        again.clear_attachments = 0;
+        again.load_attachments = 1;
+        again.op_flags = RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+        cmd.begin_render_pass(again);
+        setup();
+    };
+    if (!gd.empty()) {
+        setup();
+        bool copied = false, written = false;
         for (size_t i = 0; i < rec->items.size(); i++) {
             const Mesh &mesh = meshes[rec->items[i].draw.mesh];
             for (uint32_t k = 0; k < mesh.group_count; k++) {
                 const Group &grp = groups[mesh.group_first + k];
-                apply_state(cmd, material_cpu[grp.material]);
-                Push push = { uint32_t(i), grp.material, options[i], view };
+                const ElRdMaterial &mat = material_cpu[grp.material];
+                const bool decal = is_decal(mat);
+                if (decal && (!copied || written)) {
+                    copy_depth();
+                    copied = true;
+                    written = false;
+                }
+                if (writes_depth(mat)) written = true;
+                apply_state(cmd, mat);
+                Push push = { uint32_t(i), grp.material, options[i] | (decal ? OPT_DECAL : 0u), view };
                 cmd.push_constants(&push, 0, sizeof push);
                 cmd.draw(grp.count, 1, grp.first, 0);
             }

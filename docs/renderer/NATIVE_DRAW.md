@@ -110,7 +110,7 @@ count is only the GPU state combinations.
 | 1/2-cycle combiner, all inputs | integer `(A-B)*C+D`, the 9-bit clamp; TEXEL0/1 swap in the second cycle |
 | blender | the first cycle (fog) in the shader; the last cycle with the picture (`FORCE_BL`, M = memory) is the GPU's blend; without `FORCE_BL` P is written |
 | CVG x alpha cut-outs, alpha compare threshold | discard below 32 / below the blend alpha |
-| Z: compare, update, decal | reversed-Z D32F (depth = near/w: infinite, exact near plane); decal = GREATER_OR_EQUAL + depth bias; no Z without `G_ZBUFFER`; far plane cut in the pixel stage only for draws whose box crosses it |
+| Z: compare, update, decal | reversed-Z D32F (depth = near/w: infinite, exact near plane); decal = the RDP's two-sided test in the pixel stage (`|z - z before| <= dz max`, below); no Z without `G_ZBUFFER`; far plane cut in the pixel stage only for draws whose box crosses it |
 | culling | `G_CULL_BACK/FRONT` as the GPU's cull mode |
 | textures RGBA16/32, CI4/8 (RGBA16 or IA16 TLUT), IA4/8/16, I4/8 | decoded at load; the palette looked up per pixel |
 | tiles: shift, clamp, mirror, mask, odd spans, `SETTILESIZE` | the RDP's arithmetic per sample (S10.5, clamp before mask; mask 0 forces clamp) |
@@ -177,7 +177,7 @@ Kinds and the files they touch (to run them in parallel with few conflicts):
 |---|---|---|
 | backdrop | map.c `Map_DrawBackdrop` | 1-cycle, no Z, texture perspective off, TEX0xENV; its palette `map_backdrop_tlut` (native .bss) is read per frame already |
 | actor | actor/anim.c (`Anim_DrawModel`, `Anim_DrawNode`), player.c, npc.c, chest.c, enemy.c, boss.c | node trees, billboard nodes, dlSeq flipbooks (a mesh per list), PRIM tints, texgen |
-| shadow | gfx/shadow.c | decal Z, alpha-only combiner, reversed fog range (its own fog position) |
+| shadow | gfx/shadow.c, gfx/shadow.h | **done** (nd_shadow.c, "Shadows" below) |
 | billboard | map.c `MapObj_DrawBillboards`, `MapObj_DrawAnimTexBillboards` | done (R3): see "Billboards" below |
 | effect (R4) | gfx/sprite_effect.c, gfx/effect.c | many small draws: a texture per template |
 
@@ -253,6 +253,41 @@ collide on the files):
 With `--native map,billboard` against R2's map baselines: ng 762 (+2), tour 7,497 (-7), ending 2,111 (-8),
 battle 1,290 (+2), menu 288. Ticks 693-700 of the throne room (map,billboard) each count 190-195,
 the same as the map alone, and the flames' brightness follows the reference's flicker tick for tick.
+
+## Shadows (R3, nd_shadow.c)
+
+`Shadow_DrawAll` (gfx/shadow.c) calls the common list's setup `D_1000270` once (a 16x16 I8 blob,
+2-cycle, colour 0 / alpha TEX0 x SHADE, fog then alpha blend, Z compare decal without update, fog colour
+black, back faces culled), sets the fog range reversed (`gSPFogPosition(far, near)`: the shade alpha is
+1 near the camera and fades out with distance), then per queued shadow (64 max, 2-24 seen) loads a
+matrix (`Math_MtxFAlignYToVector(floor normal)`, position, `Math_MtxFScaleAxes(scale)`) and draws the
+4-vertex quad `D_1000230`.
+
+- **The mesh**: one, from a native list that calls `D_1000270` and draws the quad, entered with what
+  `Env_ApplyLightSlot` (just before) leaves: bilinear, no TLUT. The fog colour is the material's own.
+- **State**: the reversed fog range and the black fog colour are queued at the site
+  (`nd_fog_position(far, near)`, `nd_fog_color`) whether shadows are native or not: they stay for what
+  is drawn after (effects), as in the frame list.
+- **Ids**: `Shadow_Queue` has no owner argument, but every caller passes its object's `x` (`obj->x`,
+  `p->actor.x`, `s->x`, `player_shadow_pos.x`). shadow.h (P1 only) turns `Shadow_Queue(x, ...)` into
+  `Shadow_QueueOwned(&(x), x, ...)`, which keeps the owner beside the queue: the id is
+  `EL_KIND_SHADOW << 56 | owner address` (no caller file changed; a build after changing shadow.h needs
+  `--full-compile`: the build does not follow headers). R6 inputs: `xform = EL_RDX_ALIGN_Y`, `pos`, `rot`
+  = the floor normal, `scale`.
+- **Decal** (a core change, commit "the RDP's two-sided decal test"): the RDP passes a decal only where
+  `|z - z in memory| <= dz max` (the new and the stored pixel's `|dz/dx| + |dz/dy|`, the larger, rounded
+  up to a power of two). GREATER_OR_EQUAL + bias also drew a shadow floating above the ground (the map
+  tour's player at y 0 over lower ground; on slopes the part of the quad above the ground). Now the
+  renderer copies the depth buffer (`depth_before`) when the first decal comes and again after a depth
+  write, and decal groups test against it in nd.frag (`OPT_DECAL`), in N64 screen-z units
+  (`Draw.fog.w`: depth is near/w, and the N64's screen z is affine in 1/w). The window is kept one N64
+  pixel's slope wide at any picture size. The memory's dz is estimated from the neighbouring depths.
+
+Compare, `--native map,shadow` (baselines in `tests/render_baselines/map_shadow/`, so the map-only
+ones stay as they are): ng 764 (worst 191, the throne room's dither), tour 7,491 (worst 3,291, map 29's
+lava), ending 2,110, battle 1,291, menu 288. Against map alone the shadows add 1 solid pixel per ng
+frame and 3 on battle frame 100; tour frame 30344 (a shadow the RDP hides) is 0. The decal test also
+lowered map alone (tour 7,504 -> 7,501, ending 2,119 -> 2,110: map decals).
 
 ## What is left after R2
 

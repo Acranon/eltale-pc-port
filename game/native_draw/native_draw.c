@@ -38,6 +38,7 @@ const NdKind nd_kinds_table[] = {
     { EL_KIND_MAP, nd_map_attach },
     { EL_KIND_BILLBOARD, nd_billboard_attach },
     { EL_KIND_BACKDROP, nd_backdrop_attach },
+    { EL_KIND_SHADOW, nd_shadow_attach },
     { -1, NULL },
 };
 static unsigned requested = ~0u;

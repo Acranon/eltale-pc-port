@@ -10,6 +10,7 @@ layout(push_constant) uniform Push {
 const uint OPT_THREE_POINT = 1u;  // N64 three-point filtering (else four-point bilinear)
 const uint OPT_FAR_CLIP = 2u;     // the draw crosses the far plane: cut there
 const uint OPT_N64_FOG = 4u;      // the fog factor per vertex as the RSP makes it (else per pixel)
+const uint OPT_DECAL = 8u;        // Z_MODE decal: the RDP's two-sided test against depth_before
 
 const uint RDV_LIGHT = 1u, RDV_TEXGEN = 2u, RDV_TEXGEN_LIN = 4u, RDV_FOG = 8u, RDV_SHADE = 16u;
 
@@ -42,7 +43,7 @@ struct Draw {
     vec4 ambient;
     vec4 lookat_x, lookat_y; // object space, normalized
     uvec4 colors;       // env, prim, fog, blend (RGBA8)
-    vec4 fog;           // fm, fo, the near plane's w (the depth), 0
+    vec4 fog;           // fm, fo, the near plane's w (the depth), N64 screen-z units per unit of depth
     vec4 tile_offset;   // s, t (10.2) for EL_RDM_TILE_SCROLL tiles
 };
 

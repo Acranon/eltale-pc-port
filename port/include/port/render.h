@@ -135,6 +135,8 @@ enum {
     EL_RDX_MATRIX = 0,   /* only the matrix: R6 snaps (or lerps) it */
     EL_RDX_POSITION = 1, /* guPosition(rot x, y, z in degrees, scale, pos) */
     EL_RDX_ROT_RAD = 2,  /* Math_MtxRotScaleTrans(rot x, y, z in radians, scale, pos) */
+    EL_RDX_ALIGN_Y = 3,  /* Math_MtxFAlignYToVector(rot = the up vector x, y, z), pos as its translation,
+                          * then Math_MtxFScaleAxes(scale, scale, scale) (shadows) */
 };
 
 typedef struct ElRdDraw {

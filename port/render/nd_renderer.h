@@ -104,6 +104,7 @@ private:
     Recording::State state = {};
 
     Vulkan::ImageHandle depth;
+    Vulkan::ImageHandle depth_before; // the depth before a decal draw (the RDP's two-sided decal test)
     Vulkan::ImageHandle dump_picture;
     std::string dump_dir, dump_spec;
 };

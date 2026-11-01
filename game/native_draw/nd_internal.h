@@ -24,5 +24,6 @@ extern const NdKind nd_kinds_table[];
 void nd_map_attach(void); /* nd_map.c */
 void nd_billboard_attach(void); /* nd_billboard.c */
 void nd_backdrop_attach(void); /* nd_backdrop.c */
+void nd_shadow_attach(void); /* nd_shadow.c */
 
 #endif
