@@ -102,7 +102,7 @@ def main() -> None:
         sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "decomp/src/libultra/gu").glob("*.c"))
                     if p.name not in ("sinf.c", "cosf.c")]
         if args.audio:
-            sources += ["work/src/game/audio/audio.c", "port/audio/bank.c", "port/audio/aspmain.c", "port/audio/rsp_lle.c"]
+            sources += ["work/src/game/audio/audio.c", "port/audio/bank.c", "port/audio/aspmain.c", "port/audio/rsp_lle.c", "port/rsp/rsp.c"]
             sources += [str(p.relative_to(ROOT)) for p in sorted((ROOT / "work/src/libultra/audio").glob("*.c"))]
     objects: list[Path] = []
     for index, source in enumerate(sources):

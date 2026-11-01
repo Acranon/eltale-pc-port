@@ -7,3 +7,6 @@
 [submodule "third_party/granite"]
 	path = third_party/granite
 	url = https://github.com/Themaister/Granite
+[submodule "third_party/parallel-rdp"]
+	path = third_party/parallel-rdp
+	url = https://github.com/Themaister/parallel-rdp-standalone
