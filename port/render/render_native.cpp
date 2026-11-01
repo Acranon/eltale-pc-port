@@ -28,7 +28,8 @@
 // written as folder/native_cpu_<n>.png, with P1_NATIVE_CPU_FRAME n hash (the hash Port_NoteCpuFrame
 // prints for the same pixels, worked out from what the GPU holds), and the window as shown (menu
 // included) as folder/native_window_<n>.png; the first picture with the menu open as
-// folder/native_menu.png, and the first gameplay picture as folder/native_clear.png.
+// folder/native_menu.png, the first gameplay picture as folder/native_clear.png, and the first picture with a
+// notice over it (F2/F4's "Quick save..." line, top left over the HP meters) as folder/native_notice.png.
 // Granite first (it brings Vulkan's headers through volk, and wants to be first)
 #include "context.hpp"
 #include "device.hpp"
@@ -668,6 +669,10 @@ private:
         uint32_t w = 0, h = 0;
         const Image *scaled = scaled_for_window(*shown_image);
         const Image &img = scaled ? *scaled : *shown_image;
+        // (the third picture with it: ImGui sizes an auto-resized window from the picture before)
+        if (!dump_name && overlay && notice_pictures < 3 && !dump_dir.empty() && menu::notice_shown() &&
+            ++notice_pictures == 3)
+            dump_name = "native_notice";
         render::present_frame(img.get_image(), img.get_width(), img.get_height(), overlay, dump_name ? &rgba : nullptr, &w, &h);
         if (dump_name && !rgba.empty()) {
             const std::string path = dump_dir + "/" + dump_name + ".png";
@@ -718,6 +723,7 @@ private:
     unsigned cpu_count = 0;
     std::string dump_dir;
     bool menu_dumped = false;
+    int notice_pictures = 0;      // pictures shown with a notice (ELTALE_PRESENT_DUMP's native_notice.png)
     bool headless = false;
     // pacing (R6)
     uint64_t vi = 0;         // retraces presented

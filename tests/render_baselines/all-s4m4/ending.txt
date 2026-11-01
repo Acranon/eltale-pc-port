@@ -1,0 +1,11 @@
+# render_compare baseline: ending: solid differing pixels per frame (3x3 rule, 5-bit, 2 steps, shrunk to 1x), and their sum. Numbers only.
+frame_2700 0
+frame_3450 0
+frame_3700 127
+frame_4450 5
+frame_450 0
+frame_6450 113
+frame_7200 0
+frame_8200 475
+frame_9950 1303
+sum 2023

@@ -1,0 +1,10 @@
+# render_compare baseline: alloc: solid differing pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.
+frame_101 3
+frame_105 0
+frame_73 0
+frame_77 0
+frame_81 1
+frame_85 1
+frame_93 0
+frame_97 0
+sum 5

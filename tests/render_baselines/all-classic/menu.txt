@@ -1,0 +1,8 @@
+# render_compare baseline: menu: solid differing pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.
+frame_190 2
+frame_250 3
+frame_400 0
+frame_420 0
+frame_460 0
+frame_620 98
+sum 103

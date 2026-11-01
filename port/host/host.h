@@ -179,6 +179,8 @@ bool take_flash_key();
 Request take_request();
 int take_quick_key();
 void notice(const char *text);
+// a notice is on screen (ELTALE_PRESENT_DUMP's native_notice.png)
+bool notice_shown();
 // The Graphics page's shared rows (menu_graphics.cpp): presets and every switch, the ones the
 // renderer doesn't wire yet shown as such.
 void graphics_page();

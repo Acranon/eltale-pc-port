@@ -26,6 +26,11 @@ equal its 1x pixel. Counted: the N64 pixels whose block differs anywhere (8 bits
 the faults this finds are lines one picture pixel thin). 2D meshes (the compass, the element glows) are drawn at full
 resolution and count, so a baseline holds what they leave.
 
+--shrink (tools/frame_test.py --native --hires): TEST is a whole multiple of REF's size (a dump at a resolution
+scale); each block of it is averaged (a box filter, in 8 bits) into one pixel before the rule. --level N allows N
+5-bit steps a channel instead of 1 (the shrunk picture's edges are blends of MSAA samples, between the reference's
+two sides).
+
 A baseline is numbers only (never pictures): "frame solid_px" lines and a "sum" line. With
 --baseline the run fails (exit 1) if any frame, or the sum, has more solid pixels than the
 baseline allows; --write-baseline writes the current numbers instead.
@@ -42,9 +47,15 @@ LEVEL = 1   # 5-bit steps allowed per channel
 SOLID = 1   # radius of the neighbourhood that must differ too (1 = 3x3)
 
 
-def load(path: Path) -> np.ndarray:
-    im = Image.open(path).convert("RGB")
-    return np.asarray(im, dtype=np.int16) >> 3
+def load(path: Path, shrink_to=None) -> np.ndarray:
+    im = np.asarray(Image.open(path).convert("RGB"), dtype=np.int16)
+    if shrink_to is not None and im.shape[:2] != shrink_to:
+        h, w = shrink_to
+        n = im.shape[0] // h
+        if n < 1 or im.shape[0] != h * n or im.shape[1] != w * n:
+            raise SystemExit(f"{path}: {im.shape[1]}x{im.shape[0]} is not a multiple of {w}x{h}")
+        im = ((im.reshape(h, n, w, n, 3).sum(axis=(1, 3)) + n * n // 2) // (n * n)).astype(np.int16)
+    return im >> 3
 
 
 def erode(mask: np.ndarray, r: int) -> np.ndarray:
@@ -59,10 +70,10 @@ def erode(mask: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
-def compare(a: np.ndarray, b: np.ndarray):
+def compare(a: np.ndarray, b: np.ndarray, level: int = LEVEL):
     if a.shape != b.shape:
         raise SystemExit(f"sizes differ: {a.shape} / {b.shape}")
-    diff = np.abs(a - b).max(axis=2) > LEVEL
+    diff = np.abs(a - b).max(axis=2) > level
     solid = erode(diff, SOLID)
     return diff, solid
 
@@ -136,6 +147,8 @@ def main() -> int:
     ap.add_argument("--vi", action="store_true", help="compare the VI pictures (*.vi.png) instead")
     ap.add_argument("--centre", action="store_true", help="TEST is wider: compare its middle, inside the border")
     ap.add_argument("--blocks", action="store_true", help="2D at a scale: TEST's frame_N.png against its frame_N.1x.png")
+    ap.add_argument("--shrink", action="store_true", help="TEST is bigger by a whole factor: box-filter it to REF's size")
+    ap.add_argument("--level", type=int, default=LEVEL, help=f"5-bit steps allowed a channel (default {LEVEL})")
     args = ap.parse_args()
 
     ps = block_pairs(args.test) if args.blocks else pairs(args.ref, args.test, args.vi)
@@ -155,12 +168,13 @@ def main() -> int:
                 diff_picture(small.astype(np.uint8), diff, diff).resize((small.shape[1] * 2, small.shape[0] * 2),
                                                                         Image.NEAREST).save(args.out / f"{name}.blocks.png")
             continue
-        a, b = load(r), load(t)
+        a = load(r)
+        b = load(t, a.shape[:2] if args.shrink else None)
         x0 = 0
         if args.centre:
             x0 = (b.shape[1] - a.shape[1]) // 2
             b = b[:, x0:x0 + a.shape[1]]
-        diff, solid = compare(a, b)
+        diff, solid = compare(a, b, args.level)
         if args.centre:
             inside = np.zeros(diff.shape, dtype=bool)
             inside[8:-8, 8:-8] = True
@@ -170,7 +184,10 @@ def main() -> int:
         results.append((name, nd, ns))
         print(f"RENDER_COMPARE {args.name or '-'} {name} differ={nd} solid={ns}")
         if args.out and nd:
-            rgb = np.asarray(Image.open(t).convert("RGB"))[:, x0:x0 + a.shape[1]]
+            im = Image.open(t).convert("RGB")
+            if args.shrink:
+                im = im.resize((a.shape[1], a.shape[0]), Image.BOX)
+            rgb = np.asarray(im)[:, x0:x0 + a.shape[1]]
             diff_picture(rgb, diff, solid).save(args.out / f"{name}.diff.png")
     total = sum(s for _, _, s in results)
     worst = max(results, key=lambda x: x[2])
@@ -185,7 +202,8 @@ def main() -> int:
                         f"block differs from the 1x picture, per frame, and their sum. Numbers only.\n")
             else:
                 f.write(f"# render_compare baseline{': ' + args.name if args.name else ''}: solid differing "
-                        f"pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.\n")
+                        f"pixels per frame (3x3 rule, 5-bit, {args.level} step{'s' if args.level > 1 else ''}"
+                        f"{', shrunk to 1x' if args.shrink else ''}), and their sum. Numbers only.\n")
             for name, _, s in results:
                 f.write(f"{name} {s}\n")
             f.write(f"sum {total}\n")

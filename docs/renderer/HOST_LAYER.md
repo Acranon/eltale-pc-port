@@ -134,7 +134,13 @@ tools\play.cmd <rom.z64> [--renderer native]                        # copies bot
       `native_window_N` (the window as shown), `native_menu` (the first picture with the menu),
       `native_clear` (the first gameplay picture).
   - Quick save at VI 1500 and quick load from the title: the same `P1_QUICKSAVE`/`P1_QUICKLOAD`
-    lines as headless.
+    lines as headless. Native also writes the window with the F2 notice over it
+    (`out/host_checks/native-notice/native_notice.png`: `ELTALE_PRESENT_DUMP` writes `native_notice` at the
+    third picture a notice is on, once ImGui has sized its box) and `tools/notice_check.py` prints
+    `NOTICE_CHECK OK WxH text N px in (x0,y0)-(x1,y1) lines=L` (white text in the top-left corner, above the HP
+    meters' numbers). The notice box sits at the top left, a font's 0.6 in, over the top of the HP meter; at
+    1706x960 its text is in (27,33)-(413,82): the start-up hint "F1 or Back: menu..." and under it "Quick saved
+    (slot 0)".
 - New env: `ELTALE_PRESENT_DUMP` (native only). `ELTALE_HIDDEN_WINDOW` also turns the native
   presenter's vsync off, so a hidden window never waits for a display.
 

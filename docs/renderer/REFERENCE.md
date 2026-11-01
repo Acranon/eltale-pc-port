@@ -126,6 +126,9 @@ python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves [--runs
   deleted at the end unless `--keep-bins`. A full run takes about 15 s (30 s with `--twice`).
 - The tour run uses `--frames 300000`, as tests/p1_checks.sh does, so its P1_OS_OK line is the map tour's
   (46b61f5a7d79c61c).
+- Every `ELTALE_*` variable of the caller's environment is left out of the runs (a stray `ELTALE_DUMP_SCALE`,
+  `ELTALE_DUMP_MSAA`, `ELTALE_DUMP_LOOK`, `ELTALE_WIDESCREEN`, `ELTALE_DRAW_DISTANCE`, `ELTALE_RES_SCALE` or
+  `ELTALE_MSAA` would change the pictures): a run gets only its list line's variables and the mode's.
 
 ### tools/render_compare.py
 
@@ -203,11 +206,15 @@ of kinds drawn natively together:
 | `map/` | map objects alone | the loader and materials (R2's numbers, now with the decal test) |
 | `billboard/`, `backdrop/`, `actor/` | the kind alone | a kind's own regressions, not hidden by the map (backdrop is 0 everywhere) |
 | `map+shadow/` | map and shadows | shadows are decals: alone they have no ground to pass against |
+| `all-classic/` | every kind, `--look classic` (`ELTALE_DUMP_LOOK=classic`: the N64 dither) | the Classic preset's look; the nearest to the reference (it dithers too) |
+| `all-s4m4/` | every kind, `--hires 4x4` (scale 4, MSAA 4x), box-filtered to 1x, two 5-bit steps | the high-resolution path (NATIVE_DRAW.md, "Scaled pictures against the reference") |
+| `wide/` | every kind at 16:9 (`--wide`), the middle against the 4:3 native pictures | R7a's widescreen |
 
 Runs: every run of `tests/render_frames.txt` (47 frames) and `tests/render_frames_actor.txt` (chests:
 7 frames of the map tour with chests and point-sampled NPCs), 54 frames per set, and in `all/` also
 `tests/render_frames_effects.txt` (R4: spells and spirit, 14 frames) and `tests/render_frames_2d.txt` (R5: the
-English title, fonts, intro, save menu, compass, enemy panel, menus and ending pages, 45 frames). Its reference hashes are in
+English title, fonts, intro, save menu, compass, enemy panel, menus and ending pages, 45 frames) and
+`tests/render_frames_panels.txt` (the spell input and element allocation panels, 16 frames). Its reference hashes are in
 `tests/render_ref.txt` too: `frame_test.py` without `--native` runs it after `tests/render_frames.txt`.
 
 `frame_test.py --native` with no KINDS means `all` (NATIVE_KINDS in frame_test.py: add a kind there

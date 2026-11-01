@@ -11,7 +11,10 @@
 #     Pak manager, Quit), P1_RESET pak-manager, the Pak manager's P1_CPU_FRAME lines; native also
 #     P1_NATIVE_CPU_FRAME (the same screens read back from the GPU: the same hashes) and PNGs in
 #     out/host_checks/native (ELTALE_PRESENT_DUMP); rt64 "[rt64] overlay drawn" (the menu reached RT64);
-#   quick save and load: P1_QUICKSAVE and P1_QUICKLOAD as tests/p1_checks.sh's.
+#   quick save and load: P1_QUICKSAVE and P1_QUICKLOAD as tests/p1_checks.sh's; native also the F2 notice
+#     ("Quick saved...", an ImGui line top left, over the HP meters) read back from the window as
+#     out/host_checks/native-notice/native_notice.png, and NOTICE_CHECK OK when the overlay is there
+#     (tools/notice_check.py: light text on the darkened box in the top-left corner).
 #   native also: tools/lifetime_test.py (a plain Reset in play in a hidden window, and full buffers
 #     headless; NATIVE_DRAW.md "Resets and full buffers"): a line per case, OK or FAIL.
 set -u
@@ -40,8 +43,14 @@ for r in ${3:-rt64 native}; do
     rm -rf "$d"
     echo "$r quick save and load:"
     d=$(data)
-    ELTALE_DATA_DIR=$d ELTALE_QUICK_SAVE_AT=1500 run --renderer "$r" --fast --frames 800 \
+    notice=out/host_checks/$r-notice
+    rm -rf "$notice"
+    mkdir -p "$notice"
+    ELTALE_PRESENT_DUMP=$notice ELTALE_DATA_DIR=$d ELTALE_QUICK_SAVE_AT=1500 run --renderer "$r" --fast --frames 800 \
         --input tests/quicksave-walk.input | grep 'P1_QUICKSAVE'
+    if [ "$r" = native ]; then
+        python tools/notice_check.py "$notice/native_notice.png"
+    fi
     ELTALE_DATA_DIR=$d ELTALE_QUICK_LOAD_AT=100 run --renderer "$r" --fast --frames 200 \
         --input tests/intro-to-title.input | grep 'P1_QUICKLOAD'
     rm -rf "$d"

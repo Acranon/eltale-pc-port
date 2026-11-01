@@ -1,0 +1,11 @@
+# Frames for the battle and spirit panels (docs/renderer/NATIVE_DRAW.md, "2D"), same format as
+# tests/render_frames.txt. tools/frame_test.py runs it after tests/render_frames_2d.txt.
+# spellin: the battle-stuck save with tests/battle-spells.input: the spell input panel (the cross of element
+#          slots with the four "not usable" plates, and the spell's name plate over the player) before each
+#          spell (530 Rock, 790 Wind Cutter, 1050 Fire Ball with a "Miss!", 1310 and 1320 Water Pillar), the field
+#          with no panel and a spell's glow (1566), the panel fading back in (1570) and open again (1580).
+# alloc:   the compass-spirit save with tests/spirit-haystack.input: the wipe into the spirit's picture (73, 77),
+#          the "Select an element" allocation panel opening (81, 85), a point going into an element (93, 97: the
+#          element and its HUD gem glow), the panel fading out (101) and gone (105).
+spellin | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 --frames 1600 --input tests/battle-spells.input | 530 790 1050 1310 1320 1566 1570 1580
+alloc   | @save=compass-spirit ELTALE_QUICK_LOAD_AT=100 --frames 120 --input tests/spirit-haystack.input | 73 77 81 85 93 97 101 105

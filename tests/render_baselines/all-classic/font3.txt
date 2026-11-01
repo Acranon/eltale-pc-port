@@ -1,0 +1,3 @@
+# render_compare baseline: font3: solid differing pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.
+frame_600 3
+sum 3

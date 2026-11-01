@@ -1,0 +1,10 @@
+# render_compare --blocks baseline: alloc: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_101 1991
+frame_105 1367
+frame_73 684
+frame_77 689
+frame_81 689
+frame_85 688
+frame_93 688
+frame_97 2055
+sum 8851
