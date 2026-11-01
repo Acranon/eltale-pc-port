@@ -101,6 +101,10 @@ void controls_page() {
     Controls &c = settings.controls;
     if (ImGui::SliderInt("Mouse camera speed", &c.mouse_sensitivity, 10, 400, "%d%%")) save_settings();
     if (ImGui::Checkbox("Invert the camera's up and down", &c.invert_y)) save_settings();
+    if (ImGui::Checkbox("Mouse in menus", &c.mouse_menus)) save_settings();
+    help("Point at a menu's options, items and answers to move the game's cursor there; a left click picks (A), a "
+         "right click backs out (B). Click an element crystal at the bottom left for its spell list, then a spell's "
+         "name to add it and the middle name to cast.");
     help("Mouse camera: hold the right button and move the mouse (or turn mouse look on) to turn the view, the "
          "wheel zooms, the middle button gives the camera back to the game. Movement follows the view. Not in "
          "scenes the game films itself.");
@@ -320,6 +324,9 @@ ImDrawData *frame(bool tick) {
     const bool map = automap::wants_overlay();
     if (!up || (!open && !hint && note.empty() && !map)) return nullptr;
     renderer()->imgui_new_frame();
+    // the cursor is ImGui's only while the menu is open (closed: input.cpp shows and hides it)
+    if (open) ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    else ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     if (map) automap::draw(); // (under the menu: its own draw lists)
