@@ -24,7 +24,7 @@ index cf65666..ce7b699 100644
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
 diff --git a/src/game/actor/anim.c b/src/game/actor/anim.c
-index fe38701..11eb262 100644
+index fe38701..93d1a37 100644
 --- a/src/game/actor/anim.c
 +++ b/src/game/actor/anim.c
 @@ -1,3 +1,6 @@
@@ -72,7 +72,7 @@ index fe38701..11eb262 100644
      s32 i;
      u16 frame;
      AnimNode* anims;
-@@ -114,7 +123,7 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
+@@ -114,21 +123,27 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
      scale.x = arg1->scale;
      scale.y = arg1->scale;
      scale.z = arg1->scale;
@@ -80,8 +80,20 @@ index fe38701..11eb262 100644
 +    anims = (AnimNode *)(uptr)arg2->nodes;
      frame = arg1->frame;
      total = arg1->ticks;
++#ifdef ELTALE_P1_OS
++    nd_actor_begin(arg1, arg2, flags); /* the nodes below are this actor's (EL_KIND_ACTOR) */
++#endif
      for (i = 0; i < arg2->nodeCount; i++) {
-@@ -128,7 +137,7 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+         if (anims[i].parent == 0) {
+             Anim_DrawNode(&mtx, scale, flags, i, frame, total, arg2, anims, frameData);
+         }
+     }
++#ifdef ELTALE_P1_OS
++    nd_actor_end();
++#endif
+ }
+ 
+ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32 total, AnimSet* set,
                     AnimNode* anims, struct GfxFrameData* buf) {
      s32 fr;
      s32 i;
@@ -90,7 +102,7 @@ index fe38701..11eb262 100644
      s32* tbl;
      MtxF mtx;
      Struct_80020568_xf xf;
-@@ -174,12 +183,12 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -174,18 +189,30 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
          anim_node_world_positions[anim_node_position_count].z = mtx.mf[3][2];
          anim_node_position_count++;
      }
@@ -98,15 +110,33 @@ index fe38701..11eb262 100644
 -    tbl = anim->dlSeq;
 +    dls = (u32 *)(uptr)set->dls;
 +    tbl = (s32 *)(uptr)anim->dlSeq;
++#ifdef ELTALE_P1_OS
++    u32 nd_dl = 0; /* the list this node calls (native_draw/nd_actor.c) */
++#endif
      if (tbl == NULL) {
          i = anim->dl;
          if (i != -1) {
 -            if (dls[i] != NULL) {
 +            if (dls[i] != 0) {
                  gSPDisplayList(gfx_dl_head++, dls[i]);
++#ifdef ELTALE_P1_OS
++                nd_dl = dls[i];
++#endif
              }
          }
-@@ -194,6 +203,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+     } else {
+         gSPDisplayList(gfx_dl_head++, dls[tbl[total % anim->dlSeqLen]]);
++#ifdef ELTALE_P1_OS
++        nd_dl = dls[tbl[total % anim->dlSeqLen]];
++#endif
+     }
++#ifdef ELTALE_P1_OS
++    nd_actor_node(idx, anim->flags, &buf->mtx[gfx_mtx_index - 1], nd_dl, frame, total);
++#endif
+     for (i = 0; i < set->nodeCount; i++) {
+         if (anims[i].parent == idx + 1) {
+             Anim_DrawNode(&mtx, scale, flags, i, frame, total, set, anims, buf);
+@@ -194,6 +221,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  }
  
  void Anim_AdvanceFrame(s32 arg0, Actor* arg1, AnimSet* arg2) {
@@ -117,7 +147,7 @@ index fe38701..11eb262 100644
  
      if (temp_v0 >= arg2->length) {
 diff --git a/src/game/actor/anim.h b/src/game/actor/anim.h
-index 66c2ccd..21d9346 100644
+index 66c2ccd..41f83a2 100644
 --- a/src/game/actor/anim.h
 +++ b/src/game/actor/anim.h
 @@ -17,17 +17,20 @@ typedef struct AnimNode {
@@ -145,7 +175,7 @@ index 66c2ccd..21d9346 100644
  } AnimSet; /* 0xC bytes */
  
  /* .bss 8008BFC0..8008C040 */
-@@ -43,4 +46,15 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -43,4 +46,17 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  void Anim_AdvanceFrame(s32 arg0, struct Actor *arg1, AnimSet *arg2);
  void Anim_ApplyPivotOffset(MtxF *arg0, AnimNode *arg1);
  
@@ -156,6 +186,8 @@ index 66c2ccd..21d9346 100644
 +#ifdef ELTALE_P1_OS
 +s16 Port_AnimSetLength(AnimSet *set);
 +#define ANIM_SET_LENGTH(set) Port_AnimSetLength(set)
++/* Port: actor models drawn natively (Anim_DrawModel/Anim_DrawNode and the actor draw functions) */
++#include "game/native_draw/nd_actor.h"
 +#else
 +#define ANIM_SET_LENGTH(set) ((set)->length)
 +#endif
@@ -696,7 +728,7 @@ index 647c971..9c10f84 100644
                  nnsc_retrace_count++;
                  nnScEventBroadcast(sc, &sc->retraceMsg);
 diff --git a/src/game/enemy/boss.c b/src/game/enemy/boss.c
-index 8b0df2f..e72d3e6 100644
+index 8b0df2f..e9fbd0f 100644
 --- a/src/game/enemy/boss.c
 +++ b/src/game/enemy/boss.c
 @@ -1,3 +1,6 @@
@@ -721,7 +753,7 @@ index 8b0df2f..e72d3e6 100644
                  size = end - start;
                  Dma_ReadRom(start, D_802A7BC0, size);
                  Boss_Spawn(i, p->x, p->z, p->angle, &boss_field_record);
-@@ -94,7 +103,11 @@ void Boss_Draw(struct GfxFrameData *arg0) {
+@@ -94,8 +103,15 @@ void Boss_Draw(struct GfxFrameData *arg0) {
      AnimSet *temp;
  
      if (boss_field_index != 0) {
@@ -731,9 +763,13 @@ index 8b0df2f..e72d3e6 100644
          temp = D_803ABA58[boss_field_record.actor.animSetIndex];
 +#endif
          gDPSetTextureFilter(gfx_dl_head++, G_TF_BILERP);
++#ifdef ELTALE_P1_OS
++        nd_actor_filter(G_TF_BILERP);
++#endif
          Anim_DrawModel(1, &p->actor, &temp[boss_field_record.actor.animIndex], arg0);
          Anim_AdvanceFrame(p->actor.animStep, &p->actor, &temp[p->actor.animIndex]);
-@@ -174,12 +187,20 @@ void Boss_BeginEncounter(s32 arg0) {
+         if (p->actor.stats->unk0 != 2) {
+@@ -174,12 +190,20 @@ void Boss_BeginEncounter(s32 arg0) {
      u8 *dst;
      s32 i;
  
@@ -754,7 +790,7 @@ index 8b0df2f..e72d3e6 100644
      dst = text_message_buf;
      for (i = 0x4B0; i != 0; i--) {
          *dst++ = *src++;
-@@ -199,7 +220,11 @@ void Boss_HandleDefeat(s32 arg0) {
+@@ -199,7 +223,11 @@ void Boss_HandleDefeat(s32 arg0) {
      s32 i;
  
      if (arg0 == 7) {
@@ -768,7 +804,7 @@ index 8b0df2f..e72d3e6 100644
          for (i = 0x20; i != 0; i--) {
              *dst++ = *src++;
 diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
-index 481f713..af05b81 100644
+index 481f713..63183e8 100644
 --- a/src/game/enemy/enemy.c
 +++ b/src/game/enemy/enemy.c
 @@ -1,3 +1,4 @@
@@ -785,7 +821,16 @@ index 481f713..af05b81 100644
                  n--;
              }
          }
-@@ -124,7 +125,7 @@ void Enemy_DrawAll(struct GfxFrameData *arg0) {
+@@ -118,13 +119,16 @@ void Enemy_DrawAll(struct GfxFrameData *arg0) {
+     enemy_drawn_count = 0;
+     list = enemy_drawn_list;
+     gDPSetTextureFilter(gfx_dl_head++, G_TF_BILERP);
++#ifdef ELTALE_P1_OS
++    nd_actor_filter(G_TF_BILERP);
++#endif
+     n = enemy_count;
+     e = enemy_slots;
+     while (n != 0) {
          obj = &e->actor;
          if (e->actor.animSetIndex != -1) {
              y = obj->y;
@@ -794,7 +839,7 @@ index 481f713..af05b81 100644
              if (obj->stats->unk0 == 1) {
                  h = obj->stats->body_height * obj->scale;
                  if (y < player_state.actor.y) {
-@@ -157,6 +158,9 @@ void Enemy_LoadAreaSet(void) {
+@@ -157,6 +161,9 @@ void Enemy_LoadAreaSet(void) {
      start = enemy_area_set->start;
      end = enemy_area_set->end;
      Dma_ReadRom(start, D_8020E6F0, end - start);
@@ -804,7 +849,7 @@ index 481f713..af05b81 100644
  }
  
  void Enemy_RemoveAll(void) {
-@@ -277,20 +281,20 @@ void Enemy_StateIdle(Actor *obj, Enemy *e, AnimSet *arg2) {
+@@ -277,20 +284,20 @@ void Enemy_StateIdle(Actor *obj, Enemy *e, AnimSet *arg2) {
              e->type = 1;
              e->approach_cycles_left = 4;
              if (battle_flags & 0x100) {
@@ -829,7 +874,7 @@ index 481f713..af05b81 100644
                  Anim_SetCurrentAndNext(obj, 1, 10, 1, 10, 1);
              }
          }
-@@ -328,9 +332,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
+@@ -328,9 +335,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
                  return;
              }
              if (battle_flags & 0x100) {
@@ -841,7 +886,7 @@ index 481f713..af05b81 100644
              }
          } else {
              v = Enemy_ChooseAttack(e, obj);
-@@ -345,9 +349,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
+@@ -345,9 +352,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
                  return;
              }
              if (battle_flags & 0x100) {
@@ -853,7 +898,7 @@ index 481f713..af05b81 100644
              }
          }
      }
-@@ -451,9 +455,9 @@ void Enemy_StateMeleeAttack(Actor *obj, Enemy *e, AnimSet *anims) {
+@@ -451,9 +458,9 @@ void Enemy_StateMeleeAttack(Actor *obj, Enemy *e, AnimSet *anims) {
                  a = e->selected_attack;
                  e->attack_phase++;
                  if (a->next_anim_index == -1) {
@@ -865,7 +910,7 @@ index 481f713..af05b81 100644
                      Anim_SetCurrentAndNext(obj, a->end_anim_index, 1, 0, 1, 1);
                      Enemy_GetAnimStep(obj, &enemy_temp_vec);
                  }
-@@ -490,7 +494,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
+@@ -490,7 +497,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
                  a = e->selected_attack;
                  e->attack_phase++;
                  if (a->next_anim_index == -1) {
@@ -874,7 +919,7 @@ index 481f713..af05b81 100644
                  } else {
                      e->attack_phase++;
                      e->state_timer = a->unk6;
-@@ -522,7 +526,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
+@@ -522,7 +529,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
              if (e->state_timer == 0) {
                  a = e->selected_attack;
                  e->attack_phase--;
@@ -883,7 +928,7 @@ index 481f713..af05b81 100644
                  Anim_SetCurrentAndNext(obj, a->end_anim_index, 1, 0, 1, 1);
              }
              if (e->state_timer <= 0) {
-@@ -548,7 +552,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
+@@ -548,7 +555,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
  
      e->flags &= ~0x10;
      dist = sqrtf((player_state.actor.x - obj->x) * (player_state.actor.x - obj->x) + (player_state.actor.z - obj->z) * (player_state.actor.z - obj->z)) - D_8007AA84->body_radius * player_state.actor.scale;
@@ -892,7 +937,7 @@ index 481f713..af05b81 100644
      for (i = 0; i < e->def->attack_count; i++) {
          list[i] = sel++;
      }
-@@ -605,7 +609,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
+@@ -605,7 +612,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
          sel = NULL;
      }
      if (e->def->flags & 4) {
@@ -901,7 +946,7 @@ index 481f713..af05b81 100644
      }
      e->selected_attack = sel;
      return sel;
-@@ -636,7 +640,7 @@ void Enemy_StartAttack(Enemy *e, Actor *obj, EnemyAttack *arg2) {
+@@ -636,7 +643,7 @@ void Enemy_StartAttack(Enemy *e, Actor *obj, EnemyAttack *arg2) {
          e->state_timer = 1;
      }
      if (battle_flags & 0x100) {
@@ -910,7 +955,7 @@ index 481f713..af05b81 100644
      }
  }
  
-@@ -717,7 +721,7 @@ void Enemy_Move(s32 clamp, f32 dx, f32 dz, Actor *obj, Enemy *ai) {
+@@ -717,7 +724,7 @@ void Enemy_Move(s32 clamp, f32 dx, f32 dz, Actor *obj, Enemy *ai) {
  void Enemy_GetAnimStep(Actor *obj, Vec3f *out) {
      AnimSet *anims;
  
@@ -919,7 +964,7 @@ index 481f713..af05b81 100644
      Anim_UpdateRootMotion(obj, &anims[obj->animIndex], obj->scale);
      out->x = -obj->unk44;
      out->y = obj->unk4C;
-@@ -832,7 +836,7 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
+@@ -832,7 +839,7 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
      Enemy *enemies;
  
      obj = &enemy_slots[idx].actor;
@@ -928,7 +973,7 @@ index 481f713..af05b81 100644
      if (enemy_slots[idx].hp) {
          if (dmg) {
              if (!(flags & 0x8000)) {
-@@ -891,10 +895,10 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
+@@ -891,10 +898,10 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
              obj->animFlags |= 2;
          }
          if (battle_flags & 0x100) {
@@ -941,7 +986,7 @@ index 481f713..af05b81 100644
              Anim_SetCurrentAndNext(obj, enemy_slots[idx].def->hurt_anim_index, 10, 0, 1, 1);
          }
      }
-@@ -943,11 +947,13 @@ void Enemy_ClearAttackScript(void) {
+@@ -943,11 +950,13 @@ void Enemy_ClearAttackScript(void) {
      enemy_script_cmd = 0;
  }
  
@@ -960,7 +1005,7 @@ index 481f713..af05b81 100644
  }
  
  #ifdef NON_MATCHING
-@@ -1000,7 +1006,7 @@ void Enemy_RunAttackScript(void) {
+@@ -1000,7 +1009,7 @@ void Enemy_RunAttackScript(void) {
                  enemy_temp_vec.y = d->scale_y;
                  m = enemy_script_enemy->selected_attack->attack_code;
                  if (m & 0x8000) {
@@ -1288,6 +1333,85 @@ index b10f0fe..c7821f6 100644
  extern ColorRGBA8 fade_damage_flash[4];
  
  void Fade_Init(void);
+diff --git a/src/game/gfx/shadow.c b/src/game/gfx/shadow.c
+index 3c20f64..6243bed 100644
+--- a/src/game/gfx/shadow.c
++++ b/src/game/gfx/shadow.c
+@@ -1,6 +1,10 @@
+ #include "game/gfx/shadow.h"
+ #include "game/core/main.h"
+ #include "game/math/math.h"
++#ifdef ELTALE_P1_OS
++#include "game/native_draw/native_draw.h"
++#include "game/native_draw/nd_shadow.h"
++#endif
+ 
+ /*
+  * Shadows: a 64-entry queue of floor-aligned quads under objects, drawn in one pass.
+@@ -15,6 +19,19 @@ s32 shadow_count;
+ extern Gfx D_1000270[];
+ extern Vtx D_1000230[];
+ 
++#ifdef ELTALE_P1_OS
++/* Port: who queued each shadow (shadow.h's Shadow_Queue macro), for the native renderer's ids */
++static const void *shadow_owner[0x40];
++
++#undef Shadow_Queue
++void Shadow_QueueOwned(const void *owner, f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz, f32 scale) {
++    if ((u32)shadow_count < 0x40) {
++        shadow_owner[shadow_count] = owner;
++    }
++    Shadow_Queue(x, y, z, rx, ry, rz, scale);
++}
++#endif
++
+ void Shadow_Queue(f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz, f32 scale) {
+     ShadowEntry* p;
+ 
+@@ -38,6 +55,12 @@ void Shadow_DrawAll(GfxFrameData* arg0) {
+     if (n != 0) {
+         gSPDisplayList(gfx_dl_head++, D_1000270);
+         gSPFogPosition(gfx_dl_head++, gfx_fog_far, gfx_fog_near);
++#ifdef ELTALE_P1_OS
++        /* Port: the state queued here (D_1000270's fog colour, the reversed fog range) stays for
++         * what is drawn after, native or not */
++        nd_fog_color(0, 0, 0, 0xFF);
++        nd_fog_position(gfx_fog_far, gfx_fog_near);
++#endif
+     }
+     while (n != 0) {
+         Math_MtxFAlignYToVector(&mf, p->rx, p->ry, p->rz);
+@@ -50,6 +73,13 @@ void Shadow_DrawAll(GfxFrameData* arg0) {
+         gfx_mtx_index++;
+         gSPVertex(gfx_dl_head++, D_1000230, 4, 0);
+         gSP2Triangles(gfx_dl_head++, 0, 1, 2, 0, 1, 3, 2, 0);
++#ifdef ELTALE_P1_OS
++        if (ND_ON(EL_KIND_SHADOW)) {
++            s32 slot = p - shadow_queue;
++            nd_shadow_draw(shadow_owner[slot], slot, &arg0->mtx[gfx_mtx_index - 1], p->x, p->y, p->z, p->rx, p->ry,
++                           p->rz, p->scale);
++        }
++#endif
+         n--;
+         p++;
+     }
+diff --git a/src/game/gfx/shadow.h b/src/game/gfx/shadow.h
+index 6f74726..14e72c1 100644
+--- a/src/game/gfx/shadow.h
++++ b/src/game/gfx/shadow.h
+@@ -23,4 +23,12 @@ extern s32 shadow_count;
+ void Shadow_Queue(f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz, f32 scale);
+ void Shadow_DrawAll(struct GfxFrameData *arg0);
+ 
++#ifdef ELTALE_P1_OS
++/* Port: every caller passes its object's x (obj->x, p->actor.x, s->x, player_shadow_pos.x), so its
++ * address names the owner: the native renderer's stable id for the shadow (nd_shadow.c). The queue
++ * itself is unchanged. */
++void Shadow_QueueOwned(const void *owner, f32 x, f32 y, f32 z, f32 rx, f32 ry, f32 rz, f32 scale);
++#define Shadow_Queue(x, ...) Shadow_QueueOwned(&(x), (x), __VA_ARGS__)
++#endif
++
+ #endif
 diff --git a/src/game/input/input.c b/src/game/input/input.c
 index cc5330a..975387d 100644
 --- a/src/game/input/input.c
@@ -1600,7 +1724,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..8fc6bb4 100644
+index ebb5c68..422f1e2 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -1844,16 +1968,26 @@ index ebb5c68..8fc6bb4 100644
      mapobj_scrolltex_offset += 2;
  }
  
-@@ -645,7 +705,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +705,17 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
 -    gSPDisplayList(gfx_dl_head++, map_backdrop_defs[env_area_settings->backdropId].dl);
 +    gSPDisplayList(gfx_dl_head++, (Gfx *)(uintptr_t)map_backdrop_defs[env_area_settings->backdropId].dl_addr);
++#ifdef ELTALE_P1_OS
++    /* Port: the native renderer's backdrop (nd_backdrop.c); the caller drops the commands above
++     * (ND_DL_END(EL_KIND_BACKDROP) in Gfx_BuildFrameDisplayList) */
++    if (ND_ON(EL_KIND_BACKDROP)) {
++        void nd_backdrop_draw(int which, const void *mtx, uint32_t dl, int r, int g, int b, float x, float y, float z);
++        nd_backdrop_draw(env_area_settings->backdropId, &arg0->mtx[gfx_mtx_index - 1],
++                         map_backdrop_defs[env_area_settings->backdropId].dl_addr, D_80084B60, D_80084B64, D_80084B68,
++                         camera_state.eyeX, camera_state.eyeY - 10.0f, camera_state.eyeZ);
++    }
++#endif
  }
  
  void MapObjAnim_ClearAll(void) {
-@@ -801,6 +861,9 @@ void MapObj_DrawBillboards(GfxFrameData *arg0, s32 count, s32 type, MapObj **lis
+@@ -801,6 +871,9 @@ void MapObj_DrawBillboards(GfxFrameData *arg0, s32 count, s32 type, MapObj **lis
                      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
                      gfx_mtx_index++;
                      gSPDisplayList(gfx_dl_head++, dl2);
@@ -1863,7 +1997,7 @@ index ebb5c68..8fc6bb4 100644
                      c = &mapobj_billboard_normals[(s32)s->angle];
                      Shadow_Queue(s->x, s->y, s->z, c->x, c->y, c->z, 8.0f);
                      D_8007C2A0++;
-@@ -932,9 +995,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
+@@ -932,9 +1005,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
              s = p->obj;
              p->spinAngle -= 0.015707963267948967;
              Math_MtxRotScaleTrans(&arg0->mtx[gfx_mtx_index], 0.0f, p->yawDegrees * 0.017453292519943295, p->spinAngle, s->scale, s->x, s->y, s->z);
@@ -1879,7 +2013,7 @@ index ebb5c68..8fc6bb4 100644
              D_8007C2A0++;
          }
          p++;
-@@ -951,8 +1020,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -951,8 +1030,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
      MapObj *s;
  
      idx = type - 0x11;
@@ -1894,7 +2028,7 @@ index ebb5c68..8fc6bb4 100644
      first = 0;
      for (; count != 0; count--) {
          s = *list++;
-@@ -967,6 +1042,10 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -967,6 +1052,10 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
              gfx_mtx_index++;
              gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, mapobj_animtex_alpha[s->model & 3]);
              gSPDisplayList(gfx_dl_head++, dl);
@@ -1905,7 +2039,7 @@ index ebb5c68..8fc6bb4 100644
              s->model++;
              D_8007C2A0++;
          }
-@@ -1040,6 +1119,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -1040,6 +1129,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;
@@ -2019,7 +2153,7 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..36ced82 100644
+index 89b373a..aab6088 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
 @@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
@@ -2058,7 +2192,27 @@ index 89b373a..36ced82 100644
                      obj->rot = npc->homeAngle;
                      Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
                  }
-@@ -180,7 +180,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+@@ -154,6 +154,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+     AnimSet *anims;
+ 
+     npc_drawn_count = 0;
++#ifdef ELTALE_P1_OS
++    nd_actor_filter(G_TF_BILERP); /* the player's setup list or the map's (chests keep the last NPC's) */
++#endif
+     i = npc_count;
+     npc = npc_slots;
+     list = npc_drawn_list;
+@@ -165,6 +168,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+         if (dist < 90000.0f) {
+             filter = (dist < 20000.0f) ? G_TF_BILERP : G_TF_POINT;
+             gDPSetTextureFilter(gfx_dl_head++, filter);
++#ifdef ELTALE_P1_OS
++            nd_actor_filter(filter);
++#endif
+             anims = npc->def->anim_sets;
+             Anim_DrawModel(0, obj, &anims[obj->animIndex], arg0);
+             Anim_AdvanceFrame(obj->animStep, obj, &anims[obj->animIndex]);
+@@ -180,7 +186,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
@@ -2071,7 +2225,7 @@ index 89b373a..36ced82 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
-@@ -392,7 +397,7 @@ void Npc_EndTalk(s32 idx) {
+@@ -392,7 +403,7 @@ void Npc_EndTalk(s32 idx) {
          npc->timer = Math_Rand(30) + 30;
      } else if (npc->def->flags & 2) {
          npc->state = 0;
@@ -2100,7 +2254,7 @@ index e16ca6a..cb2771f 100644
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..9491f54 100644
+index c8c3fd5..3e0d6f2 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
 @@ -1,3 +1,6 @@
@@ -2147,7 +2301,17 @@ index c8c3fd5..9491f54 100644
                      player_front_chest = NULL;
                  } else if (player_front_text_spot != NULL) {
                      TextSpot_LoadMessage(player_front_text_spot);
-@@ -1171,6 +1177,9 @@ void Player_MoveRun(f32 sx, f32 sz, Actor *a, Player *p) {
+@@ -464,6 +470,9 @@ void Player_Draw(struct GfxFrameData *arg0) {
+     Player *p = &player_state;
+ 
+     gSPDisplayList(gfx_dl_head++, D_10000A0);
++#ifdef ELTALE_P1_OS
++    nd_actor_filter(G_TF_BILERP); /* D_10000A0's */
++#endif
+     Env_ApplyLightSlot(player_light_slot);
+     if (player_state.state == 0xA || p->state == 0xB) {
+         flag = 1;
+@@ -1171,6 +1180,9 @@ void Player_MoveRun(f32 sx, f32 sz, Actor *a, Player *p) {
  }
  
  void Player_GetAnimMotion(Actor *arg0, AnimSet *arg1, Vec3f *arg2) {
@@ -2157,7 +2321,7 @@ index c8c3fd5..9491f54 100644
      Player_LoadAnim(arg0);
      Anim_UpdateRootMotion(arg0, &arg1[arg0->animIndex], arg0->scale);
      arg2->x = -arg0->unk44;
-@@ -1494,10 +1503,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
+@@ -1494,10 +1506,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
      arg1->animFlags |= 1;
  }
  
@@ -2170,7 +2334,7 @@ index c8c3fd5..9491f54 100644
      arg0->state = 0xB;
      arg0->state_timer = 0x5A;
      arg1->animFlags |= 1;
-@@ -1843,7 +1852,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
+@@ -1843,7 +1855,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
      u16 t;
  
      a->stats->mp -= D_800C186E[p->spell_input_count];
@@ -2179,7 +2343,7 @@ index c8c3fd5..9491f54 100644
      if (e->target_select_handler_index == 2) {
          p->flags |= 4;
          anim = 0x17;
-@@ -1852,7 +1861,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
+@@ -1852,7 +1864,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
          anim = 3;
          next = player_idle_anim;
      }

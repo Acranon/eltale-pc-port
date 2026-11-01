@@ -181,6 +181,31 @@ Kinds and the files they touch (to run them in parallel with few conflicts):
 | billboard | map.c `MapObj_DrawBillboards`, `MapObj_DrawAnimTexBillboards` | done (R3): see "Billboards" below |
 | effect (R4) | gfx/sprite_effect.c, gfx/effect.c | many small draws: a texture per template |
 
+### Backdrop (R3, nd_backdrop.c)
+
+- **Draw site**: `Map_DrawBackdrop` (map.c) calls `nd_backdrop_draw(backdropId, Mtx, dl_addr, env r g b,
+  eye x, eye y - 10, eye z)` after queuing its list; `Gfx_BuildFrameDisplayList` already wraps the call
+  in `ND_DL_BEGIN/END(EL_KIND_BACKDROP)`. The item's id is `EL_KIND_BACKDROP << 56 | backdropId`; its
+  inputs are `EL_RDX_ROT_RAD` with no rotation, scale 1 and the eye translation (R6 interpolates the
+  eye).
+- **The list is self-contained**: segment 1's 0x01001300 / 0x01002410 / 0x01003630 (three lists for
+  eight backdrops) sets 1-cycle, `TEX0 x ENV`, render mode 0f0a4000, clears Z/cull/fog/lighting
+  (SHADE|SMOOTH only), and loads 8 CI8 strips from 0x8007C6B0 + n*0x800 (`map_backdrop_tex`) and the
+  TLUT from 0x800806B0 (`map_backdrop_tlut`), then sets 2-cycle again. So the entry list is just the
+  frame's 2-cycle. Texture perspective is never set by the game (F3DEX's start value stays): the
+  loader's state gives the same picture as the reference.
+- **ENV** is the draw's (`D_80084B60..68`): sent with `nd_env_color` just before the item; the
+  following `Env_ApplyLightSlot` sends the light slot's again, as in the frame list.
+- **Palette fade**: `map_backdrop_tlut` is a native object (host order); the loader reads it at the end
+  of each tick and sends it when it changed (`Env_StepPaletteFade`). A new backdrop's texture arrives
+  by ROM DMA into `map_backdrop_tex`, which drops the mesh (`nd_forget`).
+- **Map 29's rotating buffers** do not feed it: the backdrop lists load only the two addresses above
+  (`D_80124E00` and `D_80081AB0` are not referenced by them).
+- **Compare** (`--native backdrop`, the backdrop alone): 0 solid pixels in every run (ng 0 frames
+  with a backdrop; differ counts tour 984, ending 717, battle 461, menu 347, all the reference's dither
+  and single pixels on the cylinder's lower edge). `--native map,backdrop` (the baselines): ng 760, tour
+  7,504, ending 2,119, battle 1,285, menu 288, the same as map alone (battle 3 fewer).
+
 map.c is shared by backdrop and billboard (different functions: merges are clean if each keeps to
 its own). The loader has no 2D yet: texture rectangles and fill rectangles (R5) need native quads,
 not lists.
@@ -231,7 +256,7 @@ the same as the map alone, and the flames' brightness follows the reference's fl
 
 ## What is left after R2
 
-- The other kinds (R3-R5); under `--renderer native` only map objects draw (the rest of the frame is
+- The other kinds (R3-R5); under `--renderer native` only map objects and the backdrop draw (the rest of the frame is
   the clear colour).
 - Pictures between ticks (R6): the recording keeps what it needs (ids, inputs); `render` draws one.
 - Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
