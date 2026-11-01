@@ -132,8 +132,9 @@ static const char *read_file(const char *path, QuickSave *q) {
     if (n < HEADER_BYTES || memcmp(buf, "ELTQUICK", 8)) return "not a quick save";
     if ((buf[8] | buf[9] << 8) != FORMAT_VERSION) return "a quick save of another format";
     u32 pc_bytes = buf[10] | buf[11] << 8, record_bytes = get32(buf + 12);
-    if (pc_bytes < PC_BYTES || record_bytes < SAVE_BYTES + sizeof(SaveGameStateBlock) || record_bytes > RECORD_BYTES ||
-        n != HEADER_BYTES + pc_bytes + record_bytes)
+    if (pc_bytes < PC_BYTES || record_bytes < SAVE_BYTES + sizeof(SaveGameStateBlock)) return "a quick save of another format";
+    if (record_bytes > RECORD_BYTES) return "a quick save of a later format";
+    if (n != HEADER_BYTES + pc_bytes + record_bytes)
         return "the quick save is cut short";
     if (get64(buf + 16) != fnv(buf + HEADER_BYTES, n - HEADER_BYTES)) return "the quick save is damaged";
     const u8 *pc = buf + HEADER_BYTES;
