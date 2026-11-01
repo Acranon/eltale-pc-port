@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -173,14 +174,25 @@ void build_hint(bool hint, const std::string &note) {
 
 // ELTALE_MENU_TEST=N, for unattended runs (with ELTALE_HIDDEN_WINDOW): open the menu at the Nth
 // picture, choose Reset to the Controller Pak manager 30 menu pictures later, Quit 300 after that.
+// ELTALE_MENU_TEST=N:reset[:Q]: the plain Reset instead (the game boots again; an input script starts again
+// too, so tests/title-new-game.input goes back into play), the flash recorder (F8) 24 pictures after it (the
+// pictures shown around the reset, for tools/flash_find.py), and Quit Q pictures after it (300).
 void test_tick() {
     static const char *env = std::getenv("ELTALE_MENU_TEST");
+    static const char *plain = env ? std::strstr(env, ":reset") : nullptr;
+    static const int quit_after = plain && plain[6] == ':' ? std::atoi(plain + 7) : 300;
     static int phase, n;
     if (!env || phase == 3) return;
     n++;
     if (phase == 0 && n >= std::atoi(env)) { open = true; phase = 1; n = 0; std::fprintf(stderr, "MENU_TEST open\n"); }
-    else if (phase == 1 && n >= 30) { request = RESET_PAK_MANAGER; phase = 2; n = 0; std::fprintf(stderr, "MENU_TEST reset\n"); }
-    else if (phase == 2 && n >= 300) { request = QUIT; phase = 3; std::fprintf(stderr, "MENU_TEST quit\n"); }
+    else if (phase == 1 && n >= 30) {
+        request = plain ? RESET : RESET_PAK_MANAGER;
+        phase = 2;
+        n = 0;
+        std::fprintf(stderr, "MENU_TEST reset%s\n", plain ? " game" : "");
+    } else if (phase == 2 && plain && n == 24) {
+        flash_key = true;
+    } else if (phase == 2 && n >= quit_after) { request = QUIT; phase = 3; std::fprintf(stderr, "MENU_TEST quit\n"); }
 }
 
 } // namespace

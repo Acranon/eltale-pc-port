@@ -23,8 +23,8 @@ game (exe)                                         eltale_host.dll
 
 - **The exe and the DLL stay apart.** The game side calls the renderer only through the function
   table `ElRenderApi` (render.h: plain C, plain data, copied by the callee). Reset restores the exe's
-  writable data (the loader's caches go back to empty): `nd_after_reset` tells the DLL to drop its
-  resources too.
+  writable data (the loader's caches go back to empty): `nd_after_reset` tells the DLL (`reset`, render.h
+  v8) to drop its resources and its recordings too (see "Resets and full buffers").
 - **Data in, not display lists.** A model's static list (ROM or a map block) is walked once by
   `nd_model.c` into a mesh: triangles grouped by material, with the decoded textures. Nothing walks a
   list per frame. The top-level frame list is not read at all: the state the game queues there (camera,
@@ -57,6 +57,7 @@ game (exe)                                         eltale_host.dll
 | `ELTALE_ND_DEBUG=1` | per picture: camera, item count, the first item's first vertex in clip space |
 | `ELTALE_WIDESCREEN=off\|16:9\|window\|N` | R7a: the picture's shape (overrides the Graphics page; headless dumps are 4:3 without it); see "Widescreen" |
 | `ELTALE_DL_CENSUS=1` | at exit, `P1_DL_CENSUS`: the display-list commands left in the frame lists, per kind (R5's exit check: 0 with every kind native) |
+| `ELTALE_ND_SMALL_BUFFERS=n` | a test: the vertex, material and texel buffers hold n KiB each, so they fill in play (tools/lifetime_test.py uses 512); `P1_ND_LIFETIME` at exit |
 | `ELTALE_ND_LOG=2` / `3` | also each 2D rectangle with its material (3: and the colour registers as set) |
 
 Kinds (`EL_KIND_*`, render.h): map, billboard, backdrop, actor, shadow, effect, screen (fade,
@@ -68,7 +69,8 @@ and billboard sections inside the map functions, so `ELTALE_DL_KINDS` works for 
 
 - Resources: `texture_upload` (texels, 32-bit each) -> offset; `mesh_upload` (vertices, groups,
   materials, bounds) -> id; `palette(id, entries)` (raw 16-bit, per frame); `resources_reset`. A full
-  buffer answers `~0u`: the loader resets everything and loads again what it draws.
+  buffer answers `~0u`: the loader drops its caches and loads again what it draws, and the renderer keeps
+  what its recordings still name (see "Resets and full buffers"). `reset` (v8): the game's Reset.
 - The tick: `frame_begin(clear colour, mode)`, `camera`, `lights`, `env_color`, `prim_color`,
   `fog_color`, `fog_position(fm, fo)`, `draw(ElRdDraw)`, `frame_end(frame)`.
 - Matrices are the N64's (row vectors, `m[row*4+col]`), decoded from the fixed-point Mtx the RSP would
@@ -701,6 +703,69 @@ run again it was even.) The "newest" pictures are where the game's next tick was
 of exactly 2 retraces that was a quarter of them (a tick is finished 0.3-0.5 of a retrace after its retrace); with the recordings
 timed by the virtual clock and 2.25 retraces, 3.5%, in runs of 2-3 pictures where the game itself took a
 retrace longer for a tick (as Original shows it too).
+
+## Resets and full buffers (2026-11-01)
+
+A recording names resources by number: a mesh id (3D items and 2D meshes), a material index (2D rectangles), and
+through them vertex ranges and texel offsets. The recordings live longer than a tick (the last three in `hist`,
+those waiting for their graphics task in `pending`, the one being made in `building`; R6's pictures between draw
+the older ones), so the resources they name must too. Two things used to end them early, with nothing checking:
+
+- **The game's Reset** (F1 menu). `nd_after_reset` cleared the meshes but not the recordings: the next pictures
+  drew the pre-reset recordings against emptied tables (out-of-range ids into cleared vectors; it looked right
+  only because `clear()` keeps the memory). In the window the play scene went on for ~10 pictures after the
+  reset; any upload meanwhile would have drawn other meshes' vertices in it.
+- **A full buffer mid-tick** (`nd_model.c` `nd_model_get`, `nd_2d.c` `rect_item`). The loader reset the
+  renderer and loaded again, but the items already recorded that tick (and the ticks in `hist`) kept their ids,
+  which the meshes loaded next were then given.
+
+### The design
+
+**Reset is a cut** (`reset`, render.h v8; `nd_model_reset_all`). Everything goes: the resources, `hist`,
+`pending`, `building`, the interpolator's plan, the palette history (the palette buffer is put to the newest's
+first). One black recording with no camera goes in, so the window shows black (the N64's screen at a reset)
+rather than its own clear colour until the game's first recording; that one is shown as it is, no picture
+between across the reset (the pair's planning sees no camera). The recordings after a reset are numbered from
+the next 10000 (`frame_10001` ...: the game counts from 1 again; the dumps and `P1_` lines keep the two apart),
+and `P1_ND_RESET vi= frame_base=` is printed.
+
+**A full buffer keeps what the recordings name** (`resources_reset` -> `NativeDraw::keep_recorded`). The loader
+still drops its caches and loads again what it draws (`nd_model_reset`), but the renderer does not forget: it
+marks every mesh and 2D material any recording names (`hist`, `pending`, and `building` when a tick is being
+made), the materials of those meshes and the texture uploads their tiles sample (`texture_upload` now lists each
+upload's range), moves them all down to the buffers' start in their order (texels, materials with their tile
+offsets moved, vertices, groups, meshes: a move never overwrites what is yet to move) and renumbers them, in the
+recordings too. Everything else is dropped. So every item recorded before the full buffer, this tick's too, draws
+exactly as it would have, and nothing outlives the last recording that names it.
+
+Then **what was kept is found by content**: the loader's loading again what it draws gives the same textures,
+materials and meshes, and `texture_upload`, `material_2d` and `mesh_upload` answer those with the kept ones (a
+hash, then a byte compare) instead of storing them twice. Without that the kept set and its copy filled the
+buffer again at once (in the walk with 512 KiB buffers: ~14,000 resets in 900 ticks; with it, 4), and a mesh in
+use keeps its id across the full buffer, so the pictures between match it as before. The palette ids stay over a
+full buffer (they are not in the buffers, and the kept materials name them) unless they are what ran out (4096:
+never seen); then they go too, and items recorded before it could show a reused palette for that tick (known,
+not fixed).
+
+The other choice, a generation in each id with stale items dropped, would lose the items already recorded that
+tick (a picture with holes) and the older recordings' pictures between, and the loader cannot draw them again.
+
+**Checks in render().** Each item's state, 2D item, mesh, the mesh's groups, their materials and vertex ranges
+and a rectangle's material are checked against what is there (`item_ok`); an item that fails is skipped and
+counted (`stale`). A debug build (no NDEBUG) asserts. `P1_ND_LIFETIME resets= flushes= kept_meshes=
+kept_materials= kept_texels= stale=` is printed at exit when any of these happened (or with
+`ELTALE_ND_SMALL_BUFFERS`); stale is 0 in every test.
+
+### Tests: tools/lifetime_test.py
+
+| case | what | result (2026-11-01) |
+|---|---|---|
+| reset | a hidden window (`ELTALE_HIDDEN_WINDOW`, sound off, pictures between at a fixed 120), tests/title-new-game.input into play, `ELTALE_MENU_TEST=900:reset:900`: the F1 menu's plain Reset (new in menu.cpp; the input script starts again, so the game goes back into play the same way), the flash recorder 24 pictures after it, Quit 900 later. Dumps ticks 250-460 and 10001-10060, 10250-10460 with 4 pictures a tick | 1 reset, 0 stale; 255 ticks dumped after it (252 with items); ends 0/0 (448 pairs), interp_ends 0 of 446, flash_find 0 of 1,341 pictures between; every tick after the reset and its pictures between the same picture as the same tick before it (780 of 780); the recorder's 64 pictures (11 before the reset, 53 after: black, then the logo) flash_find --neighbours 0 flagged, none of them the scene before the reset |
+| full ng, walk, tour | headless, each run twice: full size and `ELTALE_ND_SMALL_BUFFERS=512` (512 KiB a buffer) | ng 2 flushes, walk 4, the map tour 3,923; 0 stale; P1_OS_OK the same; every frame and picture between the same picture as at full size (ng 2,504, walk 1,505, tour 1,198); ends 0/0, interp_ends and flash_find clean |
+
+Before the fix the reset case fails: no tick is drawn after the reset under its own number, and the recorder shows
+the play scene for 10 pictures after the reset (a mean difference of 0.2 levels from the last picture before it;
+black and the logo are ~50 off). tests/host_checks.sh runs it with the native renderer.
 
 ## Widescreen (R7a, 2026-11-01)
 
