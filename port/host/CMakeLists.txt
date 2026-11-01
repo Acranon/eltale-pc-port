@@ -90,7 +90,7 @@ target_include_directories(eltale_cjson PUBLIC "${ROOT}/third_party/cjson")
 # ---- eltale_host.dll ------------------------------------------------------------------------------
 add_library(eltale_host SHARED
     host.cpp settings.cpp input.cpp audio.cpp menu.cpp menu_graphics.cpp renderer_rt64.cpp
-    ../render/render_native.cpp ../render/nd_renderer.cpp ../render/present_vk.cpp ../render/png.c)
+    ../render/render_native.cpp ../render/nd_renderer.cpp ../render/nd_interp.cpp ../render/present_vk.cpp ../render/png.c)
 set_target_properties(eltale_host PROPERTIES PREFIX "" OUTPUT_NAME eltale_host)
 target_include_directories(eltale_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} "${ROOT}/port/render" "${ROOT}/port/include" "${ROOT}")
 target_compile_definitions(eltale_host PRIVATE ELTALE_HOST_BUILD)

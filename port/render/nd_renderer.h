@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -33,12 +34,24 @@ struct Recording {
         int32_t item2d = -1; // a 2D item (items2d): the draw is unused
     };
     ElRdFrameInfo info = {};
+    uint64_t vi = 0;     // the retraces presented when it was finished (its time: R6's pictures between)
+    uint64_t serial = 0; // counts recordings
     ElRdCamera camera = {};
     bool has_camera = false;
     std::vector<State> states;
     std::vector<Item> items;
     std::vector<ElRd2D> items2d;
     uint32_t frame = 0;
+};
+
+class Interp;
+struct InterpStats;
+
+// Pictures between ticks (R6): what a picture at a time showed (NativeDraw::picture)
+struct PictureStats {
+    uint64_t newest = 0;  // the newest recording as it is (its own time, or no newer one yet)
+    uint64_t between = 0; // a picture between two recordings
+    uint64_t fallback = 0, early = 0, gap = 0, mode = 0, camera = 0, cut = 0; // shown as is: why
 };
 
 class NativeDraw {
@@ -49,7 +62,16 @@ public:
     const ElRenderApi *api();
 
     // the newest finished recording (null before the first)
-    const Recording *latest() const { return has_latest ? &done : nullptr; }
+    const Recording *latest() const { return hist.empty() ? nullptr : &hist.back(); }
+    // The picture for the time v, in retraces presented (set_vi's count, with the fraction since the
+    // last): a recording is due BETWEEN_DELAY retraces after it was finished, and between two due
+    // times the picture is the pair's picture between (nd_interp.h). `between` false: the newest as is.
+    const Recording *picture(double v, bool between);
+    void set_vi(uint64_t vi) { vi_now = vi; }
+    const PictureStats &picture_stats() const { return pstats; }
+    const InterpStats &interp_stats() const;
+    void print_stats() const;
+    static constexpr double BETWEEN_DELAY = 2.0;
     // Draw `rec` into `picture` (320x240 RGBA8, GENERAL layout), with its own depth buffer
     void render(Vulkan::CommandBuffer &cmd, Vulkan::Image &picture, const Recording *rec, const DrawOptions &opt);
 
@@ -94,7 +116,7 @@ private:
         void upload(Vulkan::CommandBuffer &cmd);
     };
 
-    void dump_frame(const Recording &rec);
+    void dump_frame(const Recording &rec, const std::string &name);
     uint32_t upload_material(const ElRdMaterial &m);
     bool want_dump(uint32_t frame) const;
 
@@ -105,9 +127,17 @@ private:
     std::vector<Group> groups;
     std::vector<ElRdMaterial> material_cpu; // for the pipeline state
 
-    Recording building, done;
+    Recording building;
+    std::deque<Recording> hist;    // the last few finished recordings, oldest first
     std::deque<Recording> pending; // built, waiting for their graphics task's number
-    bool has_latest = false, state_dirty = true, in_frame = false;
+    bool state_dirty = true, in_frame = false;
+    uint64_t vi_now = 0, serial = 0;
+    std::unique_ptr<Interp> interp;
+    uint64_t planned_a = 0, planned_b = 0; // the pair the interpolator has planned (serials)
+    bool planned_ok = false;
+    const char *planned_why = nullptr;
+    PictureStats pstats;
+    int dump_between = 0;          // ELTALE_DUMP_BETWEEN: pictures per tick in the dumps
     Recording::State state = {};
 
     Vulkan::ImageHandle depth;

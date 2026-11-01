@@ -10,6 +10,7 @@
 // (shaders/nd.vert, shaders/nd.frag).
 #include "nd_renderer.h"
 
+#include "nd_interp.h"
 #include "nd_shaders.h"
 #include "png.h"
 
@@ -201,6 +202,8 @@ void NativeDraw::GpuBuffer::upload(CommandBuffer &cmd) {
 
 bool NativeDraw::init(Device &dev) {
     device = &dev;
+    if (!interp) interp.reset(new Interp());
+    if (const char *e = std::getenv("ELTALE_DUMP_BETWEEN")) dump_between = std::atoi(e);
     ResourceLayout vert = {};
     vert.push_constant_size = sizeof(Push);
     vert.sets[0].storage_buffer_mask = 1u << 0 | 1u << 1;
@@ -235,6 +238,7 @@ bool NativeDraw::init(Device &dev) {
 }
 
 void NativeDraw::shutdown() {
+    if (interp && (interp->stats.plans || pstats.newest || pstats.between)) print_stats();
     depth.reset();
     depth_before.reset();
     dump_picture.reset();
@@ -250,16 +254,25 @@ void NativeDraw::set_dump(const std::string &dir, const std::string &spec) {
     dump_spec = spec;
 }
 
+// spec: comma-separated "N", "A-B" (a range), "F+S" (every S-th from F), "F+S/R" (runs of R frames every S-th)
 bool NativeDraw::want_dump(uint32_t frame) const {
     if (dump_dir.empty()) return false;
     if (dump_spec.empty()) return true;
-    const char *s = dump_spec.c_str();
-    if (const char *plus = std::strchr(s, '+')) {
-        const unsigned first = unsigned(std::atoi(s)), step = unsigned(std::atoi(plus + 1));
-        return frame >= first && step && (frame - first) % step == 0;
+    for (const char *p = dump_spec.c_str(); p && *p; p = std::strchr(p, ',') ? std::strchr(p, ',') + 1 : nullptr) {
+        char *e = nullptr;
+        const unsigned long first = std::strtoul(p, &e, 10);
+        if (*e == '-') {
+            const unsigned long last = std::strtoul(e + 1, nullptr, 10);
+            if (frame >= first && frame <= last) return true;
+        } else if (*e == '+') {
+            char *e2 = nullptr;
+            const unsigned long step = std::strtoul(e + 1, &e2, 10);
+            const unsigned long run = *e2 == '/' ? std::strtoul(e2 + 1, nullptr, 10) : 1;
+            if (frame >= first && step && (frame - first) % step < run) return true;
+        } else if (frame == first) {
+            return true;
+        }
     }
-    for (const char *p = s; p && *p; p = std::strchr(p, ',') ? std::strchr(p, ',') + 1 : nullptr)
-        if (unsigned(std::atoi(p)) == frame) return true;
     return false;
 }
 
@@ -381,17 +394,98 @@ void NativeDraw::draw_2d(const ElRd2D *d) {
 }
 
 void NativeDraw::frame_end(uint32_t frame) {
+    Recording r;
     if (!pending.empty()) {
-        done = std::move(pending.front());
+        r = std::move(pending.front());
         pending.pop_front();
     } else {
         if (!in_frame) return;
         in_frame = false;
-        std::swap(done, building);
+        r = std::move(building);
     }
-    done.frame = frame;
-    has_latest = true;
-    if (want_dump(frame)) dump_frame(done);
+    r.frame = frame;
+    r.vi = vi_now;
+    r.serial = ++serial;
+    hist.push_back(std::move(r));
+    while (hist.size() > 3) hist.pop_front();
+    if (!want_dump(frame)) return;
+    const Recording &cur = hist.back();
+    // ELTALE_DUMP_BETWEEN=N: the pictures between the last tick and this one, at j/N (frame_<last>_<j*1000/N>);
+    // ELTALE_INTERP_ENDS=1: also the picture at t = 0 through the interpolator (ends_<last>_0.png, which
+    // tools/interp_ends.py checks against the tick's own) and P1_INTERP_ENDS: the matrices and camera that
+    // differ bit for bit at t = 0 from the last tick's and at t = 1 from this one's
+    if (dump_between > 1 && hist.size() >= 2) {
+        const Recording &prev = hist[hist.size() - 2];
+        const char *why = nullptr;
+        const bool ok = interp->plan(prev, cur, hist.size() >= 3 ? &hist[hist.size() - 3] : nullptr, &why);
+        planned_a = planned_b = 0; // (the window's plan is gone)
+        static const bool ends = std::getenv("ELTALE_INTERP_ENDS") != nullptr;
+        if (ends && ok) {
+            int at0, at1;
+            interp->check_ends(&at0, &at1);
+            std::printf("P1_INTERP_ENDS frame=%u differ_at_0=%d differ_at_1=%d\n", prev.frame, at0, at1);
+            dump_frame(interp->build(0.0f), "ends_" + std::to_string(prev.frame) + "_0");
+        }
+        for (int j = 1; j < dump_between; j++) {
+            char name[64];
+            std::snprintf(name, sizeof name, "frame_%u_%03d", prev.frame, j * 1000 / dump_between);
+            dump_frame(ok ? interp->build(float(j) / float(dump_between)) : prev, name);
+        }
+        if (!ok) std::printf("P1_INTERP_SNAP frame=%u why=%s\n", prev.frame, why ? why : "?");
+    }
+    dump_frame(cur, "frame_" + std::to_string(frame));
+}
+
+const Recording *NativeDraw::picture(double v, bool between) {
+    if (hist.empty()) return nullptr;
+    if (!between) return &hist.back();
+    // the newest recording due by v
+    int k = -1;
+    for (int i = int(hist.size()) - 1; i >= 0; i--)
+        if (double(hist[size_t(i)].vi) + BETWEEN_DELAY <= v) { k = i; break; }
+    if (k < 0) { // none due yet: the oldest kept (a start, after a reset)
+        pstats.fallback++;
+        pstats.early++;
+        return &hist.front();
+    }
+    if (size_t(k) + 1 == hist.size()) { // nothing newer yet: the newest as it is
+        pstats.newest++;
+        return &hist.back();
+    }
+    const Recording &a = hist[size_t(k)], &b = hist[size_t(k) + 1];
+    const double span = double(b.vi) - double(a.vi), t = (v - (double(a.vi) + BETWEEN_DELAY)) / span;
+    if (t <= 0) { pstats.newest++; return &a; }
+    if (span > 4) { pstats.fallback++; pstats.gap++; return &a; } // a pause, a load: no picture between
+    if (planned_a != a.serial || planned_b != b.serial) {
+        planned_a = a.serial;
+        planned_b = b.serial;
+        planned_ok = interp->plan(a, b, k > 0 ? &hist[size_t(k) - 1] : nullptr, &planned_why);
+    }
+    if (!planned_ok) {
+        pstats.fallback++;
+        if (planned_why && !std::strcmp(planned_why, "cut")) pstats.cut++;
+        else if (planned_why && !std::strcmp(planned_why, "mode")) pstats.mode++;
+        else pstats.camera++;
+        return &a;
+    }
+    pstats.between++;
+    return &interp->build(float(t < 1 ? t : 1));
+}
+
+const InterpStats &NativeDraw::interp_stats() const { return interp->stats; }
+
+void NativeDraw::print_stats() const {
+    const InterpStats &s = interp->stats;
+    std::printf("P1_INTERP pictures=%llu between=%llu newest=%llu fallback=%llu (early %llu gap %llu mode %llu camera %llu cut %llu) "
+                "plans=%llu items=%llu moving=%llu unmatched=%llu snapped=%llu plan_us=%.1f/%.1f build_us=%.1f/%.1f\n",
+                (unsigned long long)(pstats.between + pstats.newest + pstats.fallback), (unsigned long long)pstats.between,
+                (unsigned long long)pstats.newest, (unsigned long long)pstats.fallback, (unsigned long long)pstats.early,
+                (unsigned long long)pstats.gap, (unsigned long long)pstats.mode, (unsigned long long)pstats.camera,
+                (unsigned long long)pstats.cut, (unsigned long long)s.plans, (unsigned long long)s.items,
+                (unsigned long long)s.moving, (unsigned long long)s.unmatched, (unsigned long long)s.snapped,
+                s.plans ? s.plan_us / double(s.plans) : 0.0, s.plan_max_us, s.pictures ? s.build_us / double(s.pictures) : 0.0,
+                s.build_max_us);
+    std::fflush(stdout);
 }
 
 // ---- drawing --------------------------------------------------------------------------------------
@@ -632,7 +726,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     cmd.end_render_pass();
 }
 
-void NativeDraw::dump_frame(const Recording &rec) {
+void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
     if (!device) return;
     if (!dump_picture) {
         ImageCreateInfo info = ImageCreateInfo::render_target(W, H, VK_FORMAT_R8G8B8A8_UNORM);
@@ -665,9 +759,10 @@ void NativeDraw::dump_frame(const Recording &rec) {
     std::vector<uint32_t> rgba(px, px + W * H);
     device->unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
     for (uint32_t &p : rgba) p |= 0xFF000000u;
-    const std::string path = dump_dir + "/frame_" + std::to_string(rec.frame) + ".png";
+    const std::string path = dump_dir + "/" + name + ".png";
     if (!render_png_write(path.c_str(), rgba.data(), W, H)) std::fprintf(stderr, "[render] cannot write %s\n", path.c_str());
-    std::printf("P1_NATIVE_FRAME frame=%u items=%zu\n", rec.frame, rec.items.size());
+    if (name.compare(0, 6, "frame_") == 0 && name.find('_', 6) == std::string::npos)
+        std::printf("P1_NATIVE_FRAME frame=%u items=%zu\n", rec.frame, rec.items.size());
     std::fflush(stdout);
     device->next_frame_context();
 }
