@@ -49,6 +49,9 @@ technology choice).
 | R8 | Retire RT64 and the frame image from play; Linux build; docs | 1 | Owner sign-off |
 
 ### R0: Host (`port/host/`)
+**Done 2026-10-31** (branch nr/host): see [HOST_LAYER.md](HOST_LAYER.md) for what was built, the
+layout, the build and the checks.
+
 - Move SDL window, fullscreen, input mapping, the F1/F2/F4/F11 keys and notices, the audio ring,
   the data folder and settings I/O out of `port/rt64/` into shared host code (SDL3).
 - Split the F1 menu into core pages plus a Graphics page for each renderer. The menu currently

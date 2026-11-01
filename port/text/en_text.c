@@ -25,8 +25,8 @@
 #include "en_glyphs.h"
 #include "en_fonts.h"
 
-int Port_Rt64Language(void);
-int Port_Rt64TextFont(void);
+int Port_WindowLanguage(void);
+int Port_WindowTextFont(void);
 
 enum { FONT_ROM = 0xD3A930, PAGE_BYTES = 0x7B8, ROW_BYTES = 152, EXTRA_PAGE = 30, MAX_TEXT = 0x4B0 };
 enum { SETS = 1 + sizeof en_fonts / sizeof en_fonts[0], PAGES = 32 };
@@ -278,12 +278,12 @@ void Port_TextInit(void) {
 int Port_TextEnglish(void) {
     if (!entry_count) return 0;
     if (forced_lang >= 0) return forced_lang;
-    return Port_Rt64Language() > 0;
+    return Port_WindowLanguage() > 0;
 }
 
 /* the font set English is laid out in now */
 static int active_set(void) {
-    int k = forced_font >= 0 ? forced_font : Port_Rt64TextFont();
+    int k = forced_font >= 0 ? forced_font : Port_WindowTextFont();
     return k > 0 && k < SETS ? k : 0;
 }
 

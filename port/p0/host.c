@@ -98,7 +98,7 @@ void Port_HostPace(uint64_t virtual_ticks) {
 #if defined(ELTALE_P1_OS) && defined(_WIN32)
 /* A reset (the menu's Reset game): the program's writable sections and RDRAM as they were just
  * before Boot_Main, put back. Everything the game and the port keep is in those (the fiber stacks
- * have fixed slots, and the window and sound live in eltale_rt64.dll), so the game boots again as
+ * have fixed slots, and the window and sound live in eltale_host.dll), so the game boots again as
  * if the program had just started. */
 static struct { unsigned char *at, *copy; size_t bytes; } snapshot_parts[16];
 static unsigned snapshot_count;

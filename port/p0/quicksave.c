@@ -82,7 +82,7 @@ static f32 bitsf(u32 u) { f32 f; memcpy(&f, &u, 4); return f; }
 /* The data folder: the window's (ELTALE_DATA_DIR or %APPDATA%\eltale); headless, ELTALE_DATA_DIR or
  * the current folder. */
 static void quick_path(char *out, size_t size, int slot, int make) {
-    const char *dir = Port_Rt64DataDir();
+    const char *dir = Port_WindowDataDir();
     const char *env = getenv("ELTALE_DATA_DIR");
     if (!strcmp(dir, ".") && env && *env) dir = env;
     snprintf(out, size, "%s/quicksaves", dir);
@@ -156,7 +156,7 @@ static const char *read_file(const char *path, QuickSave *q) {
 
 static void say(const char *what) {
     fprintf(stderr, "P1_QUICK %s\n", what);
-    Port_Rt64Notice(what);
+    Port_WindowNotice(what);
 }
 
 /* In the field and in control: the game's own test for opening the Start menu (Core_RunGameplayLoop),
@@ -296,9 +296,9 @@ void Port_QuickFrame(void) {
                 map_id, map_subarea, player_state.actor.x, player_state.actor.y, player_state.actor.z,
                 player_state.actor.rot, player_stats.hp, player_stats.max_hp, player_stats.mp, player_stats.max_mp,
                 player_stats.level, env_clock, (unsigned long long)Port_OsViCount(), same ? "as saved" : "NOT as saved");
-        Port_Rt64Notice(same ? "Quick loaded" : "Quick loaded, but not where it was saved (see the log)");
+        Port_WindowNotice(same ? "Quick loaded" : "Quick loaded, but not where it was saved (see the log)");
     }
-    int key = Port_Rt64TakeQuickKey();
+    int key = Port_WindowTakeQuickKey();
     if (test_due("ELTALE_QUICK_SAVE_AT", &save_done)) {
         const char *why = field_blocked();
         if (!why) save_done = 1, key = 1;

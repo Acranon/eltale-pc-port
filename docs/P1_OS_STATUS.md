@@ -238,6 +238,9 @@ Update 3: the common block is closed.
 
 ## P1 step 2: RT64 in a window (Claude, 2026-10-28)
 
+(Since the native renderer's R0 the window, input, sound and menu are eltale_host.dll's, and RT64's
+DLL only draws: docs/renderer/HOST_LAYER.md.)
+
 `--window` draws with RT64 (third_party/rt64, pinned to the Quest 64 recomp's
 commit aa047b8). RT64 is C++ built with clang-cl, so it lives in its own DLL with
 a C interface (port/rt64: eltale_rt64.h/.cpp, built by `tools/build_rt64.cmd`
@@ -581,7 +584,7 @@ buffer with the CPU, which the RT64 path does not show; stubs.c returns 0
 (`%APPDATA%\eltale\controller-pak.mpk`, or ELTALE_DATA_DIR). Before this, window play kept saves
 in memory only.
 
-**Menu** (port/rt64/menu.cpp, in eltale_rt64.dll): F1 or the controller's Back button. ImGui
+**Menu** (since R0 in port/host, eltale_host.dll: docs/renderer/HOST_LAYER.md; before, port/rt64/menu.cpp, in eltale_rt64.dll): F1 or the controller's Back button. ImGui
 through RT64's own Inspector class (D3D12 or Vulkan backends) drawn from RT64's present hook. The
 game pauses while it is open (ElRt64_Present keeps re-presenting the frame). Pages: Game (resume,
 reset, reset to the Pak manager, save folder, quit), Audio (volume, mute in background), Graphics

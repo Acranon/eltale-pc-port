@@ -1,4 +1,6 @@
-# eltale_rt64.dll: RT64 (third_party/rt64) behind a C interface (eltale_rt64.h).
+# eltale_rt64.dll: RT64 (third_party/rt64) behind a C interface (eltale_rt64.h), loaded by the host
+# (eltale_host.dll, port/host) for --renderer rt64. The window, input, sound and menu are the host's.
+# RT64 links SDL2 (its own code asks for it), so SDL2.dll is still copied beside it.
 # Windows: configure with clang-cl (the MSVC ABI RT64 is built with), e.g.
 #   cmake -S port/rt64 -B out/rt64 -G Ninja -DCMAKE_BUILD_TYPE=Release
 #         -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
@@ -25,7 +27,7 @@ else()
     set(SDL2_INCLUDE ${SDL2_INCLUDE_DIRS})
 endif()
 
-add_library(eltale_rt64 SHARED eltale_rt64.cpp menu.cpp)
+add_library(eltale_rt64 SHARED eltale_rt64.cpp)
 target_include_directories(eltale_rt64 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${RT64_DIR}/src ${RT64_DIR}/src/contrib ${RT64_DIR}/src/contrib/hlslpp/include

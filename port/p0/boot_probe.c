@@ -348,11 +348,14 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) { }
 #ifdef ELTALE_P1_OS
         else if (!strcmp(argv[i], "--window")) window = 1;
+        else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) {
+            if (Port_WindowSetRenderer(argv[++i]) != 0) Port_HostFatal("--renderer must be rt64 or native");
+        }
         else if (!strcmp(argv[i], "--pak-manager")) pak_manager = 1;
 #endif
         else {
 #ifdef ELTALE_P1_OS
-            fprintf(stderr, "usage: eltale-p1 --rom path [--window] [--headless --fast --frames N --input script --pak image.mpk]\n"
+            fprintf(stderr, "usage: eltale-p1 --rom path [--window [--renderer rt64|native]] [--headless --fast --frames N --input script --pak image.mpk]\n"
                             "       [--pak-manager: start in the game's Controller Pak manager]\n");
 #else
             fprintf(stderr, "usage: eltale-p0 --rom path [--headless --fast]\n");
@@ -364,7 +367,7 @@ int main(int argc, char **argv) {
     if (!rom) Port_HostFatal("supply --rom or ELTALE_ROM");
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
-    if (window && Port_Rt64Start() != 0) return 1;
+    if (window && Port_WindowStart() != 0) return 1;
     Port_TextInit();
     {
         extern void (*Port_FrameHook)(void);
@@ -374,7 +377,7 @@ int main(int argc, char **argv) {
     /* a window keeps its Controller Pak in the data folder unless --pak names one */
     static char default_pak[1024];
     if (window && !pak) {
-        snprintf(default_pak, sizeof default_pak, "%s/controller-pak.mpk", Port_Rt64DataDir());
+        snprintf(default_pak, sizeof default_pak, "%s/controller-pak.mpk", Port_WindowDataDir());
         pak = default_pak;
     }
     if (Port_ControllerLoadScript(input) || Port_PakLoad(pak)) return 1;
@@ -403,7 +406,7 @@ int main(int argc, char **argv) {
     for (;;) {
         Boot_Main(0);
         Port_OsRun();
-        int reset = window ? Port_Rt64TakeReset() : 0;
+        int reset = window ? Port_WindowTakeReset() : 0;
         if (!reset) break;
         Port_HostRestore();
         if (Port_PakLoad(pak)) return 1; /* the saves as they are now, not as they were */

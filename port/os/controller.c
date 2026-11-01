@@ -66,7 +66,7 @@ int Port_ControllerLoadScript(const char *path) {
     return 0;
 }
 
-/* Set by the host when a window gives live input (port/gfx/rt64_bridge.c). Used when no script
+/* Set by the host when a window gives live input (port/gfx/host_bridge.c). Used when no script
  * was loaded. */
 void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 

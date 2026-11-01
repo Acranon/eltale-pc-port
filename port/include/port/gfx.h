@@ -28,16 +28,21 @@ typedef struct PortViRegs {
 } PortViRegs;
 int Port_ViRegs(u32 framebuffer, PortViRegs *regs);
 
-/* port/gfx/rt64_bridge.c: draw with eltale_rt64 (a window). Returns 0 on success. */
-int Port_Rt64Start(void);
+/* port/gfx/host_bridge.c: the window (eltale_host). Pick the renderer first ("rt64" or "native";
+ * -1 for neither), then start: 0 on success. */
+int Port_WindowSetRenderer(const char *name);
+int Port_WindowStart(void);
 /* After the scheduler stopped: 2 if the menu asked for a reset, 3 for a reset into the Controller
  * Pak manager, else 0. */
-int Port_Rt64TakeReset(void);
-/* The data folder for saves and settings (eltale_rt64's ElRt64_DataDir). */
-const char *Port_Rt64DataDir(void);
+int Port_WindowTakeReset(void);
+/* The data folder for saves and settings (eltale_host's ElHost_DataDir). */
+const char *Port_WindowDataDir(void);
 /* The quick-save key pressed since the last call: 1 F2 (save), 2 F4 (load), 0 none or no window. */
-int Port_Rt64TakeQuickKey(void);
+int Port_WindowTakeQuickKey(void);
 /* Show a short message over the game for a few seconds (nothing without the window). */
-void Port_Rt64Notice(const char *text);
+void Port_WindowNotice(const char *text);
+/* The menu's text language (1 English, 0 Japanese, -1 without the window) and English font. */
+int Port_WindowLanguage(void);
+int Port_WindowTextFont(void);
 
 #endif

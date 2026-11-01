@@ -1,8 +1,10 @@
-/* eltale_rt64.dll: RT64 behind a C interface.
+/* eltale_rt64.dll: RT64 behind a C interface, for the host (eltale_host.dll, port/host).
  *
- * RT64 is C++ built with clang-cl (the MSVC ABI); the game is built with MinGW Clang. The DLL
- * keeps the two apart: it owns the SDL window, RT64 and an RDRAM buffer, and the game hands it
- * one frame image at a time (port/gfx/frame_image.c) plus the VI registers to show. */
+ * RT64 is C++ built with clang-cl (the MSVC ABI); the host is built with MinGW Clang. The DLL keeps
+ * the two apart: it owns RT64 and an RDRAM buffer, draws on the host's window (its native handle),
+ * and is handed one frame image at a time (port/gfx/frame_image.c) plus the VI registers to show.
+ * The window, input, sound and the F1 menu are the host's: the menu's draw lists come in as plain
+ * data (ElRt64Overlay) and are drawn over RT64's picture with RT64's own ImGui backend. */
 #ifndef ELTALE_RT64_H
 #define ELTALE_RT64_H
 
@@ -24,8 +26,44 @@ typedef struct ElRt64Vi {
              v_burst, x_scale, y_scale;
 } ElRt64Vi;
 
-/* Open the window and set RT64 up. Returns 0 on success. */
-ELRT64_API int ElRt64_Init(const char *title, int width, int height);
+/* RT64's own picture options (RT64::UserConfiguration), as the host's Graphics page sets them. */
+typedef struct ElRt64Graphics {
+    int resolution;     /* 0 original (320x240), 1 match the window, 2 a multiple */
+    int multiplier;     /* 1..8, for a multiple */
+    int msaa;           /* samples: 1 (off), 2, 4, 8 */
+    int filtering;      /* scaling to the window: 0 sharp pixels, 1 smooth, 2 smooth pixel edges */
+    int three_point;    /* N64 three-point texture filtering */
+    int refresh;        /* 0 original (30 fps), 1 match the display, 2 fixed */
+    int refresh_target; /* 30..240, for fixed */
+} ElRt64Graphics;
+
+/* The menu's picture: Dear ImGui's draw lists flattened. Positions in pixels of a width x height
+ * window, uv into the atlas given to ElRt64_SetOverlayAtlas, colours RGBA (ImGui's IM_COL32). */
+typedef struct ElRt64OverlayVertex {
+    float x, y, u, v;
+    uint32_t rgba;
+} ElRt64OverlayVertex;
+
+typedef struct ElRt64OverlayCommand {
+    float clip[4];        /* x0, y0, x1, y1 */
+    uint32_t first_index; /* into indices */
+    uint32_t index_count; /* a multiple of 3 (triangles) */
+} ElRt64OverlayCommand;
+
+typedef struct ElRt64Overlay {
+    float width, height;
+    const ElRt64OverlayVertex *vertices;
+    const uint32_t *indices; /* into vertices */
+    const ElRt64OverlayCommand *commands;
+    uint32_t vertex_count, index_count, command_count;
+} ElRt64Overlay;
+
+/* Set RT64 up on the host's window: `window` is its HWND (Windows), `thread_id` the thread that
+ * owns it. Returns 0 on success. */
+ELRT64_API int ElRt64_Init(void *window, uint32_t thread_id, const ElRt64Graphics *graphics);
+
+/* The menu's font atlas, RGBA8 (ImGui's), copied. Call once after ElRt64_Init. */
+ELRT64_API void ElRt64_SetOverlayAtlas(const uint32_t *rgba, int width, int height);
 
 /* Draw one graphics task. `rdram` is an 8 MiB big-endian N64 RDRAM image; `ucode`, `ucode_data`
  * and `dl` are the task's physical addresses (OSTask t.ucode, t.ucode_data, t.data_ptr). */
@@ -36,36 +74,15 @@ ELRT64_API void ElRt64_DrawTask(const uint8_t *rdram, uint32_t ucode, uint32_t u
  * like the CPU wrote them, and it shows that instead. Up to 8 ranges, physical addresses. */
 ELRT64_API void ElRt64_KeepRange(uint32_t start, uint32_t bytes);
 
-/* Show the frame the VI registers point at. */
-ELRT64_API void ElRt64_Present(const ElRt64Vi *vi);
+/* Show the frame the VI registers point at (null: the last ones again), with the overlay over it
+ * (null: none). `paused`: the game is paused (the menu), so RT64 shows its last picture again. */
+ELRT64_API void ElRt64_Present(const ElRt64Vi *vi, const ElRt64Overlay *overlay, int paused);
 
-/* Handle window events (and the menu, which pauses the game inside ElRt64_Present while it is
- * open). Returns 1 to carry on, 0 once the window was closed or Quit chosen, 2 for a reset, 3 for
- * a reset into the Controller Pak manager. */
-ELRT64_API int ElRt64_Poll(void);
+/* Change the picture options. */
+ELRT64_API void ElRt64_SetGraphics(const ElRt64Graphics *graphics);
 
-/* The data folder (saves, settings.json), UTF-8: ELTALE_DATA_DIR, else %APPDATA%\eltale. */
-ELRT64_API const char *ElRt64_DataDir(void);
-
-/* The text language the player chose in the menu: 1 English, 0 Japanese. */
-ELRT64_API int ElRt64_Language(void);
-
-/* The English font the player chose: 0 the game's own, 1.. port/text/en_fonts.h's. */
-ELRT64_API int ElRt64_TextFont(void);
-
-/* The quick-save key pressed since the last call (with the menu closed): 1 F2 (quick save), 2 F4
- * (quick load), 0 none. */
-ELRT64_API int ElRt64_TakeQuickKey(void);
-
-/* Show a short message (UTF-8) over the game for a few seconds. */
-ELRT64_API void ElRt64_Notice(const char *text);
-
-/* The pad from the keyboard and the first game controller, in N64 terms: button bits as
- * OSContPad.button, stick -80..80 (y up). Call after ElRt64_Poll. */
-ELRT64_API void ElRt64_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
-
-/* Play one AI buffer: interleaved 16-bit stereo, host order, at `rate` Hz. */
-ELRT64_API void ElRt64_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate);
+/* The MSAA sample counts the GPU can do with RT64's targets, as bits (2, 4, 8); 0 for none. */
+ELRT64_API uint32_t ElRt64_MsaaSupported(void);
 
 ELRT64_API void ElRt64_Shutdown(void);
 
