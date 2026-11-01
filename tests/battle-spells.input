@@ -1,0 +1,25 @@
+# Spells of each element in a battle, from the user's quick save battle-stuck (map 2 sub-area 0, not committed;
+# copy it first), as tests/battle-stuck.input starts it (ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2: two
+# Were-Rabbits at VI 194). Then every 30 VIs a C button (up, down, left, right in turn: the element) and A
+# (cast), as the map tour's battle pad does (port/p0/boot_probe.c). tests/render_frames_effects.txt uses it.
+5 0x1000 0 0
+7 0 0 0
+120 0 0 80
+200 0 0 0
+230 0x0008 0 0
+232 0 0 0
+260 0x8000 0 0
+262 0 0 0
+290 0x0004 0 0
+292 0 0 0
+320 0x8000 0 0
+322 0 0 0
+350 0x0002 0 0
+352 0 0 0
+380 0x8000 0 0
+382 0 0 0
+410 0x0001 0 0
+412 0 0 0
+440 0x8000 0 0
+442 0 0 0
+repeat 230 240

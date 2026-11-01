@@ -26,5 +26,6 @@ void nd_billboard_attach(void); /* nd_billboard.c */
 void nd_backdrop_attach(void); /* nd_backdrop.c */
 void nd_shadow_attach(void); /* nd_shadow.c */
 void nd_actor_attach(void); /* nd_actor.c */
+void nd_effect_attach(void); /* nd_effect.c: EL_KIND_EFFECT and EL_KIND_SCREEN */
 
 #endif

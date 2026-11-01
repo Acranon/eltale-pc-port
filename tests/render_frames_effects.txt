@@ -1,0 +1,10 @@
+# Frames for the effect kinds (docs/renderer/NATIVE_DRAW.md, "Effects"), same format as tests/render_frames.txt.
+# tools/frame_test.py runs it after tests/render_frames.txt (and render_frames_actor.txt with --native).
+# spells: the battle-stuck save with tests/battle-spells.input: footstep dust while walking in (80-98), the
+#         player's Rock (570: the rock, 600: its dust burst), Wind Cutter (830), Fire Ball (1080, 1090) and
+#         Water Pillar (1350, 1370) at level 1, the enemies' wind spells, the terrain rings, and a stat-up
+#         marker over the player (1570).
+# spirit: the compass-spirit save with tests/spirit-haystack.input: the fade in (55) and the spirit's sparkles
+#         by the haystack (61, 67).
+spells | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 --frames 1600 --input tests/battle-spells.input | 80 92 98 570 600 830 1080 1090 1350 1370 1570
+spirit | @save=compass-spirit ELTALE_QUICK_LOAD_AT=100 --frames 100 --input tests/spirit-haystack.input | 55 61 67

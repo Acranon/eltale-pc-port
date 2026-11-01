@@ -95,6 +95,9 @@ how to add a kind, the material coverage and the compare numbers (`frame_test.py
   frame, until R5.
 
 ### R4: Effects
+**Done** (branch nr/effects): effects and the screen quads are native; see NATIVE_DRAW.md, "Effects".
+The compass, the floating numbers and the ending's fade went to R5 (2D).
+
 - Sprites, streaks, rings, spell model effects, markers, floating numbers (texgen, scrolling,
   flipbooks).
 - Fade quad, letterbox, camera shake, additive env flashes, and the compass's 2D triangles.

@@ -199,13 +199,15 @@ of kinds drawn natively together:
 
 | set | kinds | what it guards |
 |---|---|---|
-| `all/` | map, billboard, backdrop, actor, shadow (every kind done) | **the main one**: the picture as played |
+| `all/` | map, billboard, backdrop, actor, shadow, effect, screen (every kind done) | **the main one**: the picture as played |
 | `map/` | map objects alone | the loader and materials (R2's numbers, now with the decal test) |
 | `billboard/`, `backdrop/`, `actor/` | the kind alone | a kind's own regressions, not hidden by the map (backdrop is 0 everywhere) |
 | `map+shadow/` | map and shadows | shadows are decals: alone they have no ground to pass against |
 
 Runs: every run of `tests/render_frames.txt` (47 frames) and `tests/render_frames_actor.txt` (chests:
-7 frames of the map tour with chests and point-sampled NPCs), 54 frames per set.
+7 frames of the map tour with chests and point-sampled NPCs), 54 frames per set, and in `all/` also
+`tests/render_frames_effects.txt` (R4: spells and spirit, 14 frames). Its reference hashes are in
+`tests/render_ref.txt` too: `frame_test.py` without `--native` runs it after `tests/render_frames.txt`.
 
 `frame_test.py --native` with no KINDS means `all` (NATIVE_KINDS in frame_test.py: add a kind there
 when it is done), runs both lists, and checks `tests/render_baselines/all/`. `--native K1,K2` checks

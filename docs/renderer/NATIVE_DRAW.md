@@ -199,7 +199,7 @@ Kinds and the files they touch (to run them in parallel with few conflicts):
 | actor | actor/anim.c (`Anim_DrawModel`, `Anim_DrawNode`), player.c, npc.c, chest.c, enemy.c, boss.c | **done** (nd_actor.c, "Actors" below) |
 | shadow | gfx/shadow.c, gfx/shadow.h | **done** (nd_shadow.c, "Shadows" below) |
 | billboard | map.c `MapObj_DrawBillboards`, `MapObj_DrawAnimTexBillboards` | **done** (nd_billboard.c, "Billboards" below) |
-| effect (R4) | gfx/sprite_effect.c, gfx/effect.c | many small draws: a texture per template |
+| effect, screen (R4) | gfx/sprite_effect.c, gfx/effect.c, gfx/fade.c, sprite callbacks in map/spirit.c and map.c, one hook in actor/anim.c | **done** (nd_effect.c, "Effects" below) |
 
 ### Backdrop (R3, nd_backdrop.c)
 
@@ -363,10 +363,93 @@ native (`--native map,actor`) the sums are the map's or a little under (ng 682, 
 1298): actors hide map pixels, and the depth test between the two kinds agrees with the reference. The
 map tour with every kind native keeps its frame count and audio hash (30374, a2d2e81245d538d4).
 
+## Effects (R4, game/native_draw/nd_effect.c)
+
+`EL_KIND_EFFECT` (the sprite pool, streaks, stat-up markers, terrain rings, model effects: every spell's
+visuals) and `EL_KIND_SCREEN` (the letterbox bars and the fade quad), one file. The game keeps all its
+updates (the callbacks move the sprites and pick the flipbook frames, the emitters spawn, `Math_Rand`);
+each site calls `nd_effect_*` right after it queued a draw, with the Mtx it loaded.
+
+- **Where the state is.** Unlike map and actor lists, effect lists are mostly geometry. The sprite lists
+  set their cycle type, render mode, geometry, combiner and `TEXTURE` but take the texture and the TLUT
+  mode from the top level (`Effect_LoadSpriteTexture`). Ring segments, streaks, markers and the model
+  effects' node lists are geometry only; their state is queued at the top level (`D_800C4780` and an 8x8
+  I8 texture, `D_800EB880`, `D_800EB990`, `D_800EB6D0` and `Effect_ConfigureModelEffectTexture`: an I8 or
+  CI8 texture and TLUT, the combiner, `TEXTURE`, lighting/texgen; then culling). So each draw gets an entry
+  list made of those same commands (the game's macros; for sprites the game's own
+  `Effect_LoadSpriteTexture`, run into a scratch list) after the state the section starts with: 2-cycle
+  (every effect setup list sets 2-cycle again; only the floating numbers' `D_800C40C0` sets 1-cycle, and
+  it comes last), `D_10000E8`, bilinear, and the TLUT mode the last sprite load left (CI sprites: RGBA16;
+  model effects end with none). Entry lists are interned by content in a static pool (1,024 of them: they
+  must stay below 4 GiB and live as long as the meshes keyed by their address). A battle with every
+  element's spells makes about 80 meshes.
+- **Colours are the draw's.** Every `gDPSetEnvColor` of an effect also calls `nd_env_color`: the six
+  sprite callbacks (effect.c, spirit.c, map.c), streaks, markers, rings, model effects and the fade. So
+  the odd/even flicker (`life & 1`, `stateFrames & 1`, `mapobj_arc_flicker_tick`, model flag 2) is that
+  tick's value in the recording. Lit model effects (flag 0x20) use the lights
+  `Env_ApplyLightSlot(player_light_slot)` sent.
+- **Model effects** walk their AnimSet with `Anim_DrawNode` and no actor begin. anim.c calls
+  `nd_effect_node` beside `nd_actor_node`; it draws only between `nd_effect_model_begin/end`
+  (Effect_UpdateAndDrawModelEffects). The texture scroll is the draw's tile offset (`EL_RDM_TILE_SCROLL`:
+  the entry list sets the tile size at 0,0 and the draw adds `tex.s, tex.t`); the flipbook frame
+  (`age >> shift`) is the entry list's image. The magic block's lists, vertices and textures are read
+  big-endian from RDRAM (only its records are swapped in place).
+- **The screen.** A new draw flag, `EL_RDD_SCREEN` (render.h): the matrix goes to clip space without the
+  camera. The fade quad is `fade_quad_dl` with the game's own ortho times identity, and an entry list per
+  render mode (translucent, or opaque at the ramp's end). The letterbox is two quads in pixels drawn with
+  `fade_letterbox_dl`'s own state, full width (the fill rectangles stop one column short, inside the N64
+  border). The ending's own fade (mode 5) is part of its picture section, so the native fade draws in modes
+  1, 6 and 7 only (R5: call it from the picture kind).
+- **Floating numbers** are texture rectangles (2D). `Effect_UpdateAndDrawAll` now drops its effects by
+  kind itself and the numbers as `EL_KIND_HUD`; main.c's effect section keeps only the sprites. R5 draws them.
+- **Camera shake** was already in the camera (the shake matrix in `nd_camera`'s projection). The additive
+  ENV flash on models is the actor kind's (`Env_ApplyLightSlot`).
+- **For R6.** Ids: `EL_KIND_EFFECT << 56 | pass << 48 | sub << 40 | slot << 32 | birth tick` (pass 0 sprite,
+  1 streak, 2 marker, 3 ring with sub = segment, 4 model node with sub = node). The birth tick counts
+  effect ticks (`nd_effect_begin`). A slot's effect starts when its life did not count down by one from the
+  last tick (sprites, streaks, markers), at a ring's first growing frame, and at `tick - age` for model
+  effects. Inputs (render.h):
+  - sprites: `EL_RDX_AIM_EYE` (pos, roll in `rot[2]`, scale x and `more[0]` y; rebuilt with the
+    interpolated eye), or `EL_RDX_ALIGN_Y` (flag 1);
+  - streaks and ring segments: `EL_RDX_ALIGN_Y_AXES` (direction, pos, scale and `more[0..1]`);
+  - markers: `EL_RDX_AIM_EYE`;
+  - model nodes: `EL_RDX_EFFECT_NODE` (the root's pos, rot and scales, the AnimSet copy, the frame, node
+    and list as for actors).
+
+  Snap, never blend: the flipbook frame (a different entry list, so a different mesh; a sprite's
+  `inputs[0]` is its texture), the env colour (the flicker) and a new birth tick. Screen draws are
+  `EL_RDX_MATRIX`.
+- **ELTALE_ND_EFFECT_LOG=1** prints per tick, on stdout before its `P1_GFX_TASK` line, how many sprites,
+  streaks, markers, ring segments, model nodes, fades and letterboxes were drawn natively. That is how the
+  test frames were found.
+
+Compare (`frame_test.py --native`, all kinds, `tests/render_baselines/all/`), with the new
+`tests/render_frames_effects.txt`. Its spells run has footstep dust, the four elements' level-1 spells,
+the enemies' wind, rings and a stat-up marker; its spirit run has the fade in and the spirit's sparkles.
+
+| run | before (R3) | now | notes |
+|---|---|---|---|
+| ng | 692 | 520 | the fade quad is now in both pictures (225: 174 -> 2) |
+| tour | 6,973 | 6,973 | |
+| ending | 2,102 | 2,005 | the letterbox |
+| battle | 1,367 | 1,506 | worse: the terrain rings (+3 to +89 per frame) |
+| menu | 298 | 159 | the fade |
+| chests | 1,720 | 1,720 | |
+| spells (new) | | 1,726 | worst 1370: 326, 1570: 315, 600: 312; mostly the map's (the sea in the top corner, ~90 a frame, there before) |
+| spirit (new) | | 11 | |
+
+The battle frames got worse only along the terrain rings. A ring segment is a quad one or two pixels
+tall that samples an 8-texel profile, so sub-pixel differences between the RDP's edge walker and the GPU
+change the line's brightness: same place, different intensity (battle 500 has the most, +89). Sprites, the
+spell models (texgen, scrolling, flipbooks, CI8 with TLUTs) and the fade agree to a few edge pixels. Not
+in any test frame: streaks (melee hits) and the map-object arc and drop sprites (they share the sprite
+path). The map tour with every kind native keeps 30374 frames and audio a2d2e81245d538d4.
+
 ## What is left after R3
 
-- The other kinds (R4-R5); under `--renderer native` map objects, billboards, the backdrop, shadows and
-  actors draw (the rest of the frame is the clear colour).
+- The 2D kinds (R5). Under `--renderer native` map objects, billboards, the backdrop, shadows, actors,
+  effects and the screen quads draw (the rest of the frame is the clear colour). R5 also owns the floating
+  numbers (`EL_KIND_HUD`) and the ending's fade (mode 5).
 - Pictures between ticks (R6): the recording keeps what it needs (ids, inputs); `render` draws one.
 - Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
   move and the 8-pixel border scale with it.

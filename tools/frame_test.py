@@ -38,7 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 EXE = ".exe" if sys.platform == "win32" else ""
 # the kinds the native renderer draws so far (render.h EL_KIND_* names): what "--native all" means
-NATIVE_KINDS = ["map", "billboard", "backdrop", "actor", "shadow"]
+NATIVE_KINDS = ["map", "billboard", "backdrop", "actor", "shadow", "effect", "screen"]
 
 
 def parse_list(path: Path):
@@ -152,7 +152,7 @@ def main() -> int:
     ap.add_argument("--rdpref", type=Path, default=ROOT / f"out/rdpref/eltale-rdpref{EXE}")
     ap.add_argument("--list", type=Path, action="append",
                     help="run list (repeatable; default tests/render_frames.txt, with --native also "
-                         "tests/render_frames_actor.txt)")
+                         "tests/render_frames_actor.txt, then tests/render_frames_effects.txt)")
     ap.add_argument("--baseline", type=Path, default=ROOT / "tests/render_ref.txt")
     ap.add_argument("--work", type=Path, default=ROOT / "out/frame_test")
     ap.add_argument("--saves", type=Path, default=ROOT / "out/bugsaves",
@@ -183,6 +183,7 @@ def main() -> int:
         args.list = [ROOT / "tests/render_frames.txt"]
         if args.native:
             args.list.append(ROOT / "tests/render_frames_actor.txt")
+        args.list.append(ROOT / "tests/render_frames_effects.txt")
     if args.native and args.work == ROOT / "out/frame_test":
         args.work = ROOT / "out/frame_test_native"
     args.exe, args.rdpref, args.work = args.exe.resolve(), args.rdpref.resolve(), args.work.resolve()

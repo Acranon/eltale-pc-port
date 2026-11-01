@@ -40,6 +40,8 @@ const NdKind nd_kinds_table[] = {
     { EL_KIND_BACKDROP, nd_backdrop_attach },
     { EL_KIND_SHADOW, nd_shadow_attach },
     { EL_KIND_ACTOR, nd_actor_attach },
+    { EL_KIND_EFFECT, nd_effect_attach },
+    { EL_KIND_SCREEN, NULL },
     { -1, NULL },
 };
 static unsigned requested = ~0u;
