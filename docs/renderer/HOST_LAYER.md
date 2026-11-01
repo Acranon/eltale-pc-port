@@ -134,6 +134,10 @@ tools\play.cmd <rom.z64> [--renderer native]                        # copies bot
     lines as headless.
 - New env: `ELTALE_PRESENT_DUMP` (native only). `ELTALE_HIDDEN_WINDOW` also turns the native
   presenter's vsync off, so a hidden window never waits for a display.
+- `host::fatal(message)` (host.cpp): the game cannot go on (the native renderer's GPU device was lost): stderr, the
+  data folder's `error.log`, a message box (not with `ELTALE_HIDDEN_WINDOW`), and `ElHost_Poll` returns
+  `EL_POLL_QUIT`. The native presenter's tests for it, minimising and resizing (`ELTALE_SIM_GPU_LOST`,
+  `ELTALE_SIM_MINIMISED`, `ELTALE_SIM_RESIZE`): NATIVE_DRAW.md, "The presenter's robustness".
 
 ## Since R2
 

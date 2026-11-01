@@ -65,7 +65,18 @@ const Spirv spirv_all[] = {
     { nd_spv_nd_vert, sizeof(nd_spv_nd_vert) },
     { nd_spv_nd_frag, sizeof(nd_spv_nd_frag) },
     { nd_spv_nd_ms_frag, sizeof(nd_spv_nd_ms_frag) },
+    { nd_spv_present_vert, sizeof(nd_spv_present_vert) },
+    { nd_spv_present_area_frag, sizeof(nd_spv_present_area_frag) },
 };
+
+// The presenter's own pipelines (render_native.cpp's area filter for Smooth pixel edges: present_area.frag) are
+// tagged "p", not by the render pass's samples (its pass is always one sample, whatever the MSAA): they are made
+// ahead at the start whatever the MSAA count.
+const char *const PRESENT_TAG = "p";
+bool pw_is_present(uint64_t fs_hash) {
+    static const uint64_t area = Shader::hash(nd_spv_present_area_frag, sizeof(nd_spv_present_area_frag));
+    return fs_hash == area;
+}
 
 // a compatible render pass: what Device::request_render_pass hashes, and the samples it makes the pass with
 struct PwPass {
@@ -303,7 +314,7 @@ void pw_on_compile(Device *device, const DeferredPipelineCompile &c, bool comput
     const Shader *vs = c.program->get_shader(ShaderStage::Vertex), *fs = c.program->get_shader(ShaderStage::Fragment);
     if (!vs || !fs || !c.compatible_render_pass || !pw.passes.count(c.compatible_render_pass->get_hash())) return;
     e.pass = c.compatible_render_pass->get_hash();
-    e.tag = pw_tag(pw_pass_samples(e.pass));
+    e.tag = pw_is_present(fs->get_hash()) ? PRESENT_TAG : pw_tag(pw_pass_samples(e.pass));
     if (pw.known.count({ e.tag, e.hash })) return;
     pw_note_shader(vs);
     pw_note_shader(fs);
@@ -475,6 +486,7 @@ void pipeline_warm_start(uint32_t samples) {
     std::vector<DeferredPipelineCompile> jobs;
     {
         std::lock_guard<std::mutex> hold(pw.lock);
+        const bool first = pw.started.empty(); // (the presenter's, tagged "p", with the first count started)
         if (!pw.started.insert(samples).second) return;
         pw_starting = true;
         struct Done {
@@ -486,7 +498,7 @@ void pipeline_warm_start(uint32_t samples) {
         std::vector<ImageHandle> images;
         const VkPipelineCache cache = CommandBuffer::holyland_pipeline_cache(pw.device);
         for (const PwEntry &e : pw.entries) {
-            if (e.tag != tag || !taken.insert(e.hash).second) continue;
+            if ((e.tag != tag && !(first && e.tag == PRESENT_TAG)) || !taken.insert(e.hash).second) continue;
             DeferredPipelineCompile j;
             std::memset(&j, 0, sizeof j);
             Shader *vs = pw_shader(e.shader[0]), *fs = pw_shader(e.shader[1]);

@@ -14,6 +14,7 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -122,11 +123,38 @@ struct Presenter {
     VkDeviceSize readback_size = 0;
 
     bool imgui = false;
+
+    // a lost device (or a surface lost for good): what happened, for present_lost(); nothing is presented after
+    const char *lost = nullptr;
+    uint64_t presents = 0;     // present_frame calls that got as far as acquiring (ELTALE_SIM_GPU_LOST counts them)
+    uint32_t surfaces_made = 0; // surfaces made again after VK_ERROR_SURFACE_LOST_KHR
 };
 Presenter pr;
 
+// A Vulkan result: errors are logged; a lost device stops the presenter (present_lost)
 void check(VkResult result) {
-    if (result < 0) std::fprintf(stderr, "[present] Vulkan error %d\n", int(result));
+    if (result >= 0) return;
+    std::fprintf(stderr, "[present] Vulkan error %d\n", int(result));
+    if (result == VK_ERROR_DEVICE_LOST && !pr.lost) pr.lost = "The graphics device was lost (VK_ERROR_DEVICE_LOST).";
+}
+
+// ELTALE_SIM_GPU_LOST=device:N or surface:N (a test): the Nth acquire (from 1) answers as the GPU would
+VkResult simulated(VkResult result) {
+    static long at = -1;
+    static VkResult as = VK_SUCCESS;
+    if (at < 0) {
+        at = 0;
+        if (const char *e = std::getenv("ELTALE_SIM_GPU_LOST")) {
+            if (!std::strncmp(e, "device:", 7)) as = VK_ERROR_DEVICE_LOST, at = std::atol(e + 7);
+            else if (!std::strncmp(e, "surface:", 8)) as = VK_ERROR_SURFACE_LOST_KHR, at = std::atol(e + 8);
+        }
+    }
+    if (at > 0 && pr.presents == uint64_t(at)) {
+        std::fprintf(stderr, "[present] ELTALE_SIM_GPU_LOST: picture %llu acts as Vulkan error %d\n",
+                     (unsigned long long)pr.presents, int(as));
+        return as;
+    }
+    return result;
 }
 
 void lock() { pr.dev.lock(pr.dev.lock_context); }
@@ -197,11 +225,19 @@ void wait_queue() {
 }
 
 // The swapchain for the window's size and the vsync setting: false if there is none now (minimised)
+bool remake_surface();
+
 bool make_swapchain() {
     int drawable_w = 0, drawable_h = 0;
     SDL_GetWindowSizeInPixels(pr.window, &drawable_w, &drawable_h);
     VkSurfaceCapabilitiesKHR caps;
-    if (vk.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pr.dev.gpu, pr.surface, &caps) != VK_SUCCESS) return false;
+    const VkResult caps_result = vk.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pr.dev.gpu, pr.surface, &caps);
+    if (caps_result == VK_ERROR_SURFACE_LOST_KHR) {
+        remake_surface(); // (the next picture makes the swapchain on the new surface)
+        return false;
+    }
+    check(caps_result);
+    if (caps_result != VK_SUCCESS) return false;
     VkExtent2D extent = caps.currentExtent;
     if (extent.width == 0xFFFFFFFFu) {
         extent.width = uint32_t(drawable_w < 0 ? 0 : drawable_w);
@@ -333,6 +369,32 @@ bool choose_format() {
         }
     }
     return false;
+}
+
+// VK_ERROR_SURFACE_LOST_KHR: the window's surface made again (the swapchain with it, at the next picture). The
+// render pass and ImGui's pipeline are for the old format: a new surface without it is lost for good.
+bool remake_surface() {
+    std::fprintf(stderr, "[present] the window's surface was lost: making it again\n");
+    wait_queue();
+    drop_swapchain_images();
+    if (pr.swapchain != VK_NULL_HANDLE) vk.vkDestroySwapchainKHR(pr.dev.device, pr.swapchain, nullptr);
+    pr.swapchain = VK_NULL_HANDLE;
+    if (pr.surface != VK_NULL_HANDLE) vk.vkDestroySurfaceKHR(pr.dev.instance, pr.surface, nullptr);
+    pr.surface = VK_NULL_HANDLE;
+    pr.stale = true;
+    const VkFormat format = pr.format.format;
+    VkBool32 supported = VK_FALSE;
+    if (++pr.surfaces_made > 16) { // (lost again and again: give up rather than spin)
+        pr.lost = "The window's Vulkan surface kept being lost.";
+    } else if (!SDL_Vulkan_CreateSurface(pr.window, pr.dev.instance, nullptr, &pr.surface)) {
+        pr.surface = VK_NULL_HANDLE;
+        pr.lost = "The window's Vulkan surface was lost and could not be made again.";
+    } else if (vk.vkGetPhysicalDeviceSurfaceSupportKHR(pr.dev.gpu, pr.dev.queue_family, pr.surface, &supported) != VK_SUCCESS ||
+               !supported || !choose_format() || pr.format.format != format) {
+        pr.lost = "The window's Vulkan surface was lost, and the new one cannot be presented to the same way.";
+    }
+    if (pr.lost) std::fprintf(stderr, "[present] %s\n", pr.lost);
+    return pr.lost == nullptr;
 }
 
 bool make_render_pass() {
@@ -527,22 +589,31 @@ bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h) 
 
 bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawData *overlay,
                    std::vector<uint32_t> *window_rgba, uint32_t *width, uint32_t *height) {
-    if (!pr.up) return false;
+    if (!pr.up || pr.lost) return false;
     if (SDL_GetWindowFlags(pr.window) & SDL_WINDOW_MINIMIZED) return false;
     int drawable_w = 0, drawable_h = 0;
     SDL_GetWindowSizeInPixels(pr.window, &drawable_w, &drawable_h);
     if (drawable_w <= 0 || drawable_h <= 0) return false;
-    if (pr.stale || pr.vsync_made != pr.vsync_wanted || pr.extent.width != uint32_t(drawable_w) ||
+    if (pr.stale || pr.swapchain == VK_NULL_HANDLE || pr.vsync_made != pr.vsync_wanted || pr.extent.width != uint32_t(drawable_w) ||
         pr.extent.height != uint32_t(drawable_h)) {
         if (!make_swapchain()) return false;
     }
 
     Frame &f = pr.frames[pr.frame];
-    vk.vkWaitForFences(pr.dev.device, 1, &f.done, VK_TRUE, UINT64_MAX);
+    check(vk.vkWaitForFences(pr.dev.device, 1, &f.done, VK_TRUE, UINT64_MAX));
+    if (pr.lost) return false;
     uint32_t index = 0;
-    VkResult result = vk.vkAcquireNextImageKHR(pr.dev.device, pr.swapchain, UINT64_MAX, f.acquired, VK_NULL_HANDLE, &index);
+    pr.presents++;
+    // (a simulated loss answers instead of the acquire: no image is taken, no semaphore signalled)
+    VkResult result = simulated(VK_SUCCESS);
+    if (result == VK_SUCCESS)
+        result = vk.vkAcquireNextImageKHR(pr.dev.device, pr.swapchain, UINT64_MAX, f.acquired, VK_NULL_HANDLE, &index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         pr.stale = true;
+        return false;
+    }
+    if (result == VK_ERROR_SURFACE_LOST_KHR) {
+        remake_surface();
         return false;
     }
     if (result == VK_SUBOPTIMAL_KHR) pr.stale = true; // (drawn all the same, and made again for the next)
@@ -654,9 +725,10 @@ bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawD
     result = vk.vkQueuePresentKHR(pr.dev.queue, &present);
     unlock();
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) pr.stale = true;
+    else if (result == VK_ERROR_SURFACE_LOST_KHR) remake_surface();
     else check(result);
-    if (shot) {
-        vk.vkWaitForFences(pr.dev.device, 1, &f.done, VK_TRUE, UINT64_MAX);
+    if (shot && !pr.lost) {
+        check(vk.vkWaitForFences(pr.dev.device, 1, &f.done, VK_TRUE, UINT64_MAX));
         const uint32_t pw = pr.extent.width, ph = pr.extent.height;
         window_rgba->resize(size_t(pw) * ph);
         const uint32_t *in = static_cast<const uint32_t *>(pr.readback_map);
@@ -673,6 +745,8 @@ bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawD
     pr.frame = (pr.frame + 1) % FRAMES;
     return true;
 }
+
+const char *present_lost() { return pr.lost; }
 
 void present_close() {
     if (pr.imgui) {

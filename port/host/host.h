@@ -61,6 +61,11 @@ void set_fullscreen(bool on);
 bool focused();
 // The window's size in pixels.
 void window_pixels(int *w, int *h);
+// The game cannot go on (the GPU device was lost): `message` to stderr and the data folder's error.log, a message
+// box (not with ELTALE_HIDDEN_WINDOW), and the game asked to quit at its next poll, as the window's close does.
+// Once only; true after it was called.
+void fatal(const char *message);
+bool fatal_called();
 
 // ---- input.cpp ----------------------------------------------------------------------------------
 void input_event(const SDL_Event &e); // controllers plugged in and out
