@@ -790,6 +790,14 @@ mille of the depth range: at the disc's edge 82-95% fog) and the far plane at 10
 `OPT_DITHER`: the RDP's 5 bits a channel with its magic square at each N64 pixel, for draws the GPU does not
 blend with the picture (the RDP dithers after its blend; blended draws stay smooth).
 
+### Pacing at the options
+
+`tools/pace_test.py --hz 240` (hidden window, tests/interp-walk.input, the play half), 2026-11-01: 1x no MSAA 240.0
+pictures a second, interval 4.17 ms (spread 0.15, worst 5.43); 4x (1280x960) MSAA 4x far 240.0 (0.09, 5.37); 6x
+(1920x1440) MSAA 4x far 240.0 (0.10, 5.45); 8x (2560x1920) MSAA 8x farther 240.0 (0.06, 4.73); 60.00 retraces a second
+and the game's own P1_OS_OK in every run. (The walk is the throne room, not a long view: the fields add 30-100
+draws a tick at 2x.)
+
 ### Tests and tools
 
 | | |
