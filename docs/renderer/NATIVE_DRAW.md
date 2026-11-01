@@ -70,6 +70,8 @@ and billboard sections inside the map functions, so `ELTALE_DL_KINDS` works for 
   `fog_color`, `fog_position(fm, fo)`, `draw(ElRdDraw)`, `frame_end(frame)`.
 - Matrices are the N64's (row vectors, `m[row*4+col]`), decoded from the fixed-point Mtx the RSP would
   load: the very numbers it would use. The camera is the projection stack (view x perspective x shake).
+- A draw's matrix comes with its inputs for R6 (`xform`, `pos`, `rot`, `scale`, and `inputs[4]` for what a
+  kind needs beyond those: `EL_RDX_ACTOR_NODE` names the AnimSet, frame, node and list, `EL_RDI_*`).
 
 ## The model loader (game/native_draw/nd_model.c)
 

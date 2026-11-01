@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 1
+#define EL_RENDER_API_VERSION 2
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -135,6 +135,8 @@ enum {
     EL_RDX_MATRIX = 0,   /* only the matrix: R6 snaps (or lerps) it */
     EL_RDX_POSITION = 1, /* guPosition(rot x, y, z in degrees, scale, pos) */
     EL_RDX_ROT_RAD = 2,  /* Math_MtxRotScaleTrans(rot x, y, z in radians, scale, pos) */
+    EL_RDX_ACTOR_NODE = 3, /* an actor model's node: Math_MtxRotScaleTrans(the actor's rot in radians, scale,
+                              pos), times the node chain at the animation frame (ElRdDraw.inputs: EL_RDI_*) */
 };
 
 typedef struct ElRdDraw {
@@ -145,7 +147,16 @@ typedef struct ElRdDraw {
     uint32_t xform;         /* EL_RDX_* */
     float pos[3], rot[3], scale;
     float tile_offset[2];   /* EL_RDM_TILE_SCROLL tiles: added to SL/TL (10.2 units) */
+    uint32_t inputs[4];     /* more of the matrix's inputs, by xform (R6); EL_RDX_ACTOR_NODE: EL_RDI_* */
 } ElRdDraw;
+
+/* ElRdDraw.inputs of an EL_RDX_ACTOR_NODE draw */
+enum {
+    EL_RDI_ANIM_SET = 0, /* the AnimSet's N64 address (its animation: a new one is a snap) */
+    EL_RDI_FRAME = 1,    /* Actor.frame (the TCB tracks' time) | Actor.ticks << 16 (dlSeq flipbooks) */
+    EL_RDI_NODE = 2,     /* node index | AnimNode.flags << 8 (1 billboard) | Anim_DrawModel's flags << 16 */
+    EL_RDI_DL = 3,       /* the node's display list this tick (a dlSeq swap is a snap) */
+};
 
 enum {
     EL_RDD_KIND_SHIFT = 56,
