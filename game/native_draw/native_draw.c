@@ -23,6 +23,7 @@
 #include "game/core/main.h"
 #include "game/camera/camera.h"
 #include "port/mouse_camera.h"
+#include "port/mouse_menu.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -162,6 +163,7 @@ void nd_frame_list_end(void *list_start, void **head) {
 /* ---- the tick ---------------------------------------------------------------------------------- */
 
 void nd_frame_begin(void) {
+    Port_MouseFrameBegin(); /* the menus' mouse targets: this frame's drawing names them (port/mouse_menu.h) */
     if (!nd_kinds) return;
     ElRdFrameInfo info;
     memset(&info, 0, sizeof info);

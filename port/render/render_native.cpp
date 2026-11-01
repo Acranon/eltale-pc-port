@@ -301,6 +301,14 @@ public:
 
 
     // the MSAA counts the GPU can draw (colour and depth) as bits 2, 4, 8
+    bool shown_size(uint32_t *w, uint32_t *h, bool *cpu) const override {
+        if (!shown_image) return false;
+        *w = shown_image->get_width();
+        *h = shown_image->get_height();
+        *cpu = shown_image == cpu_picture.get();
+        return *w > 0 && *h > 0;
+    }
+
     uint32_t msaa_supported() const override {
         if (headless || !picture) return 0;
         const VkPhysicalDeviceLimits &l = context.get_gpu_props().limits;

@@ -1842,18 +1842,19 @@ index cc5330a..975387d 100644
  }
 +#endif
 diff --git a/src/game/item/item.c b/src/game/item/item.c
-index 5e43dc3..44ea740 100644
+index 5e43dc3..0a1e4d9 100644
 --- a/src/game/item/item.c
 +++ b/src/game/item/item.c
-@@ -1,3 +1,7 @@
+@@ -1,3 +1,8 @@
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
 +#include "port/text.h"
++#include "port/mouse_menu.h"
 +#endif
  #include "game/item/item.h"
  #include "game/audio/sound.h"
  #include "game/battle/battle.h"
-@@ -12,6 +16,7 @@
+@@ -12,6 +17,7 @@
  #include "game/player/player.h"
  #include "game/text/text.h"
  #include "game/ui/menu.h"
@@ -1861,7 +1862,7 @@ index 5e43dc3..44ea740 100644
  
  /*
   * Items: the 150-slot inventory (item_inventory), the in-field inventory menu with its icon cache,
-@@ -201,6 +206,58 @@ extern u8 D_803AC660[];
+@@ -201,6 +207,74 @@ extern u8 D_803AC660[];
  extern void* D_803AB288[];
  extern void* D_803AB2F0[];
  
@@ -1915,12 +1916,28 @@ index 5e43dc3..44ea740 100644
 +    gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, (x + s1 - s0 + 1) << 2, (y + 13) << 2, G_TX_RENDERTILE,
 +                        s0 << 5, 16 << 5, 0x400, 0x400);
 +}
++
++/* port: the mouse (port/mouse_menu.h). The arrows under the row scroll it by one item, as the stick does at an end. */
++static void Item_MouseScroll(s32 dir, s32 x, s32 y, s32 event) {
++    (void)x;
++    (void)y;
++    if (event != 2) {
++        return;
++    }
++    if (dir < 0 && item_menu_scroll > 0) {
++        item_menu_scroll--;
++        Sfx_Play(0, 3, 0xFF);
++    } else if (dir > 0 && item_inventory[item_menu_scroll + 8] != 0xFF) {
++        item_menu_scroll++;
++        Sfx_Play(0, 3, 0xFF);
++    }
++}
 +#endif
 +
  
  void Item_UpdateInventoryMenu(void) {
      volatile s32 n;
-@@ -217,12 +274,30 @@ void Item_UpdateInventoryMenu(void) {
+@@ -217,12 +291,30 @@ void Item_UpdateInventoryMenu(void) {
      u8 freeSlots[8];
      s32 y;
      s32 b;
@@ -1951,7 +1968,7 @@ index 5e43dc3..44ea740 100644
      x = input_stick_x;
      if (x > 5) {
          x -= 5;
-@@ -329,12 +404,19 @@ void Item_UpdateInventoryMenu(void) {
+@@ -329,12 +421,36 @@ void Item_UpdateInventoryMenu(void) {
                  gDPLoadTLUT_pal256(gfx_dl_head++, D_803AC660);
                  hl = 0;
              }
@@ -1963,6 +1980,23 @@ index 5e43dc3..44ea740 100644
              x += 0x44;
              n--;
          }
++#ifdef ELTALE_P1_OS
++        /* port: the pointer on an item moves the cursor there, a click uses it (A); the arrows scroll; a right
++         * click closes the menu (B) */
++        for (k = 0; k < count; k++) {
++            Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0x1AC / 4 + k * 0x11, 0x1F0 / 4 + dy, 0x11, 0x16, &item_menu_cursor, 4, k,
++                             PORT_MOUSE_A);
++        }
++        if (count == 8) {
++            if (item_menu_scroll != 0) {
++                Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, 0x74, 0x91 + dy, 0x1C, 0x10, Item_MouseScroll, -1, 0);
++            }
++            if (item_inventory[item_menu_scroll + 8] != 0xFF) {
++                Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, 0xD0, 0x91 + dy, 0x1C, 0x10, Item_MouseScroll, 1, 0);
++            }
++        }
++        Port_MouseBack();
++#endif
          x = item_menu_cursor * 0x44 + 0x1D4;
          y = 0x1F0 - (u16)((sins(item_menu_bob_phase & 0x7FFF) >> 13) << 2);
 +#ifdef ELTALE_P1_OS
@@ -1971,7 +2005,7 @@ index 5e43dc3..44ea740 100644
          gSPDisplayList(gfx_dl_head++, D_803AA828);
          gSPTextureRectangle(gfx_dl_head++, x, y, x + 0x30, y + 0x30, G_TX_RENDERTILE, 0x9C0, 0, 0x400, 0x400);
          if (count == 8) {
-@@ -342,6 +424,18 @@ void Item_UpdateInventoryMenu(void) {
+@@ -342,6 +458,18 @@ void Item_UpdateInventoryMenu(void) {
              gDPLoadTextureTile(gfx_dl_head++, D_8039AFB0, G_IM_FMT_CI, G_IM_SIZ_8b, 176, 0, 90, 0, 146, 13, 0,
                                 G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
                                 G_TX_NOLOD, G_TX_NOLOD);
@@ -1990,7 +2024,7 @@ index 5e43dc3..44ea740 100644
              if (item_menu_scroll != 0) {
                  gSPTextureRectangle(gfx_dl_head++, 0x218, 0x250, 0x234, 0x26C, G_TX_RENDERTILE, 0xE00, 0, 0x400, 0x400);
                  gSPTextureRectangle(gfx_dl_head++, (0x77 - (b >> 13)) * 4, 0x248, (0x85 - (b >> 13)) * 4, 0x274,
-@@ -352,10 +446,22 @@ void Item_UpdateInventoryMenu(void) {
+@@ -352,10 +480,22 @@ void Item_UpdateInventoryMenu(void) {
                  gSPTextureRectangle(gfx_dl_head++, ((b >> 13) + 0xDA) * 4, 0x248, ((b >> 13) + 0xE8) * 4, 0x274,
                                      G_TX_RENDERTILE, 0x10A0, 0, 0x400, 0x400);
              }
@@ -2013,7 +2047,7 @@ index 5e43dc3..44ea740 100644
          if ((input_pressed_buttons & 0xA000) && Item_TryUse(item_inventory[item_menu_scroll + item_menu_cursor])) {
              p = &item_inventory[item_menu_scroll + item_menu_cursor];
              for (n = 0x95 - item_menu_scroll - item_menu_cursor; n != 0; n--) {
-@@ -475,7 +581,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
+@@ -475,7 +615,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
      Sfx_Play(0, 0x3B, 0xFF);
  }
  
@@ -2979,16 +3013,17 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..3b8a0aa 100644
+index f2ae77c..dec2883 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
-@@ -13,6 +13,52 @@
+@@ -13,6 +13,53 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "game/ui/menu.h"
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
++#include "port/mouse_menu.h"
 +
 +/* English (port): the panels are sized for the Japanese's 10-pixel glyphs. A message wider than
 + * SAVE_EN_TEXT_W wraps to it, and its panel grows about its centre to hold it with the Japanese
@@ -3035,7 +3070,7 @@ index f2ae77c..3b8a0aa 100644
  
  
  /*
-@@ -112,10 +158,18 @@ void SaveMenu_Update(void) {
+@@ -112,10 +159,18 @@ void SaveMenu_Update(void) {
  void SaveMenu_DrawOperationPanel(void) {
      u8 unused[4];
      s16 *r = save_menu_operation_panel_rects[save_menu_operation_panel_index];
@@ -3054,7 +3089,7 @@ index f2ae77c..3b8a0aa 100644
  
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
-@@ -128,7 +182,11 @@ void SaveMenu_DrawOperationPanel(void) {
+@@ -128,7 +183,11 @@ void SaveMenu_DrawOperationPanel(void) {
      Menu_DrawSprite(0x38, x + 1, y + 2, 1, h - 4);
      Menu_DrawSprite(0x39, x + 1, y + h - 2, w - 2, 1);
      Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
@@ -3066,7 +3101,7 @@ index f2ae77c..3b8a0aa 100644
      SaveMenu_SetTextDrawState();
  }
  
-@@ -246,6 +304,9 @@ void SaveMenu_UpdateDialog(void) {
+@@ -246,6 +305,9 @@ void SaveMenu_UpdateDialog(void) {
      } else {
          msg = save_menu_dialog_messages_load_delete[save_menu_dialog_index];
      }
@@ -3076,7 +3111,21 @@ index f2ae77c..3b8a0aa 100644
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
      Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -362,6 +423,13 @@ void SaveMenu_UpdateDialog(void) {
+@@ -259,6 +321,13 @@ void SaveMenu_UpdateDialog(void) {
+     Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
+     Text_DrawEncodedString(x + 6, y + 6, msg);
+     SaveMenu_SetTextDrawState();
++#ifdef ELTALE_P1_OS
++    /* port: a click on a message is A (port/mouse_menu.h); once it asks, its answers (below) are the targets */
++    if (!(save_menu_flags & 0x800)) {
++        Port_MouseTarget(0, PORT_MOUSE_CENTRE, x, y, w, h, NULL, 0, 0, PORT_MOUSE_A);
++    }
++    Port_MouseBack();
++#endif
+     if (save_menu_delay_frames >= 0) {
+         save_menu_delay_frames--;
+     }
+@@ -362,6 +431,13 @@ void SaveMenu_UpdateDialog(void) {
              w = save_menu_dialog_rects[2][2];
              h = save_menu_dialog_rects[2][3];
          }
@@ -3090,7 +3139,72 @@ index f2ae77c..3b8a0aa 100644
          Menu_DrawSprite(0, x, y, w, h);
          Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
          Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -974,7 +1042,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -394,6 +470,11 @@ void SaveMenu_UpdateDialog(void) {
+                 save_menu_flags &= ~8;
+             }
+             SaveMenu_SetTextDrawState();
++#ifdef ELTALE_P1_OS
++            /* port: the pointer on an answer moves the cursor there, a click picks it (A) */
++            Port_MouseTarget(0, PORT_MOUSE_CENTRE, x, y + 3, w, 13, &save_menu_choice_cursor, 1, 0, PORT_MOUSE_A);
++            Port_MouseTarget(0, PORT_MOUSE_CENTRE, x, y + 16, w, 13, &save_menu_choice_cursor, 1, 1, PORT_MOUSE_A);
++#endif
+             if (save_menu_flags & 0x10) {
+                 Menu_DrawSprite(4, save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][0], save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][1], 12, 12);
+             } else {
+@@ -515,6 +596,39 @@ void SaveMenu_UpdateDialog(void) {
+     }
+ }
+ 
++#ifdef ELTALE_P1_OS
++/* port: the mouse on the list of saves (port/mouse_menu.h). Two shown: the top one is the selected one, or the one
++ * before it when flag 0x20 puts the cursor on the lower one. */
++static void SaveMenu_MouseSlot(s32 lower, s32 x, s32 y, s32 event) {
++    s32 top = (save_menu_flags & 0x20) ? save_menu_selected_slot - 1 : save_menu_selected_slot;
++
++    (void)x;
++    (void)y;
++    (void)event;
++    if (lower) {
++        save_menu_selected_slot = top + 1;
++        save_menu_flags |= 0x20;
++    } else {
++        save_menu_selected_slot = top;
++        save_menu_flags &= ~0x20;
++    }
++}
++
++static void SaveMenu_MouseSlots(SaveFileEntry *lower) {
++    Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, 0x4C, 0x2E, 0xB8, 0x4C, SaveMenu_MouseSlot, 0, PORT_MOUSE_A);
++    if (lower->file_no != -1) {
++        Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, 0x4C, 0x7B, 0xB8, 0x4C, SaveMenu_MouseSlot, 1, PORT_MOUSE_A);
++    }
++    if (save_menu_selected_slot >= 2 || (save_menu_selected_slot == 1 && !(save_menu_flags & 0x20))) {
++        Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0x30, 0x3A, 0x18, 0x1A, NULL, 0, 0, PORT_MOUSE_STICK_UP);
++    }
++    if (lower < &save_menu_file_entries[16] && lower[1].file_no != -1) {
++        Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0x30, 0xA2, 0x18, 0x1A, NULL, 0, 0, PORT_MOUSE_STICK_DOWN);
++    }
++    Port_MouseBack();
++}
++#endif
++
+ /* .data 80061650..80061660: SaveMenu_UpdateSlotList's local message (an initialized u8[14]
+  * that IDO copies to the stack); becomes its initializer when the function is C. */
+ #ifdef NON_MATCHING
+@@ -770,6 +884,12 @@ void SaveMenu_UpdateSlotList(s32 arg0) {
+     } else {
+         Menu_DrawSprite(1, flag + 0x42, 0x37, 0x10, 0xD);
+     }
++#ifdef ELTALE_P1_OS
++    /* port: the pointer on a save moves the cursor there, a click picks it (A); the arrows page (a stick push) */
++    if (arg0 != 1) {
++        SaveMenu_MouseSlots(ptr[0]);
++    }
++#endif
+     if (arg0 != 1) {
+         n = 0;
+         if (input_stick_y < -20) {
+@@ -974,7 +1094,7 @@ void SaveMenu_SaveSelectedFile(void) {
          SaveMenu_CaptureGameState(idx);
      }
      id = save_menu_selected_slot;
@@ -3099,7 +3213,7 @@ index f2ae77c..3b8a0aa 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -996,7 +1064,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -996,7 +1116,7 @@ void SaveMenu_SaveSelectedFile(void) {
          save_menu_flags &= ~0x2000;
          return;
      }
@@ -3228,21 +3342,22 @@ index af00459..d8882c2 100644
 +#endif
  }
 diff --git a/src/game/text/text_window.c b/src/game/text/text_window.c
-index 4f9f215..09e6fc3 100644
+index 4f9f215..8b492fe 100644
 --- a/src/game/text/text_window.c
 +++ b/src/game/text/text_window.c
-@@ -6,6 +6,10 @@
+@@ -6,6 +6,11 @@
  #include "game/npc/npc.h"
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
++#include "port/mouse_menu.h"
 +#endif
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
  
  /*
   * Text windows: slot lifecycle, message and choice layout, input, and drawing.
-@@ -42,6 +46,16 @@ TextChoiceRows text_pending_choice_rows;
+@@ -42,6 +47,16 @@ TextChoiceRows text_pending_choice_rows;
  TextWindow text_window_slots[4];
  u8 text_stick_advance_enabled;
  u16 text_stick_advance_frames;
@@ -3259,7 +3374,7 @@ index 4f9f215..09e6fc3 100644
  
  
  #ifdef NON_MATCHING
-@@ -158,6 +172,27 @@ s32 Text_OpenWindow(s32 arg0) {
+@@ -158,6 +173,27 @@ s32 Text_OpenWindow(s32 arg0) {
                  }
                  text_window_slots[i].reveal_delay = text_reveal_delay_steps[0] + menu_text_delay_option;
                  text_window_slots[i].reveal_timer = c;
@@ -3287,7 +3402,34 @@ index 4f9f215..09e6fc3 100644
              }
              text_window_slots[i].reveal_index = 1;
              text_window_slots[i].pending_byte = text_window_slots[i].message_bytes[1];
-@@ -397,11 +432,11 @@ void Text_UpdateAndDrawWindows(void) {
+@@ -254,6 +290,14 @@ void Text_UpdateAndDrawWindows(void) {
+                         y = text_window_slots[idx].y + 6;
+                         for (i = 0; i < text_window_slots[idx].choice_count; i++) {
+                             Text_DrawEncodedString(x, y, text_window_slots[idx].choice_rows[i]);
++#ifdef ELTALE_P1_OS
++                            /* port: the pointer on an answer moves the cursor there, a click picks it (A) */
++                            if (text_window_slots[idx].flags & 0x80000000) {
++                                Port_MouseTarget(0, PORT_MOUSE_CENTRE, text_window_slots[idx].x, y - 3, text_window_slots[idx].width, 13,
++                                                 &text_window_slots[idx].choice_cursor, sizeof text_window_slots[idx].choice_cursor, i,
++                                                 PORT_MOUSE_A);
++                            }
++#endif
+                             y += 13;
+                         }
+                         if (text_window_slots[idx].flags & 0x80000000) {
+@@ -299,6 +343,11 @@ void Text_UpdateAndDrawWindows(void) {
+                             }
+                         }
+                     } else if (text_window_slots[idx].flags & 0x80000000) {
++#ifdef ELTALE_P1_OS
++                        /* port: a click on the window is A (the next page, the whole page at once, close) */
++                        Port_MouseTarget(0, PORT_MOUSE_CENTRE, text_window_slots[idx].x, text_window_slots[idx].y, text_window_slots[idx].width,
++                                         text_window_slots[idx].height, NULL, 0, 0, PORT_MOUSE_A);
++#endif
+                         if (text_window_slots[idx].flags & 0x08000000) {
+                             if (text_window_slots[idx].flags & 0x04000000) {
+                                 flagD8 = 1;
+@@ -397,11 +446,11 @@ void Text_UpdateAndDrawWindows(void) {
                                      text_window_slots[idx].message_bytes[j] = text_window_slots[idx].pending_byte;
                                      tab = 0;
                                      col = 0;
@@ -3301,7 +3443,7 @@ index 4f9f215..09e6fc3 100644
                                                  if (tab < col) {
                                                      col -= tab;
                                                      col += tab;
-@@ -507,6 +542,9 @@ void Text_UpdateAndDrawWindows(void) {
+@@ -507,6 +556,9 @@ void Text_UpdateAndDrawWindows(void) {
      gDPPipeSync(gfx_dl_head++);
      gfx = gfx_dl_head++; gfx->words.w0 = 0xF9000000; gfx->words.w1 = 1;
      gfx = gfx_dl_head++; gfx->words.w0 = 0xE7000000; gfx->words.w1 = 0;
@@ -3311,7 +3453,7 @@ index 4f9f215..09e6fc3 100644
  }
  #else
  #pragma GLOBAL_ASM("asm/nonmatchings/game/text/text_window/Text_UpdateAndDrawWindows.s")
-@@ -605,8 +643,8 @@ void Text_DrawWindowFrame(s32 idx) {
+@@ -605,8 +657,8 @@ void Text_DrawWindowFrame(s32 idx) {
  /* frame 0x40 vs 0x48, one more saved register, row loop tested as row != rows + 1; code is equivalent */
  void Text_BuildVisiblePage(s32 idx) {
      TextWindow *p = &text_window_slots[idx];
@@ -3322,7 +3464,7 @@ index 4f9f215..09e6fc3 100644
      s32 k = 0;
      s32 dst = -1;
      s32 src = -1;
-@@ -709,6 +747,17 @@ void Text_MeasureChoiceWindow(s32 arg0) {
+@@ -709,6 +761,17 @@ void Text_MeasureChoiceWindow(s32 arg0) {
      s32 cnt;
  
      text_choice_window_rect.height = n * 13 + 12;
@@ -3340,7 +3482,7 @@ index 4f9f215..09e6fc3 100644
      for (i = 0; i < n; i++) {
          j = 0;
          cnt = 0;
-@@ -761,7 +810,7 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
+@@ -761,7 +824,7 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
    ;
    t = &prm.e[type];
    {
@@ -3349,7 +3491,7 @@ index 4f9f215..09e6fc3 100644
      ;
      { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
      ;
-@@ -774,6 +823,22 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
+@@ -774,6 +837,22 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
    }
    { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (unsigned int) ((((unsigned int) 0xe7) & ((0x01 << 8) - 1)) << 24); _g->words.w1 = 0; }
    ;
@@ -3373,18 +3515,19 @@ index 4f9f215..09e6fc3 100644
  }
  #else
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..f61c55a 100644
+index e6f79b4..4daf582 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
-@@ -1,3 +1,7 @@
+@@ -1,3 +1,8 @@
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
 +#include "port/text.h"
++#include "port/mouse_menu.h"
 +#endif
  #include "game/ui/hud.h"
  #include "game/camera/camera.h"
  #include "game/gfx/effect.h"
-@@ -13,6 +17,7 @@
+@@ -13,6 +18,7 @@
  #include "game/player/player.h"
  #include "game/ui/menu.h"
  #include "game/core/main.h"
@@ -3392,7 +3535,23 @@ index e6f79b4..f61c55a 100644
  
  /*
   * In-game HUD: meters, compass, spell input, status indicators, and text primitives.
-@@ -128,7 +133,7 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -82,6 +88,15 @@ extern HudTextureDesc D_803A8748;
+ extern MagicVisualDef D_803AA690[];
+ extern EnemyEffectDef D_803AA6C4[];
+ 
++#ifdef ELTALE_P1_OS
++/* port: the mouse (port/mouse_menu.h). Each element's C button: the crystals and the allocation cross in
++ * element order (as Hud_UpdateElementAllocation reads them), the spell list's names in direction order. */
++static const u32 hud_element_c_buttons[4] = { 8, 2, 4, 1 };
++static s32 hud_spell_names_xy[4][2]; /* where this frame's spell names are (screen), or x -1 */
++static s32 hud_spell_cast_glow_y;    /* the spell being put together under the pointer: its y, else -1 */
++static void Hud_DrawSpellHover(GfxFrameData *buf);
++#endif
++
+ 
+ void Hud_ResetState(void) {
+     D_8008C168 = 0;
+@@ -128,7 +143,7 @@ void Hud_Draw(GfxFrameData* buf) {
      }
      if (!(core_flags & 0xC00)) {
          Hud_DrawPlayerMeters((Actor*)&player_state.actor);
@@ -3401,7 +3560,7 @@ index e6f79b4..f61c55a 100644
          if (hud_panel_transition_state == 1) {
              if (++hud_panel_transition_frame >= 13) {
                  hud_panel_transition_frame = 12;
-@@ -192,6 +197,9 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -192,6 +207,9 @@ void Hud_Draw(GfxFrameData* buf) {
  extern HudTextureDesc D_803A86F8;
  
  void Hud_DrawPlayerMeters(Actor* arg0) {
@@ -3411,7 +3570,7 @@ index e6f79b4..f61c55a 100644
      ActorStats* st;
      s32 w;
      s32 d;
-@@ -237,7 +245,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+@@ -237,7 +255,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
  extern Gfx D_803AA3C8[];
  extern Gfx D_803AA2F8[];
  
@@ -3423,7 +3582,31 @@ index e6f79b4..f61c55a 100644
      s32 x;
      f32 fx;
      f32 fy;
-@@ -295,6 +306,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -287,6 +308,23 @@ void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
+         gSPDisplayList(gfx_dl_head++, D_803AA2F8);
+         hud_element_gain_flash_timer--;
+     }
++#ifdef ELTALE_P1_OS
++    /* port: a click on a crystal is its C button (its element's spell list), the pointer over one makes it glow
++     * (port/mouse_menu.h) */
++    for (i = 0; i < 4; i++) {
++        Port_MouseTarget(PORT_TAG_CRYSTAL + i, PORT_MOUSE_LEFT, hud_draw_origin_x + i * 22 - 4, hud_draw_origin_y - 3, 20, 22,
++                         NULL, 0, 0, hud_element_c_buttons[i]);
++    }
++    i = Port_MouseHoverTag() - PORT_TAG_CRYSTAL;
++    if (i >= 0 && i < 4 && !hud_element_gain_flash_timer) {
++        col = hud_element_colors[i];
++        guTranslate(&buf->mtx[gfx_mtx_index], i * 22.0f + 5.0 + (f32)hud_draw_origin_x, hud_draw_origin_y + 5.0f, 0.0f);
++        gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++        gDPPipeSync(gfx_dl_head++);
++        gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], 0xE0);
++        gSPDisplayList(gfx_dl_head++, D_803AA2F8);
++    }
++#endif
+ }
+ 
+ 
+@@ -295,6 +333,9 @@ extern HudTextureDesc D_803A86F8;
  f32 sqrtf(f32);
  
  void Hud_DrawCompass(GfxFrameData* buf) {
@@ -3433,17 +3616,19 @@ index e6f79b4..f61c55a 100644
      f32 dx;
      f32 dz;
      f32 dist;
-@@ -340,6 +354,9 @@ extern HudTextureDesc D_803A8718;
+@@ -340,6 +381,11 @@ extern HudTextureDesc D_803A8718;
  extern Gfx D_803AA2F8[];
  
  void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
 +#ifdef ELTALE_P1_OS
++    hud_spell_names_xy[0][0] = -1;
++    hud_spell_cast_glow_y = -1;
 +    nd_2d_element(5, EL_RD2D_ANCHOR_CENTRE); /* port: R7's widescreen anchor (nd_2d.h): the spell rows sit around the allocation cross */
 +#endif
      s32 i;
      s32 x1;
      u8* col;
-@@ -383,6 +400,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -383,6 +429,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          gDPSetRenderMode(gfx_dl_head++, 0x504240, 0);
          /* Keep this block on one line for IDO scheduling. */
          { Gfx* _g = gfx_dl_head++; if (i) {} _g->words.w0 = 0xFCFF9BFF; _g->words.w1 = 0xFF34FE7F; }
@@ -3453,7 +3638,111 @@ index e6f79b4..f61c55a 100644
          gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255 - i * 255 / 64);
      }
      if (arg1->spell_input_count < 3) {
-@@ -454,6 +474,9 @@ extern HudTextureDesc D_803A8718;
+@@ -401,6 +450,31 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+         Hud_DrawSpellLabel(x2, y2 + 3, str, i + 1, arg1->stats->mp);
+         str[i] = 3;
+         Hud_DrawSpellLabel(x3, y3 + 3, str, i + 1, arg1->stats->mp);
++#ifdef ELTALE_P1_OS
++        /* port: a click on a name adds its element (its C button), as the controller does (port/mouse_menu.h) */
++        hud_spell_names_xy[0][0] = hud_draw_origin_x + x0, hud_spell_names_xy[0][1] = hud_draw_origin_y + y0;
++        hud_spell_names_xy[1][0] = hud_draw_origin_x + x1, hud_spell_names_xy[1][1] = hud_draw_origin_y + y1;
++        hud_spell_names_xy[2][0] = hud_draw_origin_x + x2, hud_spell_names_xy[2][1] = hud_draw_origin_y + y2;
++        hud_spell_names_xy[3][0] = hud_draw_origin_x + x3, hud_spell_names_xy[3][1] = hud_draw_origin_y + y3;
++        for (i = 0; i < 4; i++) {
++            Port_MouseTarget(PORT_TAG_SPELL + i, PORT_MOUSE_CENTRE, hud_spell_names_xy[i][0], hud_spell_names_xy[i][1], 0x6E, 0xE, NULL,
++                             0, 0, hud_element_c_buttons[i]);
++        }
++        /* the name under the shown pointer: its element's gem at its outer ends (the gems of the cross) */
++        i = Port_MouseHoverTag() - PORT_TAG_SPELL;
++        if (i >= 0 && i < 4) {
++            gDPPipeSync(gfx_dl_head++);
++            gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90); /* (the names' glyphs loaded their own colours) */
++            if (i != 3) {
++                Hud_DrawTextureTile(&D_803A8718, hud_spell_names_xy[i][0] - hud_draw_origin_x - 12,
++                                    hud_spell_names_xy[i][1] - hud_draw_origin_y + 2, 0xB, 0xB, 0x40, i * 0xB + 0x24, 0x400, 0x400);
++            }
++            if (i != 1) {
++                Hud_DrawTextureTile(&D_803A8718, hud_spell_names_xy[i][0] - hud_draw_origin_x + 0x6E + 1,
++                                    hud_spell_names_xy[i][1] - hud_draw_origin_y + 2, 0xB, 0xB, 0x40, i * 0xB + 0x24, 0x400, 0x400);
++            }
++        }
++#endif
+     }
+     hud_draw_origin_x = 0x69;
+     hud_draw_origin_y = 0x32;
+@@ -421,6 +495,21 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+         x0 += 0xC;
+     }
+     Hud_DrawSpellLabel(0, yoff + 3, arg1->spell_input_dirs, arg1->spell_input_count, arg1->stats->mp);
++#ifdef ELTALE_P1_OS
++    /* port: a click on the spell put together so far casts it (A); a right click takes the last element back (B) */
++    Port_MouseTarget(PORT_TAG_SPELL_CAST, PORT_MOUSE_CENTRE, hud_draw_origin_x, hud_draw_origin_y + yoff, 0x6E, 0xE + 0xD + 0xB, NULL, 0, 0,
++                     0x8000);
++    Port_MouseBack();
++    if (Port_MouseHoverTag() == PORT_TAG_SPELL_CAST && arg1->spell_input_count) {
++        /* under the pointer: the last element's gem at each end */
++        i = arg1->spell_input_dirs[arg1->spell_input_count - 1];
++        gDPPipeSync(gfx_dl_head++);
++        gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
++        Hud_DrawTextureTile(&D_803A8718, -12, yoff + 2, 0xB, 0xB, 0x40, i * 0xB + 0x24, 0x400, 0x400);
++        Hud_DrawTextureTile(&D_803A8718, 0x6E + 1, yoff + 2, 0xB, 0xB, 0x40, i * 0xB + 0x24, 0x400, 0x400);
++        hud_spell_cast_glow_y = hud_draw_origin_y + yoff;
++    }
++#endif
+     hud_draw_origin_x = 0x22;
+     hud_draw_origin_y = 0x8C;
+     if (arg1->spell_input_count != 3) {
+@@ -441,6 +530,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+         gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], hud_spell_input_anim_timer * 255 / 8);
+         gSPDisplayList(gfx_dl_head++, D_803AA2F8);
+     }
++#ifdef ELTALE_P1_OS
++    Hud_DrawSpellHover(buf);
++#endif
+     if (hud_spell_input_anim_timer) {
+         hud_spell_input_anim_timer--;
+     }
+@@ -448,12 +540,49 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+ 
+ 
+ 
++#ifdef ELTALE_P1_OS
++/* port: the gems at the ends of the spell name under the shown pointer glow in its element's colour (the glow the
++ * game shows when an element is put in), so it reads as the one a click adds (port/mouse_menu.h) */
++static void Hud_DrawSpellHover(GfxFrameData *buf) {
++    s32 d = Port_MouseHoverTag() - PORT_TAG_SPELL;
++    s32 e;
++    s32 x;
++    s32 y;
++    u8 *col;
++
++    if (hud_spell_cast_glow_y >= 0) {
++        d = player_state.spell_input_dirs[player_state.spell_input_count - 1];
++        x = 0x69;
++        y = hud_spell_cast_glow_y;
++    } else if (d >= 0 && d < 4 && hud_spell_names_xy[0][0] >= 0) {
++        x = hud_spell_names_xy[d][0];
++        y = hud_spell_names_xy[d][1];
++    } else {
++        return;
++    }
++    col = hud_element_colors[d];
++    for (e = 0; e < 2; e++) {
++        if (hud_spell_cast_glow_y < 0 && d == (e ? 1 : 3)) {
++            continue; /* (the end at the cross: no gem there) */
++        }
++        guTranslate(&buf->mtx[gfx_mtx_index], (f32)(x + (e ? 0x6E + 6 : -7)), (f32)(y + 7), 0.0f);
++        gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++        gDPPipeSync(gfx_dl_head++);
++        gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], 0xFF);
++        gSPDisplayList(gfx_dl_head++, D_803AA2F8);
++    }
++}
++#endif
++
+ extern u8 D_8039EC90[];
+ extern HudTextureDesc D_803A8718;
+ 
  #ifdef NON_MATCHING
  /* register-only: (u8)w lands in a2 instead of t9 and w >> 8 misses ra; code is equivalent */
  void Hud_DrawSpellName(void* arg0) {
@@ -3463,7 +3752,7 @@ index e6f79b4..f61c55a 100644
      s32 tmp;
      volatile s32 id;
      s32 t;
-@@ -465,7 +488,17 @@ void Hud_DrawSpellName(void* arg0) {
+@@ -465,7 +594,17 @@ void Hud_DrawSpellName(void* arg0) {
      hud_draw_origin_y = 0x32;
      w = ((Player *)arg0)->spell_id;
      id = (u8)w;
@@ -3481,7 +3770,7 @@ index e6f79b4..f61c55a 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureFilter(gfx_dl_head++, G_TF_POINT);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
-@@ -496,6 +529,9 @@ extern u8 D_8039ADB0[];
+@@ -496,6 +635,9 @@ extern u8 D_8039ADB0[];
  extern Gfx D_803AA2F8[];
  
  void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
@@ -3491,7 +3780,22 @@ index e6f79b4..f61c55a 100644
      u16 alpha;
      s32 yoff;
      s32 t;
-@@ -580,6 +616,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+@@ -531,6 +673,14 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+     Hud_DrawNumber(5, 0xA, yoff + 0x34, player_stats.element_levels[1]);
+     Hud_DrawNumber(5, 0x1C, yoff + 0x43, player_stats.element_levels[2]);
+     Hud_DrawNumber(5, 0x2E, yoff + 0x34, player_stats.element_levels[3]);
++#ifdef ELTALE_P1_OS
++    /* port: a click on an element of the cross raises it (its C button; port/mouse_menu.h) */
++    for (t = 0; t < 4; t++) {
++        pos = (f32*)hud_element_icon_positions + t * 2;
++        Port_MouseTarget(PORT_TAG_ALLOCATE + t, PORT_MOUSE_CENTRE, hud_draw_origin_x + (s32)pos[0] - 9, hud_draw_origin_y + yoff + (s32)pos[1] - 9,
++                         18, 18, NULL, 0, 0, hud_element_c_buttons[t]);
++    }
++#endif
+     if (hud_element_input_timer && (hud_element_allocation_flags & 1)) {
+         col = hud_element_colors[hud_selected_element_index];
+         pos = (f32*)hud_element_icon_positions + hud_selected_element_index * 2;
+@@ -580,6 +730,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
  
  
  void Hud_DrawNpcTalkMarker(void) {
@@ -3501,7 +3805,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 bob;
      Actor* p;
-@@ -600,6 +639,9 @@ void Hud_DrawNpcTalkMarker(void) {
+@@ -600,6 +753,9 @@ void Hud_DrawNpcTalkMarker(void) {
  }
  
  void Hud_DrawSpiritMarker(void) {
@@ -3511,7 +3815,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -617,6 +659,9 @@ void Hud_DrawSpiritMarker(void) {
+@@ -617,6 +773,9 @@ void Hud_DrawSpiritMarker(void) {
  }
  
  void Hud_DrawChestMarker(void) {
@@ -3521,7 +3825,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -634,6 +679,9 @@ void Hud_DrawChestMarker(void) {
+@@ -634,6 +793,9 @@ void Hud_DrawChestMarker(void) {
  }
  
  void Hud_DrawTextSpotMarker(void) {
@@ -3531,7 +3835,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -654,6 +702,9 @@ void Hud_DrawTextSpotMarker(void) {
+@@ -654,6 +816,9 @@ void Hud_DrawTextSpotMarker(void) {
  extern Gfx D_803AA5B0[];
  
  void Hud_DrawMeleeTargetMarker(u16 arg0) {
@@ -3541,7 +3845,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -681,6 +732,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
+@@ -681,6 +846,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
  }
  
  void Hud_DrawOutOfRangeIcon(void) {
@@ -3551,7 +3855,7 @@ index e6f79b4..f61c55a 100644
      s32 sx;
      s32 sy;
      f32 y;
-@@ -745,6 +799,9 @@ typedef struct {
+@@ -745,6 +913,9 @@ typedef struct {
  extern Struct_803AA628 D_803AA628[];
  
  void Hud_UpdateAndDrawActorStatusIndicators(Actor* arg0) {
@@ -3561,7 +3865,7 @@ index e6f79b4..f61c55a 100644
      ActorBattle* s = arg0->battle;
      f32 y;
      s32 vis;
-@@ -874,6 +931,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -874,6 +1045,9 @@ extern HudTextureDesc D_803A86F8;
  extern HudTextureDesc D_803A8718;
  
  void Hud_DrawEnemyInfoPanel(void) {
@@ -3571,7 +3875,7 @@ index e6f79b4..f61c55a 100644
      s32 d;
  
      hud_draw_origin_x = 0xB5;
-@@ -895,7 +955,18 @@ void Hud_DrawEnemyInfoPanel(void) {
+@@ -895,7 +1069,18 @@ void Hud_DrawEnemyInfoPanel(void) {
          Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
          Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
      }
@@ -3591,7 +3895,7 @@ index e6f79b4..f61c55a 100644
      Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
      if (enemy_turn_current->battle.status_bits & 0x80) {
-@@ -946,6 +1017,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
+@@ -946,6 +1131,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
  }
  
  void Hud_DrawPopups(void) {
@@ -3601,7 +3905,7 @@ index e6f79b4..f61c55a 100644
      s32 i;
      HudPopup* p;
      f32 x;
-@@ -984,14 +1058,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -984,14 +1172,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -3630,7 +3934,7 @@ index e6f79b4..f61c55a 100644
      w = Hud_MeasureGlyphString(str);
      arg0 = arg0 - w / 2 + 0x37;
      Hud_DrawGlyphString(arg0, arg1, hud_spell_label_palettes[flags], str);
-@@ -1001,9 +1088,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1001,9 +1202,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 cur = 8;
      s32 col;
      s32 row;
@@ -3647,7 +3951,7 @@ index e6f79b4..f61c55a 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1013,6 +1107,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1013,6 +1221,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              x += 1;
          } else if (*str == 0x82) {
              x += 4;
@@ -3658,7 +3962,7 @@ index e6f79b4..f61c55a 100644
          } else {
              col = (*str & 0xF) * 8;
              row = (*str & 0x70) >> 4;
-@@ -1022,7 +1120,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1022,7 +1234,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              }
              row *= 9;
              Hud_DrawClippedTextureRect(x, y, 8, 9, col, row, 0x400, 0x400);
@@ -3670,7 +3974,7 @@ index e6f79b4..f61c55a 100644
          }
          str++;
      }
-@@ -1030,10 +1132,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1030,10 +1246,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
  
  s32 Hud_MeasureGlyphString(u8* str) {
      s32 w = 0;
@@ -3692,7 +3996,7 @@ index e6f79b4..f61c55a 100644
          } else if (*str == 0x80 || *str == 0x81) {
              w += 1;
          } else if (*str == 0x82) {
-@@ -1065,6 +1178,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1292,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
@@ -3708,7 +4012,7 @@ index e6f79b4..f61c55a 100644
      if (tex->is4b == 0) {
          gDPLoadTextureTile(gfx_dl_head++, tex->img, G_IM_FMT_CI, G_IM_SIZ_8b, tex->width, 0, x, y, x + w, y + h, 0,
                             G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
-@@ -1077,6 +1199,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
+@@ -1077,6 +1313,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
  }
  
  void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32 dsdx, s32 dtdy) {
@@ -3722,7 +4026,7 @@ index e6f79b4..f61c55a 100644
      x += hud_draw_origin_x;
      x2 += x;
      y += hud_draw_origin_y;
-@@ -1108,6 +1237,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
+@@ -1108,6 +1351,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
          y = hud_clip_top;
      }
      gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, x2 << 2, y2 << 2, 0, s << 5, t << 5, dsdx, dtdy);
@@ -3747,18 +4051,105 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..dc05f4c 100644
+index c955abf..0c6b3e3 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,10 @@
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
  #include "game/text/text_window.h"
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
++#ifdef ELTALE_P1_OS
++#include "port/mouse_menu.h"
++#endif
  
  /*
   * Start-button menu (game state 2): four pages (stats, map, element levels, options) with
-@@ -1432,19 +1433,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
+@@ -36,6 +40,70 @@ f32 menu_map_cursor_saved_x; /* only Menu_UpdateMapPage (asm) uses these two */
+ f32 menu_map_cursor_saved_y;
+ 
+ 
++#ifdef ELTALE_P1_OS
++/* port: the mouse on the Start menu (port/mouse_menu.h) */
++static void Menu_MouseMap(s32 arg, s32 x, s32 y, s32 event);
++static void Menu_MouseOption(s32 arg, s32 x, s32 y, s32 event);
++
++static void Menu_MousePage(void) {
++    s32 i;
++
++    if (!(menu_flags & 0x800) && !menu_map_cursor_active) {
++        Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0x30, 0x14, 0x18, 0x14, NULL, 0, 0, 0x2000);
++        Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0xF6, 0x14, 0x18, 0x14, NULL, 0, 0, 0x10);
++    }
++    switch (menu_flags & 3) {
++        case 1:
++            /* the map: a click puts the marker there; while the marker moves (A), the pointer moves it and a click
++             * sets it down */
++            if (menu_map_region < 6 && menu_map_spot < 0) {
++                Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, 39 + 6, 29 + 6, 236 - 6 + 1, 178 - 6 + 1, Menu_MouseMap, 0,
++                                   menu_map_cursor_active ? PORT_MOUSE_A : 0);
++            }
++            break;
++        case 3:
++            /* the options: a click on a value sets it */
++            if (!(menu_flags & 0x200)) {
++                for (i = 0; i < 5; i++) {
++                    Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, menu_options_top_row_pos[i][0] - 5, 0x34, 18, 0x15, Menu_MouseOption, i, 0);
++                    Port_MouseTargetFn(0, PORT_MOUSE_CENTRE, menu_options_bgm_row_pos[i][0] - 5, 0x62, 18, 0x15, Menu_MouseOption, 0x10 | i, 0);
++                }
++            }
++            break;
++    }
++    Port_MouseBack();
++}
++
++static void Menu_MouseMap(s32 arg, s32 x, s32 y, s32 event) {
++    (void)arg;
++    if (!menu_map_cursor_active && event != 2) {
++        return;
++    }
++    menu_map_cursor_x = x - 39;
++    menu_map_cursor_y = y - 29;
++    if (!menu_map_cursor_active) {
++        Sfx_Play(0, 0x17, 0xFF);
++    }
++}
++
++/* arg: 0..4 the text speed's place, 0x10 | 0..4 the music's (the text speed is kept reversed: 4 - place) */
++static void Menu_MouseOption(s32 arg, s32 x, s32 y, s32 event) {
++    (void)x;
++    (void)y;
++    if (event != 2) {
++        return;
++    }
++    if (arg & 0x10) {
++        menu_bgm_volume_option = arg & 0xF;
++        menu_flags |= 0x100;
++    } else {
++        menu_text_delay_option = 4 - arg;
++        menu_flags &= ~0x100;
++    }
++    Sfx_Play(0, 0, 0xFF);
++}
++#endif
++
+ void Menu_Init(void) {
+     menu_flags = 0x8000;
+     save_menu_flags = 0;
+@@ -76,6 +144,12 @@ void Menu_Update(struct GfxFrameData *arg0) {
+         }
+     }
+     menu_flags &= ~0x10;
++#ifdef ELTALE_P1_OS
++    /* port: the mouse (port/mouse_menu.h): the page arrows turn the page (Z, R held), a right click closes (B) */
++    if (!(menu_flags & 0x6000)) {
++        Menu_MousePage();
++    }
++#endif
+     gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
+     gDPSetBlendColor(gfx_dl_head++, 0, 0, 0, 1);
+     if ((input_pressed_buttons & 0x5000) && !(menu_flags & 0x6020)) {
+@@ -1432,19 +1506,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
  u32 mapobjanim_type23_keys[0x8F] = {
  #include "assets/mapobjanim_type23_keys.inc.c"
  };
@@ -3782,7 +4173,7 @@ index c955abf..dc05f4c 100644
  u32 mapobj_loop_anim0_keys[0x27] = {
  #include "assets/mapobj_loop_anim0_keys.inc.c"
  };
-@@ -1458,10 +1459,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
+@@ -1458,10 +1532,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
  #include "assets/mapobj_loop_anim3_keys.inc.c"
  };
  AnimNode mapobj_loop_anims[4] = {
@@ -3797,7 +4188,7 @@ index c955abf..dc05f4c 100644
  };
  u16 mapobj_kind11_tlut[0x200] = {
  #include "assets/mapobj_kind11_tlut.inc.c"
-@@ -1536,7 +1537,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
+@@ -1536,7 +1610,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3806,7 +4197,7 @@ index c955abf..dc05f4c 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1552,7 +1553,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1552,7 +1626,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3815,7 +4206,7 @@ index c955abf..dc05f4c 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1561,12 +1562,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1561,12 +1635,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx mapobj_kind11_quad_dl[3] = {
@@ -3830,7 +4221,7 @@ index c955abf..dc05f4c 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1605,13 +1606,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
+@@ -1605,13 +1679,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3846,7 +4237,7 @@ index c955abf..dc05f4c 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1632,11 +1633,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
+@@ -1632,11 +1706,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -5597,21 +5988,22 @@ index 009c33d..74cf310 100644
  /*
   * Title overlay: entry, per-frame update, the phase state machine, button handling.
 diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
-index d3ba9ee..cc79610 100644
+index d3ba9ee..56270bc 100644
 --- a/src/overlays/title/title_draw.c
 +++ b/src/overlays/title/title_draw.c
-@@ -6,6 +6,10 @@
+@@ -6,6 +6,11 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "overlays/title/title_data.h"
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
++#include "port/mouse_menu.h"
 +#endif
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
  
  /*
   * Title overlay: draws the title screen, its menu cursors and message windows; screen fades.
-@@ -54,7 +58,7 @@ Gfx title_menu_sprite_setup_dl[5] = {
+@@ -54,7 +59,7 @@ Gfx title_menu_sprite_setup_dl[5] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F2A8_ovl_title[11] = {
@@ -5620,7 +6012,7 @@ index d3ba9ee..cc79610 100644
      {{ 0xF5480800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF4000000, 0x0706A02C }},
-@@ -67,7 +71,7 @@ Gfx D_8020F2A8_ovl_title[11] = {
+@@ -67,7 +72,7 @@ Gfx D_8020F2A8_ovl_title[11] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F300_ovl_title[11] = {
@@ -5629,7 +6021,7 @@ index d3ba9ee..cc79610 100644
      {{ 0xF5480800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF406C000, 0x070D802C }},
-@@ -80,7 +84,7 @@ Gfx D_8020F300_ovl_title[11] = {
+@@ -80,7 +85,7 @@ Gfx D_8020F300_ovl_title[11] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F358_ovl_title[11] = {
@@ -5638,7 +6030,7 @@ index d3ba9ee..cc79610 100644
      {{ 0xF5480A00, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF40DA000, 0x0715C02C }},
-@@ -97,13 +101,13 @@ Gfx title_initial_screen_dl[21] = {
+@@ -97,13 +102,13 @@ Gfx title_initial_screen_dl[21] = {
      {{ 0xB900031D, 0x00504240 }},
      {{ 0xFCFF9BFF, 0xFF34FE7F }},
      {{ 0xBA000E02, 0x00008000 }},
@@ -5654,7 +6046,7 @@ index d3ba9ee..cc79610 100644
      {{ 0xF5481800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF4000000, 0x07168038 }},
-@@ -131,7 +135,7 @@ s32 D_8020F488_ovl_title[18] = {
+@@ -131,7 +136,7 @@ s32 D_8020F488_ovl_title[18] = {
      0x00000081, 0x000000A0, 0x00000036, 0x00000000, 0x00000037, 0x0000000C,
      0x000000CB, 0x000000A0, 0x0000006D, 0x00000000, 0x00000042, 0x0000000C,
  };
@@ -5663,7 +6055,7 @@ index d3ba9ee..cc79610 100644
  
  
  
-@@ -141,6 +145,16 @@ s32 D_8020F488_ovl_title[18] = {
+@@ -141,6 +146,16 @@ s32 D_8020F488_ovl_title[18] = {
  s8 title_confirmation_row;
  s32 title_confirm_cursor_alpha;
  
@@ -5680,7 +6072,7 @@ index d3ba9ee..cc79610 100644
  void Title_DrawScreenAndMoveCursor(s32 arg0) {
      static s32 title_cursor_anim_frame = 0;
      static s8 D_8020F4D4_ovl_title = 0;
-@@ -157,6 +171,13 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -157,6 +172,13 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
      s8 t;
      s8 dx;
      s8 dy;
@@ -5694,7 +6086,44 @@ index d3ba9ee..cc79610 100644
  
      if (title_draw_initialized == 0) {
          title_cursor_anim_frame = 0;
-@@ -284,9 +305,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -227,6 +249,36 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+         title_horizontal_direction = 1;
+     }
+ 
++#ifdef ELTALE_P1_OS
++    /* port: the mouse (port/mouse_menu.h): a click on "Press Start" is Start, the pointer on a choice moves the
++     * cursor there and a click picks it (A), a right click backs out (B), a click on a message is A */
++    if (title_screen_fade_state == 0) {
++        switch (arg0) {
++            case 0:
++                Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0, 0, 320, 240, NULL, 0, 0, PORT_MOUSE_START);
++                break;
++            case 2:
++                for (i = 0; i < 3; i++) {
++                    Port_MouseTarget(0, PORT_MOUSE_CENTRE, title_en_lefts[i] - 16, 0x9A, i == 2 ? 0x50 : 0x4A, 0x18, &title_menu_item, 1, i,
++                                     PORT_MOUSE_A);
++                }
++                Port_MouseBack();
++                break;
++            case 7:
++            case 8:
++                for (i = 0; i < 2; i++) {
++                    Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0x6E, 0x72 + i * 13, 0x70, 13, &title_confirmation_row, 1, i, PORT_MOUSE_A);
++                }
++                Port_MouseBack();
++                break;
++            case 6:
++            case 9:
++            case 10:
++                Port_MouseTarget(0, PORT_MOUSE_CENTRE, 0, 0, 320, 240, NULL, 0, 0, PORT_MOUSE_A);
++                break;
++        }
++    }
++#endif
+     switch (arg0) {
+         case 0:
+         case 1:
+@@ -284,9 +336,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
              gSPDisplayList(gfx_dl_head++, title_menu_sprite_setup_dl);
              gDPPipeSync(gfx_dl_head++);
              gDPLoadTLUT_pal16(gfx_dl_head++, 0, title_menu_atlas_tlut);
@@ -5721,7 +6150,7 @@ index d3ba9ee..cc79610 100644
              if (arg0 == 3 || arg0 == 5) {
                  gDPPipeSync(gfx_dl_head++);
                  GFX_WORDS(0xB900031D, 0x504240);
-@@ -318,6 +356,47 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -318,6 +387,47 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
                  } else if (arg0 == 10) {
                      title_current_message = title_menu_state10_message;
                  }
@@ -5769,7 +6198,7 @@ index d3ba9ee..cc79610 100644
                  gDPPipeSync(gfx_dl_head++);
                  gDPLoadTLUT_pal256(gfx_dl_head++, text_window_tlut);
                  gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
-@@ -348,6 +427,7 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -348,6 +458,7 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
                  gDPPipeSync(gfx_dl_head++);
                  gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255);
                  Text_DrawEncodedString(0x44, 0x2E, title_current_message);

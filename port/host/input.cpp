@@ -75,6 +75,21 @@ bool alt_enter_held;        // Alt+Enter pressed, Enter not let go yet
 uint64_t alt_enter_until;    // SDL_GetTicks: Enter left alone until then
 const bool hidden_window = std::getenv("ELTALE_HIDDEN_WINDOW") != nullptr;
 
+// The menus' pointer (input_pointer; docs/CONTROLS.md "The mouse in menus"). A mouse button bound to mouse look
+// (hold) turns the view only once it is dragged (DRAG_START counts): pressed and let go where it was, the right
+// button is a click (B in the game's menus). The OS cursor shows when the mouse moves or clicks and hides on a key or
+// controller press, in mouse look and after CURSOR_IDLE_MS without motion.
+constexpr float DRAG_START = 3.0f;
+constexpr uint64_t CURSOR_IDLE_MS = 3000;
+bool pointer_known, pointer_inside = true;
+float pointer_x, pointer_y; // window coordinates (SDL's)
+int left_clicks, right_clicks;
+int drag_button;            // the look-hold mouse button pressed (0: none)
+bool drag_started;
+float drag_dx, drag_dy;     // its motion before the drag started
+bool cursor_visible = true;
+uint64_t cursor_moved_at;
+
 int8_t axis(Sint16 v, bool invert) {
     int x = invert ? -(int)v : (int)v;
     if (x > -7000 && x < 7000) return 0; // dead zone
@@ -106,6 +121,32 @@ bool held(int action) {
     return false;
 }
 
+// mouse look (hold): a key while held, a mouse button once dragged
+bool look_held() {
+    for (int s = 0; s < BIND_SLOTS; s++) {
+        const int code = settings.controls.bind[ACT_LOOK_HOLD][s];
+        if (!code || !code_held(code)) continue;
+        if ((code & BIND_KIND) != BIND_MOUSE) return true;
+        if (drag_started && drag_button == (code & 0xFFFF)) return true;
+    }
+    return false;
+}
+
+bool look_hold_button(int button) {
+    for (int s = 0; s < BIND_SLOTS; s++)
+        if (settings.controls.bind[ACT_LOOK_HOLD][s] == (BIND_MOUSE | button)) return true;
+    return false;
+}
+
+void show_cursor(bool on) {
+    if (on == cursor_visible) return;
+    cursor_visible = on;
+    // (a hidden window, a test's: the desktop's cursor is not ours)
+    if (hidden_window || !window()) return;
+    if (on) SDL_ShowCursor();
+    else SDL_HideCursor();
+}
+
 // a press of `code`: the actions it is bound to that act on the press (the camera's edges)
 void pressed(int code) {
     for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT })
@@ -118,7 +159,7 @@ void pressed(int code) {
             }
 }
 
-bool looking() { return (look_toggled || held(ACT_LOOK_HOLD)) && focused() && !menu::is_open(); }
+bool looking() { return (look_toggled || look_held()) && focused() && !menu::is_open(); }
 
 // The cursor is captured (relative mode) while the mouse turns the camera. Never with a hidden window (tests):
 // the desktop's mouse is not ours to take.
@@ -132,6 +173,8 @@ void update_capture() {
 void clear_held() {
     std::memset(keys, 0, sizeof keys);
     std::memset(mouse_buttons, 0, sizeof mouse_buttons);
+    drag_button = 0;
+    drag_started = false;
 }
 
 // A rebinding: what this event binds (0: nothing), -1 to cancel, -2 to clear
@@ -178,10 +221,64 @@ bool take_capture(const SDL_Event &e) {
     return true;
 }
 
+// The menus' pointer, its clicks and the cursor, from each event
+void pointer_event(const SDL_Event &e, bool was_looking) {
+    if (e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) pointer_inside = false;
+    if (e.type == SDL_EVENT_WINDOW_MOUSE_ENTER) pointer_inside = true;
+    if (e.type == SDL_EVENT_MOUSE_MOTION && !relative_on) {
+        pointer_x = e.motion.x;
+        pointer_y = e.motion.y;
+        pointer_known = pointer_inside = true;
+        if (!was_looking) {
+            show_cursor(true);
+            cursor_moved_at = SDL_GetTicks();
+        }
+    }
+    if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !menu::is_open() && capture_action < 0) {
+        if (!relative_on) {
+            pointer_x = e.button.x;
+            pointer_y = e.button.y;
+            pointer_known = pointer_inside = true;
+        }
+        if (look_hold_button(e.button.button) && !drag_button) {
+            drag_button = e.button.button;
+            drag_started = false;
+            drag_dx = drag_dy = 0.0f;
+        }
+        if (e.button.button == SDL_BUTTON_LEFT && !was_looking) {
+            left_clicks++;
+            show_cursor(true);
+            cursor_moved_at = SDL_GetTicks();
+        }
+    }
+    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_RIGHT && !menu::is_open() &&
+        capture_action < 0) {
+        // a right click: let go without a drag (mouse look on its button), or any (the button not mouse look's)
+        const bool look_button = drag_button == SDL_BUTTON_RIGHT;
+        if ((look_button && !drag_started && !look_toggled) || (!look_button && !look_hold_button(SDL_BUTTON_RIGHT) && !was_looking)) {
+            right_clicks++;
+            show_cursor(true);
+            cursor_moved_at = SDL_GetTicks();
+        }
+    }
+    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == drag_button) {
+        drag_button = 0;
+        drag_started = false;
+    }
+    if (e.type == SDL_EVENT_MOUSE_MOTION && drag_button && !drag_started) {
+        drag_dx += e.motion.xrel;
+        drag_dy += e.motion.yrel;
+        if (std::fabs(drag_dx) + std::fabs(drag_dy) > DRAG_START) drag_started = true;
+    }
+    if ((e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ||
+        (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && (e.gaxis.value > 16000 || e.gaxis.value < -16000)))
+        if (!menu::is_open()) show_cursor(false);
+}
+
 // ---- ELTALE_INPUT_TEST ----------------------------------------------------------------------------
 // A script of events by tick (the count of pad reads): "TICK key_down NAME", "key_up NAME" (SDL scancode
 // names: W, Space, Left Shift, Keypad 4, ...), "mouse_down left|middle|right|x1|x2", "mouse_up ...",
-// "motion DX DY", "wheel N". Lines starting with # are comments.
+// "motion DX DY", "wheel N", "pointer X Y" (window coordinates). Lines starting with # are comments.
 struct TestEvent {
     long tick;
     SDL_Event e;
@@ -210,6 +307,7 @@ void load_test_script() {
     }
     std::string line;
     int lineno = 0;
+    float px = 0.0f, py = 0.0f; // the pointer where "pointer" rows put it (buttons and motion keep it there)
     while (std::getline(f, line)) {
         lineno++;
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -245,9 +343,22 @@ void load_test_script() {
             e.type = cmd == "mouse_down" ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
             e.button.button = (Uint8)b;
             e.button.down = cmd == "mouse_down";
+            e.button.x = px;
+            e.button.y = py;
         } else if (cmd == "motion") {
             e.type = SDL_EVENT_MOUSE_MOTION;
             ok = std::sscanf(rest.c_str(), "%f %f", &e.motion.xrel, &e.motion.yrel) == 2;
+            e.motion.x = px;
+            e.motion.y = py;
+        } else if (cmd == "pointer") {
+            // "pointer X Y": the mouse moved to X, Y in the window's coordinates (the menus' pointer)
+            float x = 0.0f, y = 0.0f;
+            ok = std::sscanf(rest.c_str(), "%f %f", &x, &y) == 2;
+            e.type = SDL_EVENT_MOUSE_MOTION;
+            e.motion.xrel = x - px;
+            e.motion.yrel = y - py;
+            e.motion.x = px = x;
+            e.motion.y = py = y;
         } else if (cmd == "wheel") {
             e.type = SDL_EVENT_MOUSE_WHEEL;
             ok = std::sscanf(rest.c_str(), "%d", &e.wheel.integer_y) == 1;
@@ -422,8 +533,10 @@ bool input_event(const SDL_Event &e) {
         if (alt_enter) keys[e.key.scancode] = false;
         else keys[e.key.scancode] = e.type == SDL_EVENT_KEY_DOWN;
     }
+    const bool was_looking = looking();
     if ((e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) && e.button.button < 8)
         mouse_buttons[e.button.button] = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+    pointer_event(e, was_looking);
     if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
         clear_held();
         look_toggled = false;
@@ -437,8 +550,10 @@ bool input_event(const SDL_Event &e) {
     if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) pressed(BIND_PAD_BUTTON | e.gbutton.button);
     if (e.type == SDL_EVENT_MOUSE_MOTION && looking()) {
         const float k = settings.controls.mouse_sensitivity / 100.0f;
-        acc_dx += e.motion.xrel * k;
-        acc_dy += e.motion.yrel * k * (settings.controls.invert_y ? -1.0f : 1.0f);
+        // a drag that just started: its motion so far too
+        const float mx = was_looking ? e.motion.xrel : drag_dx, my = was_looking ? e.motion.yrel : drag_dy;
+        acc_dx += mx * k;
+        acc_dy += my * k * (settings.controls.invert_y ? -1.0f : 1.0f);
     }
     if (e.type == SDL_EVENT_MOUSE_WHEEL && focused() && !menu::is_open())
         acc_wheel += (float)e.wheel.integer_y * (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f);
@@ -460,6 +575,12 @@ void input_test_pump() {
 void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y) {
     pad_reads++;
     update_capture();
+    // the cursor: shown with the F1 menu; hidden in mouse look (relative mode hides it) and after a while still
+    if (menu::is_open()) show_cursor(true);
+    else if (cursor_visible && SDL_GetTicks() - cursor_moved_at > CURSOR_IDLE_MS && !relative_on) show_cursor(false);
+    // (the F1 menu's ImGui may have shown it while it was open)
+    if (!cursor_visible && !hidden_window && window() && !relative_on && !menu::is_open() && SDL_CursorVisible())
+        SDL_HideCursor();
     if (menu::is_open()) {
         *buttons = 0;
         *stick_x = *stick_y = 0;
@@ -506,6 +627,41 @@ void input_camera(float *dx, float *dy, int *wheel, int *flags) {
     *wheel = w + zoom_steps;
     *flags = reset_clicks ? 1 : 0;
     reset_clicks = zoom_steps = 0;
+}
+
+void input_pointer(float *x, float *y, int *width, int *flags) {
+    *x = *y = 0.0f;
+    *width = 0;
+    *flags = 0;
+    const int left = left_clicks, right = right_clicks;
+    left_clicks = right_clicks = 0;
+    if (!settings.controls.mouse_menus || !pointer_known || !pointer_inside || !focused() || menu::is_open() ||
+        looking() || !window() || !renderer())
+        return;
+    uint32_t pw = 0, ph = 0;
+    bool cpu = false;
+    if (!renderer()->shown_size(&pw, &ph, &cpu)) return;
+    // the picture's place in the window, as the presenter fits it (present_vk.cpp fit: its own shape, as large as
+    // fits, centred), in pixels; SDL's mouse is in window coordinates
+    int ww = 0, wh = 0, pxw = 0, pxh = 0;
+    SDL_GetWindowSize(window(), &ww, &wh);
+    SDL_GetWindowSizeInPixels(window(), &pxw, &pxh);
+    if (ww <= 0 || wh <= 0 || pxw <= 0 || pxh <= 0) return;
+    int fw = pxw, fh = int(int64_t(pxw) * ph / pw);
+    if (fh > pxh) {
+        fh = pxh;
+        fw = int(int64_t(pxh) * pw / ph);
+    }
+    const int fx = (pxw - fw) / 2, fy = (pxh - fh) / 2;
+    const float mx = pointer_x * float(pxw) / float(ww), my = pointer_y * float(pxh) / float(wh);
+    // the 1x picture: 240 high, as wide as its shape (a CPU-drawn screen: 320)
+    const int w1 = cpu ? 320 : int(std::lround(240.0 * double(pw) / double(ph)));
+    const float u = (mx - float(fx)) * float(w1) / float(fw), v = (my - float(fy)) * 240.0f / float(fh);
+    if (u < 0.0f || v < 0.0f || u >= float(w1) || v >= 240.0f) return;
+    *x = u;
+    *y = v;
+    *width = w1;
+    *flags = 1 | (cursor_visible ? 2 : 0) | (left ? 4 : 0) | (right ? 8 : 0);
 }
 
 void input_shutdown() {
