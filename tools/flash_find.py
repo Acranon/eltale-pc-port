@@ -8,7 +8,8 @@ frame_<a>_<ppp>.png the pictures between tick a and the next at ppp/1000), or a 
 
 Default (KF4's --frames): each picture between is compared with the two ticks around it and with their blend at
 its time. It is off where it differs by more than --level (24) from the blend and from every pixel within --reach
-(6: half of 12 pixels a tick, a fast sprite near the camera) of its place in both ticks: a shard, a hole, a
+(6: half of 12 pixels a tick, a fast sprite near the camera; on a picture wider than 4:3, more: see edge_reach) of its
+place in both ticks: a shard, a hole, a
 flash, something at neither tick's place (a thin thing that moves, a candle while the camera turns, is near its
 place in both and is not counted). Only off pixels whose whole 3 x 3 neighbourhood is off count (solid shapes,
 not the edges a turn leaves). --neighbours instead compares each picture with the pictures k before and after it
@@ -20,6 +21,7 @@ the tick numbers jump (a sampled dump). The flagged pictures go into a contact s
 --sheet): the tick before, the picture, the tick after, where it is off. Needs Pillow and numpy.
 """
 import argparse
+import math
 import os
 import re
 import sys
@@ -32,6 +34,20 @@ except ImportError:
 
 LEVEL = 24
 SOLID = 1  # the neighbourhood's half size: 3 x 3
+REACH = 6  # pixels a thing may have moved in a tick, on a 4:3 picture
+FOVY = 35.0  # the game's usual vertical field of view (camera presets, cutscenes): for edge_reach
+
+
+def edge_reach(reach, aspect):
+    """The reach for a picture of this shape (R7a widescreen). The native pictures keep the vertical field of view, so
+    in the middle a thing moves as many pixels a tick at any width; but a perspective picture stretches toward its
+    sides (a pixel there covers less angle: dx/dangle grows as 1 + tan^2 of the angle off the axis), and a wider
+    picture's sides are further off the axis. The reach is scaled by the stretch at this picture's side edge over the
+    stretch at a 4:3 picture's (FOVY 35: 1.31 / 1.18 at 16:9, a reach of 7), so a thing that moves as fast in the
+    world is within reach at the new edges as it is at the old ones. Exactly `reach` at 4:3."""
+    t = math.tan(math.radians(FOVY / 2))
+    k = (1 + (t * max(aspect, 4 / 3)) ** 2) / (1 + (t * 4 / 3) ** 2)
+    return int(math.ceil(reach * k - 1e-6))
 
 
 def load_small(path, width):
@@ -106,8 +122,9 @@ def main():
     ap.add_argument("--width", type=int, default=0, help="compare at this width (0: as they are)")
     ap.add_argument("--top", type=int, default=24, help="at most this many rows in the sheet (24)")
     ap.add_argument("--sheet", help="the contact sheet (FOLDER/flashes.png)")
-    ap.add_argument("--reach", type=int, default=6,
-                    help="pixels a thing may have moved and still be near its place in a tick (6)")
+    ap.add_argument("--reach", type=int, default=None,
+                    help="pixels a thing may have moved and still be near its place in a tick (6 at 4:3; wider "
+                         "pictures: more toward their sides, edge_reach)")
     ap.add_argument("--neighbours", action="store_true", help="compare with the neighbouring pictures instead")
     ap.add_argument("--span", type=int, default=8, help="--neighbours: up to this many pictures away (8)")
     args = ap.parse_args()
@@ -116,6 +133,9 @@ def main():
     if len(pics) < 3:
         sys.exit("fewer than 3 pictures in %s" % args.folder)
     cache = {}
+    if args.reach is None:
+        with Image.open(os.path.join(args.folder, pics[0][0])) as first:
+            args.reach = edge_reach(REACH, first.width / first.height)
 
     def img(name):
         if name not in cache:

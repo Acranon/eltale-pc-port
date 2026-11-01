@@ -117,8 +117,11 @@ tools\play.cmd <rom.z64> [--renderer native]                        # copies bot
 - `tests/p1_checks.sh` (headless) prints exactly what it printed before R0.
 - `tests/host_checks.sh exe rom [rt64|native]`: hidden window (`ELTALE_HIDDEN_WINDOW=1`), volume 0,
   Japanese text, a temporary data folder per run. Per renderer:
-  - New Game 700 frames: `P1_OS_OK ... last_hash=74b8baf63f9c1889` (as headless) and
-    `HOST_AUDIO queued=… played=…` (sound reached the device).
+  - New Game 700 frames: `P1_OS_OK ... frames=700 ... dma_chunks=416` and
+    `HOST_AUDIO queued=… played=…` (sound reached the device). RT64: `last_hash=74b8baf63f9c1889` (as
+    headless). Native: `last_hash=6472f32d00cadc74`, the hash of the emptied display list (every kind is drawn
+    natively since R5, so the frame list the hash is taken of holds none of the game's commands); the game is
+    the same (frames, DMA chunks and audio as headless, the 4:3 dumps' and `--wide`'s `P1_OS_OK` lines).
   - `ELTALE_MENU_TEST=200`: menu open, reset into the Pak manager (`P1_RESET pak-manager`), its
     screens, quit.
     - RT64 prints `[rt64] overlay drawn` once the menu's lists reached it.

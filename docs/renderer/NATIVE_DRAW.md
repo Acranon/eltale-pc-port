@@ -792,10 +792,38 @@ greyed there).
   (every hash in tests/render_ref.txt), tests/p1_checks.sh --tour and tests/host_checks.sh native (the same
   lines with ELTALE_WIDESCREEN=off and with the default 16:9; the window starts 1706x960).
 - `ELTALE_WIDESCREEN=16:9 python tools/interp_test.py`: ng, walk, flames, tour and ending OK (ends 0/0, interp_ends
-  0 differ, flash_find 0 flagged), the game's audio as at 4:3. Spells: ends and interp_ends clean, flash_find flags
-  one picture (frame_581_750, 0.22% against the 0.20% limit): a smoke puff of the spell moving fast at the new left
-  edge, smooth in the pictures between and brighter at tick 582 (an effect colour that snaps, as designed); a
-  heuristic's miss in the side area a 4:3 picture does not have, not a flash (checked by eye).
+  0 differ, flash_find 0 flagged), the game's audio as at 4:3. Spells: ends and interp_ends clean; flash_find flagged
+  one picture (frame_581_750, 0.22% against the 0.20% limit) until the R7 merge: a smoke puff of the spell moving
+  fast at the new left edge, smooth in the pictures between and brighter at tick 582 (an effect colour that snaps,
+  as designed), checked by eye. The cause is flash_find's reach (6 pixels a tick: how far a thing may move and
+  still count as near its place): a perspective picture stretches toward its sides (1 + tan^2 of the angle off the
+  axis), and a 16:9 picture's sides are further off the axis than a 4:3 one's, so the same motion is more pixels
+  there; the puff moved 7-8. flash_find now scales its default reach by the stretch at the picture's side over a
+  4:3 picture's (`edge_reach`, fovy 35: 6 at 4:3, 7 at 16:9, 12 at 32:9), and the picture's 225 off pixels
+  drop to 125 (0.12%): 0 flagged. (Scaling the area threshold by the width was not the fix: 0.2% of a 426-wide
+  picture is already more pixels than of a 320-wide one, and the shares are of the picture either way.) 4:3
+  results are unchanged (reach 6).
+
+### R7a with R7b (merged 2026-11-01)
+
+- One picture size: `picture_size_1x(aspect)` (an even width) times the resolution scale; `ensure_picture`
+  (render_native.cpp) asks `wanted_aspect` and the scale together, so a change of either makes the picture
+  again, and the game is told the shape for its next ticks. *Match the window* scales by the window's height
+  over 240 (16:9 window 1706x960: 1704x960 at 4x). Depth, the decal's depth copy and the MSAA colour follow the
+  wide scaled picture (`ensure_targets`).
+- 2D at a scale and wide: the anchors move by whole N64 pixels (`side` = (Vw - 320) / 2 is whole because the 1x
+  width is even), so OPT_RECT's edges, rounded up to N64 pixels before the move, stay on the picture's N64 grid
+  (the shader's crisp sampling takes `gl_FragCoord % scale`): checked on the 16:9 4x MSAA 4x dumps, every
+  anchor's text and panels are whole 4x4 blocks. The CENTRE pillarbox scissor and the border are N64 pixels
+  times the scale.
+- The Controller Pak manager keeps its own 320x240 image (R7b), shown pillarboxed by `fit()` in a wide window.
+- Headless dumps: `ELTALE_WIDESCREEN` times `ELTALE_DUMP_SCALE` (with `ELTALE_DUMP_MSAA`, `ELTALE_DUMP_LOOK`,
+  `ELTALE_DRAW_DISTANCE`); a wide dump has no border.
+- Pacing at 240 with 16:9, 4x (1704x960), MSAA 4x, far (`pace_test.py --hz 240 --scale 4 --msaa 4 --distance
+  far --widescreen 16:9`): 240.0 pictures a second, interval 4.17 ms (spread 0.07, worst 5.21), 60.00 retraces a
+  second. `ELTALE_OPTIONS_CYCLE=120` (MSAA, resolution, distance and widescreen changed in play, 101 changes
+  over 1,500 ticks): P1_OS_OK, `P1_PIPELINES made_in_play=0`; the shipped pipeline list needed no change (a wider
+  picture changes no render pass format or sample count).
 
 ## What is left after R5
 
