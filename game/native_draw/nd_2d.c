@@ -20,6 +20,7 @@
 #include "game/core/main.h"
 #include "game/native_draw/nd_2d_gbi.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -152,6 +153,14 @@ void nd_2d_element(int e, int a) {
     element = e;
     anchor = a;
     item_number = 0;
+}
+
+void nd_2d_clip_x(int32_t *left, int32_t *right) {
+    if (!ND_WIDE() || anchor != EL_RD2D_ANCHOR_WORLD) return;
+    /* the 4:3 screen's 320 columns sit in the middle of 240 x aspect: a world-placed item may use the sides */
+    const int32_t side = (int32_t)ceilf((240.0f * nd_aspect - 320.0f) * 0.5f);
+    if (*left <= 0) *left -= side;
+    if (*right >= 320) *right += side;
 }
 
 void nd_2d_othermode(uint32_t cmd, uint32_t shift, uint32_t len, uint32_t data) {
@@ -596,6 +605,11 @@ void nd_2d_texrect(int32_t xl, int32_t yl, int32_t xh, int32_t yh, uint32_t tile
                    int32_t dtdy) {
     if (!recording) return;
     xl &= 0xFFF; yl &= 0xFFF; xh &= 0xFFF; yh &= 0xFFF;
+    if (ND_WIDE() && anchor == EL_RD2D_ANCHOR_WORLD) {
+        /* R7: on a wider picture a marker or a number placed from the world can be left of the 4:3 screen
+         * (x < 0, which the RDP's 12 bits would wrap): the coordinates as signed 10.2 */
+        xl = (xl ^ 0x800) - 0x800; xh = (xh ^ 0x800) - 0x800;
+    }
     rect_item(xl / 4.0f, yl / 4.0f, xh / 4.0f, yh / 4.0f, (int)(tile & 7), (int16_t)s / 32.0f, (int16_t)t / 32.0f,
               (int16_t)dsdx / 1024.0f, (int16_t)dtdy / 1024.0f, 1, 0);
 }

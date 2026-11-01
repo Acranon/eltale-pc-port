@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <string>
@@ -83,6 +84,32 @@ void sleep_until(double until) {
 // the gameplay picture until the game's draws come (R2): a dark slate, so it is clearly ours
 const VkClearColorValue CLEAR = {{0.10f, 0.12f, 0.16f, 1.0f}};
 
+// R7 (widescreen): the picture's shape, width over height. ELTALE_WIDESCREEN (tests; "off" or "4:3", "16:9",
+// "window", or a number) overrides the Graphics page's switch; "window" without a window is 16:9. A window
+// narrower than 4:3 gets 4:3 (bars above and below), wider than 32:9 gets 32:9. Headless (the compare
+// tools' dumps) is 4:3 unless ELTALE_WIDESCREEN says otherwise.
+float wanted_aspect(SDL_Window *window, bool headless = false) {
+    int mode = headless ? 0 : settings.graphics.widescreen;
+    float a = 0;
+    if (const char *e = std::getenv("ELTALE_WIDESCREEN")) {
+        if (!std::strcmp(e, "off") || !std::strcmp(e, "4:3") || !std::strcmp(e, "0")) mode = 0;
+        else if (!std::strcmp(e, "16:9") || !std::strcmp(e, "1")) mode = 1;
+        else if (!std::strcmp(e, "window") || !std::strcmp(e, "2")) mode = 2;
+        else if (std::atof(e) > 0) mode = 3, a = float(std::atof(e));
+    }
+    if (mode == 2) {
+        int w = 0, h = 0;
+        if (window) SDL_GetWindowSizeInPixels(window, &w, &h);
+        a = w > 0 && h > 0 ? float(w) / float(h) : 16.0f / 9.0f;
+    } else if (mode == 1) {
+        a = 16.0f / 9.0f;
+    } else if (mode == 0) {
+        a = 4.0f / 3.0f;
+    }
+    a = a < 4.0f / 3.0f ? 4.0f / 3.0f : a > 32.0f / 9.0f ? 32.0f / 9.0f : a;
+    return render::NativeDraw::aspect_of_1x(a);
+}
+
 class NativeRenderer final : public Renderer {
 public:
     const char *name() const override { return "native"; }
@@ -108,12 +135,8 @@ public:
         std::fprintf(stderr, "[render] Granite on %s (Vulkan %u.%u)\n", props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion),
                      VK_API_VERSION_MINOR(props.apiVersion));
 
-        ImageCreateInfo info = ImageCreateInfo::render_target(PICTURE_W, PICTURE_H, VK_FORMAT_R8G8B8A8_UNORM);
-        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        info.layout = ImageLayout::General;
-        info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-        picture = device.create_image(info);
-        if (!picture) {
+        render::native_draw().set_aspect(wanted_aspect(window));
+        if (!ensure_picture(render::native_draw().aspect())) {
             std::fprintf(stderr, "[render] no picture image\n");
             return false;
         }
@@ -157,6 +180,7 @@ public:
         device.set_context(context);
         device.init_frame_contexts(2);
         headless = true;
+        render::native_draw().set_aspect(wanted_aspect(nullptr, true)); // (the dumps' shape: ELTALE_WIDESCREEN)
         return render::native_draw().init(device);
     }
 
@@ -209,6 +233,7 @@ public:
         vi_wall = wall();
         next_due = 0;
         cpu_shown = true; // (no pictures between over it: wait() waits for the game's frames again)
+        ensure_picture(4.0f / 3.0f); // (a 320x240 screen: the presenter pillarboxes it on a wider window)
         // the RGBA5551 screen into the picture, as RGBA8 (each 5 bits widened, so they come back exact)
         CommandBufferHandle cmd = begin();
         uint32_t *out = static_cast<uint32_t *>(cmd->update_image(*picture));
@@ -239,7 +264,8 @@ public:
     }
 
     uint32_t wires() const override {
-        return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE;
+        return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE |
+               FEATURE_WIDESCREEN;
     }
 
     void graphics_changed() override {
@@ -328,6 +354,10 @@ private:
         if (log) std::fprintf(log, "P %.6f %.4f %c\n", now, v, kind);
         count_rate(now);
         if (sim) return;
+        // R7: the shape the game builds its ticks for, and the picture made that shape (a recording made for
+        // another shape, just after the switch, is drawn into it as it is)
+        render::native_draw().set_aspect(wanted_aspect(window()));
+        ensure_picture(render::native_draw().aspect());
         CommandBufferHandle cmd = begin();
         if (rec) {
             render::DrawOptions opt;
@@ -366,8 +396,14 @@ private:
 
     // ---- F8: the flash recorder (KF4's): the last pictures shown, kept on the GPU ----
     void flash_keep(CommandBuffer &cmd, double v) {
+        if (!flash.empty() && flash[0] && (flash[0]->get_width() != picture->get_width() ||
+                                           flash[0]->get_height() != picture->get_height())) {
+            flash.clear(); // (the picture changed shape: the recorder starts again)
+            flash_count = 0;
+        }
         if (flash.empty()) {
-            ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(PICTURE_W, PICTURE_H, VK_FORMAT_R8G8B8A8_UNORM);
+            ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(picture->get_width(), picture->get_height(),
+                                                                       VK_FORMAT_R8G8B8A8_UNORM);
             info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             info.layout = ImageLayout::General;
             info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -395,15 +431,16 @@ private:
         device.wait_idle();
         FILE *list = std::fopen((folder + "/pictures.txt").c_str(), "w");
         if (list) std::fprintf(list, "# picture retrace phase (the picture's time in retraces; phase 0 is a retrace's own)\n");
+        const uint32_t fw = flash[0]->get_width(), fh = flash[0]->get_height();
         for (uint64_t k = 0; k < n; k++) {
             const size_t slot = size_t((flash_count - n + k) % FLASH_PICTURES);
             BufferCreateInfo bi = {};
-            bi.size = PICTURE_W * PICTURE_H * 4;
+            bi.size = fw * fh * 4;
             bi.domain = BufferDomain::CachedHost;
             bi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             BufferHandle buffer = device.create_buffer(bi);
             CommandBufferHandle cmd = begin();
-            cmd->copy_image_to_buffer(*buffer, *flash[slot], 0, {0, 0, 0}, {PICTURE_W, PICTURE_H, 1}, 0, 0,
+            cmd->copy_image_to_buffer(*buffer, *flash[slot], 0, {0, 0, 0}, {fw, fh, 1}, 0, 0,
                                       {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
             cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_HOST_BIT,
                          VK_ACCESS_2_HOST_READ_BIT);
@@ -411,12 +448,12 @@ private:
             device.submit(cmd, &fence);
             fence->wait();
             const uint32_t *px = static_cast<const uint32_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
-            std::vector<uint32_t> rgba(px, px + PICTURE_W * PICTURE_H);
+            std::vector<uint32_t> rgba(px, px + fw * fh);
             device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
             for (uint32_t &p : rgba) p |= 0xFF000000u;
             char name[32];
             std::snprintf(name, sizeof name, "%04llu.png", (unsigned long long)k);
-            render_png_write((folder + "/" + name).c_str(), rgba.data(), PICTURE_W, PICTURE_H);
+            render_png_write((folder + "/" + name).c_str(), rgba.data(), fw, fh);
             const double v = flash_v[slot];
             if (list) std::fprintf(list, "%s %lld %.4f\n", name, (long long)std::floor(v), v - std::floor(v));
         }
@@ -425,6 +462,21 @@ private:
         const std::string note = "Flash recorder: " + std::to_string(n) + " pictures in " + folder;
         menu::notice(note.c_str());
         std::fprintf(stderr, "[render] %s\n", note.c_str());
+    }
+
+    // R7: the picture image at the size for this shape (render::NativeDraw::picture_size_1x), made again
+    // when the shape changes
+    bool ensure_picture(float aspect) {
+        uint32_t w, h;
+        render::NativeDraw::picture_size_1x(aspect, &w, &h);
+        if (picture && picture->get_width() == w && picture->get_height() == h) return true;
+        if (picture) device.wait_idle();
+        ImageCreateInfo info = ImageCreateInfo::render_target(w, h, VK_FORMAT_R8G8B8A8_UNORM);
+        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        info.layout = ImageLayout::General;
+        info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+        picture = device.create_image(info);
+        return bool(picture);
     }
 
     // a command buffer for the picture, after everything before it on the queue (the presenter's last
@@ -446,7 +498,8 @@ private:
     void show(ImDrawData *overlay, const char *dump_name) {
         std::vector<uint32_t> rgba;
         uint32_t w = 0, h = 0;
-        render::present_frame(picture->get_image(), PICTURE_W, PICTURE_H, overlay, dump_name ? &rgba : nullptr, &w, &h);
+        render::present_frame(picture->get_image(), picture->get_width(), picture->get_height(), overlay,
+                              dump_name ? &rgba : nullptr, &w, &h);
         if (dump_name && !rgba.empty()) {
             const std::string path = dump_dir + "/" + dump_name + ".png";
             if (render_png_write(path.c_str(), rgba.data(), w, h)) std::fprintf(stderr, "[render] wrote %s\n", path.c_str());

@@ -3,6 +3,7 @@
 #include "host.h" // (ELTALE_HOST_BUILD: set by CMake, so the entry points are exported)
 #include "nd_renderer.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,6 +67,17 @@ extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height, 
     current.reset(renderer == EL_RENDERER_NATIVE ? make_native_renderer() : make_rt64_renderer());
     renderer_kind = renderer == EL_RENDERER_NATIVE ? EL_RENDERER_NATIVE : EL_RENDERER_RT64;
     const bool hidden = std::getenv("ELTALE_HIDDEN_WINDOW") != nullptr;
+    // R7: a 16:9 picture (the native renderer's widescreen) starts in a 16:9 window as high as the 4:3 one
+    // would be, made smaller if the display's usable area is not that large
+    if (renderer_kind == EL_RENDERER_NATIVE && settings.graphics.widescreen == 1) {
+        width = height * 16 / 9;
+        SDL_Rect area;
+        if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &area) && area.w > 0 && area.h > 0) {
+            const float k = std::min({ 1.0f, area.w * 0.95f / float(width), area.h * 0.9f / float(height) });
+            width = int(float(width) * k);
+            height = int(float(height) * k);
+        }
+    }
     win = SDL_CreateWindow(title, width, height,
                            SDL_WINDOW_RESIZABLE | current->window_flags() | (hidden ? SDL_WINDOW_HIDDEN : 0));
     if (!win) {

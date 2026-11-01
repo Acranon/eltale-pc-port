@@ -56,6 +56,15 @@ void nd_forget(uintptr_t host, uint32_t bytes);
 void nd_frame_begin(void);
 void nd_frame_end(unsigned frame);
 
+/* R7 (widescreen): the picture's shape for this tick (ElRenderApi.aspect, asked at nd_frame_begin):
+ * 1.3333334f (the game's own 4/3) unless the native renderer draws a wider picture. ND_ASPECT() goes into
+ * Camera_Update's perspective; nd_billboard_cone widens MapObj_DrawBillboards' cone by what the wider
+ * picture shows at its sides (the cone is fovy as it is at 4:3, so 4:3 is unchanged). */
+extern float nd_aspect;
+#define ND_ASPECT() nd_aspect
+#define ND_WIDE() (nd_aspect != 1.3333334f)
+float nd_billboard_cone(float fovy);
+
 /* State, where the game queues it */
 void nd_camera(struct GfxFrameData *frame, const void *shake_mtx); /* end of Camera_Update */
 void nd_lights(const void *lights3);                               /* gSPSetLights3 */
@@ -78,6 +87,9 @@ void nd_map_draw(const struct MapObj *obj, int pass, const void *mtx, uint32_t d
 #define ND_DL_END(kind, mark) (void)(mark)
 #define nd_frame_list_end(s, h) ((void)0)
 #define nd_frame_begin() ((void)0)
+#define ND_ASPECT() 1.3333334f
+#define ND_WIDE() 0
+#define nd_billboard_cone(f) (f)
 #define nd_camera(f, s) ((void)0)
 #define nd_lights(l) ((void)0)
 #define nd_env_color(r, g, b, a) ((void)0)

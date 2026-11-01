@@ -81,7 +81,8 @@ public:
     void print_stats() const;
     // two retraces (a gameplay tick) and a quarter for the time the game's thread takes to build one
     static constexpr double BETWEEN_DELAY = 2.25;
-    // Draw `rec` into `picture` (320x240 RGBA8, GENERAL layout), with its own depth buffer
+    // Draw `rec` into `picture` (RGBA8, GENERAL layout; 320x240, or wider for widescreen: its shape is the
+    // picture's), with its own depth buffer
     void render(Vulkan::CommandBuffer &cmd, Vulkan::Image &picture, const Recording *rec, const DrawOptions &opt);
 
     // Headless pictures for the compare tools: frames whose number is in `spec` (as ELTALE_DUMP_IMAGE:
@@ -106,6 +107,17 @@ public:
     uint32_t material_2d(const ElRdMaterial *material);
     void draw_2d(const ElRd2D *item);
     void frame_phase(float p) { phase = p; }
+    // R7 (widescreen): the picture's shape the game builds its next ticks for (width / height; 4/3 exactly
+    // is the N64's). The host sets it from the Graphics page (render_native.cpp), headless from
+    // ELTALE_WIDESCREEN.
+    float aspect() const { return aspect_value; }
+    void set_aspect(float a) { aspect_value = a; }
+    // The picture's size in pixels at 1x for an aspect: 240 high, the width an even number of pixels
+    // (so the 4:3 middle starts on a whole pixel: 2D stays pixel-exact), at least 320
+    static void picture_size_1x(float aspect, uint32_t *w, uint32_t *h);
+    // The aspect a 1x picture of picture_size_1x has (what the game is told: its perspective matches the
+    // picture exactly)
+    static float aspect_of_1x(float aspect);
 
 private:
     struct Mesh {
@@ -126,6 +138,7 @@ private:
         void upload(Vulkan::CommandBuffer &cmd);
     };
 
+    bool ensure_depth(uint32_t w, uint32_t h);
     void dump_frame(const Recording &rec, const std::string &name);
     // the palettes as they were at the end of the recording `serial` (one of hist's, or the newest)
     void palettes_of(uint64_t serial);
@@ -145,6 +158,7 @@ private:
     bool state_dirty = true, in_frame = false;
     uint64_t vi_now = 0, serial = 0;
     float phase = 0;
+    float aspect_value = 4.0f / 3.0f;
     uint64_t palette_serial = 0; // whose palettes the palette buffer holds (0: the newest)
     std::unique_ptr<Interp> interp;
     uint64_t planned_a = 0, planned_b = 0; // the pair the interpolator has planned (serials)

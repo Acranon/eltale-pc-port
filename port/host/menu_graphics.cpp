@@ -88,7 +88,11 @@ void graphics_page() {
     }
     {
         Row row(FEATURE_WIDESCREEN);
-        ImGui::Checkbox("Widescreen", &g.widescreen);
+        const char *names[] = { "Off (4:3)", "16:9", "Match the window" };
+        ImGui::Combo("Widescreen", &g.widescreen, names, IM_ARRAYSIZE(names));
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("The 3D picture as wide as this; the HUD at the picture's edges; text, menus and full-screen "
+                              "pictures stay 4:3 in the middle. Match the window: its shape, from 4:3 to 32:9.");
     }
     {
         Row row(FEATURE_BORDER);

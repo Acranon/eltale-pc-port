@@ -23,12 +23,14 @@
 #include "game/core/main.h"
 #include "game/camera/camera.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 unsigned nd_kinds;
 unsigned nd_dl_kinds = ~0u;
+float nd_aspect = 1.3333334f;
 
 static const ElRenderApi *api;
 
@@ -170,6 +172,9 @@ void nd_frame_begin(void) {
         info.clear[2] = (u8)((c >> 1 & 31) << 3 | (c >> 1 & 31) >> 2);
     }
     info.mode = (u8)core_game_mode;
+    /* R7: the picture's shape (4:3 unless widescreen); kept for the whole tick */
+    nd_aspect = api->aspect ? api->aspect() : 1.3333334f;
+    if (!(nd_aspect >= 1.3333334f && nd_aspect < 8.0f)) nd_aspect = 1.3333334f;
     api->frame_begin(&info);
     in_frame++; /* the next frame can be built before the last one's task starts (menus, the title) */
     nd_2d_frame_begin();
@@ -182,6 +187,16 @@ void nd_frame_end(unsigned frame) {
     /* the virtual clock's place in its retrace (port/os/kernel.c: retraces every 781,250 counts from 0) */
     api->frame_phase((float)(osGetTime() % 781250u) / 781250.0f);
     api->frame_end(frame);
+}
+
+/* R7: MapObj_DrawBillboards draws a billboard when the angle between the camera's yaw and the way to it is
+ * under fovy degrees: the half-width of a 4:3 picture plus a margin. A wider picture shows more at each
+ * side: the cone grows by that much (the half-width at this aspect minus the half-width at 4:3). */
+float nd_billboard_cone(float fovy) {
+    if (!ND_WIDE()) return fovy;
+    const double t = tan(fovy * 0.008726646259971648); /* tan(fovy / 2) */
+    const double extra = atan(t * nd_aspect) - atan(t * (4.0 / 3.0));
+    return fovy + (float)(extra * 57.29577951308232);
 }
 
 /* ---- state -------------------------------------------------------------------------------------- */
@@ -231,7 +246,7 @@ void nd_camera(struct GfxFrameData *f, const void *shake_mtx) {
     c.near_plane = camera_near;
     c.far_plane = camera_far;
     c.fovy = camera_fovy;
-    c.aspect = 4.0f / 3.0f;
+    c.aspect = nd_aspect;
     c.eye[0] = camera_state.eyeX; c.eye[1] = camera_state.eyeY; c.eye[2] = camera_state.eyeZ;
     c.at[0] = camera_state.atX; c.at[1] = camera_state.atY; c.at[2] = camera_state.atZ;
     api->camera(&c);

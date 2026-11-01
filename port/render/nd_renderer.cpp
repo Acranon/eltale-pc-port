@@ -148,11 +148,12 @@ void api_frame_end(uint32_t f) { instance.frame_end(f); }
 uint32_t api_material_2d(const ElRdMaterial *m) { return instance.material_2d(m); }
 void api_draw_2d(const ElRd2D *d) { instance.draw_2d(d); }
 void api_frame_phase(float p) { instance.frame_phase(p); }
+float api_aspect() { return instance.aspect(); }
 
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
-    api_material_2d, api_draw_2d, api_frame_phase,
+    api_material_2d, api_draw_2d, api_frame_phase, api_aspect,
 };
 
 } // namespace
@@ -226,16 +227,34 @@ bool NativeDraw::init(Device &dev) {
         return false;
     palettes.write(0, std::vector<uint32_t>(PALETTE_CAP).data(), PALETTE_CAP * 4);
     palettes.used = PALETTE_CAP * 4;
-    // the depth buffer, and its copy for decals (both GENERAL: a render pass, a copy and sampling all
-    // use them without layout changes)
-    ImageCreateInfo zi = ImageCreateInfo::render_target(W, H, VK_FORMAT_D32_SFLOAT);
+    return ensure_depth(W, H);
+}
+
+// the depth buffer, and its copy for decals, the picture's size (both GENERAL: a render pass, a copy and
+// sampling all use them without layout changes); made again when the picture's size changes (R7)
+bool NativeDraw::ensure_depth(uint32_t w, uint32_t h) {
+    if (depth && depth->get_width() == w && depth->get_height() == h) return true;
+    ImageCreateInfo zi = ImageCreateInfo::render_target(w, h, VK_FORMAT_D32_SFLOAT);
     zi.layout = ImageLayout::General;
     zi.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-    depth = dev.create_image(zi);
+    depth = device->create_image(zi);
     ImageCreateInfo ci = zi;
     ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    depth_before = dev.create_image(ci);
+    depth_before = device->create_image(ci);
     return bool(depth) && bool(depth_before);
+}
+
+void NativeDraw::picture_size_1x(float aspect, uint32_t *w, uint32_t *h) {
+    *h = H;
+    const float a = aspect > 4.0f / 3.0f ? aspect : 4.0f / 3.0f;
+    const uint32_t x = 2 * uint32_t(std::lround(a * float(H) * 0.5f));
+    *w = x < W ? W : x;
+}
+
+float NativeDraw::aspect_of_1x(float aspect) {
+    uint32_t w, h;
+    picture_size_1x(aspect, &w, &h);
+    return w == W ? 4.0f / 3.0f : float(w) / float(h);
 }
 
 void NativeDraw::shutdown() {
@@ -537,6 +556,20 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
+    // R7 (widescreen): the picture is 240 units high and vw wide; 2D comes in a 320-wide screen's units and
+    // is moved by its anchor (render.h EL_RD2D_ANCHOR_*): `side` is what a wider picture adds at each side
+    const uint32_t pw = picture.get_width(), ph = picture.get_height();
+    ensure_depth(pw, ph);
+    const float vw = float(H) * float(pw) / float(ph), side = (vw - float(W)) * 0.5f, px = float(ph) / float(H);
+    const bool wide = side > 0.25f;
+    auto anchor_dx = [&](uint32_t flags) -> float {
+        switch (flags & EL_RD2D_ANCHOR_MASK) {
+        case EL_RD2D_ANCHOR_LEFT: return 0.0f;
+        case EL_RD2D_ANCHOR_RIGHT: return 2.0f * side;
+        default: return side; // CENTRE, WORLD (STRETCH: its left edge 0, its right 2 x side)
+        }
+    };
+
     // the draws' constants
     std::vector<GpuDraw> gd;
     std::vector<uint32_t> options;
@@ -557,14 +590,16 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 const ElRd2D &d = rec->items2d[size_t(it.item2d)];
                 if (d.mesh == EL_RD2D_RECT) {
                     // pixels to clip space (x right, y down; the vertex stage flips y back)
-                    static const float screen[16] = { 1.0f / 160, 0, 0, 0, 0, -1.0f / 120, 0, 0, 0, 0, 0, 0, -1, 1, 0, 1 };
+                    const float screen[16] = { 2.0f / vw, 0, 0, 0, 0, -1.0f / 120, 0, 0, 0, 0, 0, 0, -1, 1, 0, 1 };
                     std::memcpy(g.mvp, screen, sizeof screen);
+                    const bool stretch = (d.flags & EL_RD2D_ANCHOR_MASK) == EL_RD2D_ANCHOR_STRETCH;
+                    const float dx = stretch ? 0.0f : anchor_dx(d.flags);
                     // the RDP's texel at pixel (x, y): s0 + (x - x0) * dsdx; a little over, so a texel
                     // boundary the interpolation lands just under still floors to the right texel
                     const float eps = 1.0f / 256, x0 = d.rect[0], y0 = d.rect[1], x1 = d.rect[2], y1 = d.rect[3];
                     auto vert = [&](float x, float y) {
                         ElRdVertex v = {};
-                        v.x = x;
+                        v.x = x + (stretch ? (x > x0 ? 2.0f * side : 0.0f) : dx);
                         v.y = y;
                         v.s = d.st[0] + (x - x0) * d.st[2] + eps;
                         v.t = d.st[1] + (y - y0) * d.st[3] + eps;
@@ -576,6 +611,12 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                     vert(x0, y0); vert(x1, y1); vert(x0, y1);
                 } else {
                     std::memcpy(g.mvp, d.matrix, sizeof g.mvp);
+                    if (wide) {
+                        // the 4:3 clip space's x into the wide picture's, moved by the anchor:
+                        // x' = x * 320 / vw + w * ((320 + 2 dx) / vw - 1)
+                        const float k = float(W) / vw, c = (float(W) + 2.0f * anchor_dx(d.flags)) / vw - 1.0f;
+                        for (int r = 0; r < 4; r++) g.mvp[r * 4] = d.matrix[r * 4] * k + d.matrix[r * 4 + 3] * c;
+                    }
                 }
                 g.colors[0] = pack(d.env);
                 g.colors[1] = pack(d.prim);
@@ -671,7 +712,22 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     rp.clear_depth_stencil.depth = 0.0f; // reversed Z
     rp.clear_color[0] = opt.border ? VkClearColorValue{ { 0, 0, 0, 1 } } : clear_colour;
     cmd.begin_render_pass(rp);
-    VkRect2D inner = { { 8, 8 }, { W - 16, H - 16 } };
+    const int32_t b8 = int32_t(std::lround(8.0f * px));
+    const VkRect2D inner = { { b8, b8 }, { pw - 2 * uint32_t(b8), ph - 2 * uint32_t(b8) } };
+    const VkRect2D whole = opt.border ? inner : VkRect2D{ { 0, 0 }, { pw, ph } };
+    // R7: a CENTRE 2D item is cut to the picture's 4:3 middle (pillarbox: what a 4:3 screen hides stays hidden)
+    VkRect2D middle = whole;
+    if (wide) {
+        const int32_t x0 = int32_t(std::lround(side * px)), x1 = int32_t(std::lround((side + float(W)) * px));
+        middle.offset.x = std::max(whole.offset.x, x0);
+        middle.extent.width = uint32_t(std::min(int32_t(whole.offset.x + whole.extent.width), x1) - middle.offset.x);
+    }
+    const VkRect2D *scissor_now = nullptr;
+    auto scissor = [&](const VkRect2D &r) {
+        if (scissor_now == &r) return;
+        cmd.set_scissor(r);
+        scissor_now = &r;
+    };
     if (opt.border) {
         VkClearValue v = {};
         v.color = clear_colour;
@@ -689,8 +745,9 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         cmd.set_front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE);
         // the RDP samples a pixel at its top-left corner, the GPU at its centre: the picture moves half a pixel
-        cmd.set_viewport({ 0.5f, 0.5f, float(W), float(H), 0, 1 });
-        cmd.set_scissor(opt.border ? inner : VkRect2D{ { 0, 0 }, { W, H } });
+        cmd.set_viewport({ 0.5f * px, 0.5f * px, float(pw), float(ph), 0, 1 });
+        scissor_now = nullptr;
+        scissor(whole);
         cmd.set_texture(0, 5, depth_before->get_view(), StockSampler::NearestClamp);
     };
     // A decal reads the depth as it was before it (the RDP's test is two-sided: depth_before): copied
@@ -730,6 +787,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             if (options[i] & OPT_SKIP) continue;
             const Recording::Item &item = rec->items[i];
             const ElRd2D *d2 = item.item2d >= 0 ? &rec->items2d[size_t(item.item2d)] : nullptr;
+            if (wide) scissor(d2 && (d2->flags & EL_RD2D_ANCHOR_MASK) == EL_RD2D_ANCHOR_CENTRE ? middle : whole);
             if (d2 && d2->mesh == EL_RD2D_RECT) {
                 if (!rect_bound) cmd.set_storage_buffer(0, 0, *rect_buffer);
                 rect_bound = true;
@@ -766,6 +824,9 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
 
 void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
     if (!device) return;
+    uint32_t W, H; // R7: the picture's shape (ELTALE_WIDESCREEN), at 1x
+    picture_size_1x(aspect_value, &W, &H);
+    if (dump_picture && dump_picture->get_width() != W) dump_picture.reset();
     if (!dump_picture) {
         ImageCreateInfo info = ImageCreateInfo::render_target(W, H, VK_FORMAT_R8G8B8A8_UNORM);
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -774,7 +835,7 @@ void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
         dump_picture = device->create_image(info);
     }
     DrawOptions opt;
-    opt.border = true;      // the N64 look: the border, three-point filtering, the N64's fog
+    opt.border = W == 320;  // the N64 look: the border, three-point filtering, the N64's fog (widescreen: no border)
     opt.three_point = true;
     opt.n64_fog = true;
     CommandBufferHandle cmd = device->request_command_buffer();

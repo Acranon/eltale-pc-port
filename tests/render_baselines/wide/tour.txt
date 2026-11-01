@@ -1,0 +1,20 @@
+# render_compare baseline: tour: solid differing pixels per frame (3x3 rule, 5-bit, 1 step), and their sum. Numbers only.
+frame_1179 2786
+frame_1288 2884
+frame_1397 2891
+frame_14041 2241
+frame_17856 2227
+frame_1942 2818
+frame_22780 2234
+frame_23869 2873
+frame_24088 2836
+frame_24633 2640
+frame_25287 2766
+frame_2704 2890
+frame_29145 2284
+frame_3031 2384
+frame_30344 1964
+frame_4775 2236
+frame_634 2855
+frame_9790 2210
+sum 46019

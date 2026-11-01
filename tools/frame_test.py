@@ -23,6 +23,14 @@ by "+", e.g. map+shadow; --baselines overrides; --write-baseline writes them); d
 <work>/<run>/diff. The native pass runs tests/render_frames.txt and tests/render_frames_actor.txt by
 default (--list, repeatable, overrides). Work folder default out/frame_test_native. Needs eltale_host.dll and
 SDL3.dll next to the exe (tools/build_host.py, then copy out/host/*.dll).
+
+--wide [ASPECT] (R7, docs/renderer/NATIVE_DRAW.md "Widescreen"): every kind native at ASPECT (ELTALE_WIDESCREEN,
+default 16:9) with no reference and no frame images: the native pictures (426x240 at 16:9, no border) go to
+<work>/<run>/native. Their middle 320 columns are compared (render_compare.py --centre, inside the border) with
+the 4:3 native pictures of the same frames from a --native run (--wide-ref, default out/frame_test_native):
+the same 3D (the vertical field of view is kept, so the middle of a wide picture is the 4:3 one), while the
+HUD's LEFT and RIGHT items have moved out to the edges. Baselines tests/render_baselines/wide/<run>.txt.
+--twice compares the native pictures of the two dumps. Work folder default out/frame_test_wide.
 """
 
 import argparse
@@ -84,10 +92,16 @@ def dump(run, work: Path, args) -> Path:
     env = dict(os.environ)
     env.update(run["env"])
     env["ELTALE_DATA_DIR"] = str(d / "data")
-    env["ELTALE_FRAME_IMAGE"] = "1"
-    env["ELTALE_DUMP_IMAGE"] = ",".join(str(f) for f in run["frames"])
     cmd = [str(args.exe), "--headless", "--fast", *run["argv"], "--rom", str(args.rom)]
-    if args.native:
+    if args.wide:
+        (d / "native").mkdir()
+        env["ELTALE_WIDESCREEN"] = args.wide
+        env["ELTALE_DUMP_FRAMES"] = ",".join(str(f) for f in run["frames"])
+        cmd += ["--dump-frames", str(d / "native")]
+    else:
+        env["ELTALE_FRAME_IMAGE"] = "1"
+        env["ELTALE_DUMP_IMAGE"] = ",".join(str(f) for f in run["frames"])
+    if args.native and not args.wide:
         (d / "native").mkdir()
         env["ELTALE_ND_COMPARE"] = "1"
         env["ELTALE_DL_KINDS"] = args.native
@@ -104,7 +118,21 @@ def dump(run, work: Path, args) -> Path:
     return d
 
 
+def native_hashes(run, d: Path):
+    """--wide: the native pictures' hashes (sha1 of the pixels), as render() gives the reference's"""
+    from PIL import Image
+    out = {}
+    for f in run["frames"]:
+        png = d / "native" / f"frame_{f}.png"
+        if png.is_file():
+            h = hashlib.sha1(Image.open(png).convert("RGB").tobytes()).hexdigest()[:16]
+            out[f] = {"hash": h, "line": "", "bin": h}
+    return out
+
+
 def render(run, d: Path, args):
+    if args.wide:
+        return native_hashes(run, d)
     bins = [d / "out" / f"frame_{f}.bin" for f in run["frames"]]
     missing = [b.name for b in bins if not b.is_file()]
     if missing:
@@ -129,16 +157,16 @@ def colours(png: Path) -> int:
     return len(Image.open(png).convert("RGB").getcolors(1 << 20) or [0, 0])
 
 
-def sheet(results, work: Path, path: Path):
+def sheet(results, work: Path, path: Path, sub: str = "png", w: int = 320):
     from PIL import Image, ImageDraw
     items = [(r, f) for r in results for f in sorted(results[r])]
-    cols = 6
-    w, h = 320, 254
+    cols = 6 if w <= 320 else 4
+    h = 254
     im = Image.new("RGB", (cols * w, ((len(items) + cols - 1) // cols) * h), (32, 32, 32))
     draw = ImageDraw.Draw(im)
     for i, (r, f) in enumerate(items):
         x, y = (i % cols) * w, (i // cols) * h
-        im.paste(Image.open(work / r / "png" / f"frame_{f}.png").convert("RGB"), (x, y + 14))
+        im.paste(Image.open(work / r / sub / f"frame_{f}.png").convert("RGB"), (x, y + 14))
         draw.text((x + 3, y + 1), f"{r} {f}", fill=(255, 230, 0))
     path.parent.mkdir(parents=True, exist_ok=True)
     im.save(path)
@@ -169,7 +197,17 @@ def main() -> int:
                          "of them alone")
     ap.add_argument("--baselines", type=Path,
                     help="baseline folder of the native pass (default tests/render_baselines/<set>)")
+    ap.add_argument("--wide", nargs="?", const="16:9", default=None, metavar="ASPECT",
+                    help="widescreen: every kind native at ASPECT (default 16:9), compared with --wide-ref's 4:3 pictures")
+    ap.add_argument("--wide-ref", type=Path, default=ROOT / "out/frame_test_native",
+                    help="the work folder of a 4:3 --native run of the same lists (its <run>/native pictures)")
     args = ap.parse_args()
+    if args.wide:
+        args.native = args.native or "all"
+        if args.baselines is None:
+            args.baselines = ROOT / "tests/render_baselines/wide"
+        if args.work == ROOT / "out/frame_test":
+            args.work = ROOT / "out/frame_test_wide"
     if args.native:
         kinds = NATIVE_KINDS if args.native == "all" else args.native.split(",")
         bad = [k for k in kinds if k not in NATIVE_KINDS]
@@ -208,7 +246,7 @@ def main() -> int:
             if f not in got:
                 print(f"FRAME_TEST {r['name']} {f} NO PICTURE")
                 fails += 1
-            elif not args.native and colours(args.work / r["name"] / "png" / f"frame_{f}.png") < 2:
+            elif not args.native and not args.wide and colours(args.work / r["name"] / "png" / f"frame_{f}.png") < 2:
                 print(f"FRAME_TEST {r['name']} {f} ONE COLOUR")
                 fails += 1
 
@@ -224,12 +262,20 @@ def main() -> int:
         print(f"FRAME_TEST_TWICE {'OK' if not fails else 'FAIL'}")
 
     if args.native:
-        # the native pictures against the reference of the same kinds, per run, with its baseline
+        # the native pictures against the reference of the same kinds, per run, with its baseline (--wide: their
+        # middles against the 4:3 native pictures)
         for r in runs:
             d = args.work / r["name"]
             base = args.baselines / f"{r['name']}.txt"
-            cmd = [sys.executable, str(ROOT / "tools/render_compare.py"), str(d / "png"), str(d / "native"),
+            ref = (args.wide_ref.resolve() / r["name"] / "native") if args.wide else (d / "png")
+            if args.wide and not ref.is_dir():
+                print(f"FRAME_TEST {r['name']} no 4:3 pictures in {ref} (run --native first): not compared")
+                fails += 1
+                continue
+            cmd = [sys.executable, str(ROOT / "tools/render_compare.py"), str(ref), str(d / "native"),
                    "--out", str(d / "diff"), "--name", r["name"], "--baseline", str(base)]
+            if args.wide:
+                cmd.insert(-2, "--centre")
             if args.write_baseline:
                 args.baselines.mkdir(parents=True, exist_ok=True)
                 cmd.append("--write-baseline")
@@ -267,7 +313,13 @@ def main() -> int:
                 print(f"FRAME_TEST {r['name']} {f} {v['hash']} {state}")
 
     if args.sheet:
-        sheet({r["name"]: results[r["name"]] for r in runs}, args.work, args.sheet)
+        if args.wide:
+            from PIL import Image
+            first = next((args.work / r["name"] / "native" / f"frame_{f}.png" for r in runs for f in results[r["name"]]), None)
+            sheet({r["name"]: results[r["name"]] for r in runs}, args.work, args.sheet, "native",
+                  Image.open(first).width if first else 426)
+        else:
+            sheet({r["name"]: results[r["name"]] for r in runs}, args.work, args.sheet)
     if not args.keep_bins:
         for b in list(args.work.glob("*/out/frame_*.bin")) + list(args.work.glob("second/*/out/frame_*.bin")):
             b.unlink()
