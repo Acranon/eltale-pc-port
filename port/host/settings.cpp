@@ -148,6 +148,7 @@ static void read_graphics(const cJSON *j, Graphics &g) {
 static void read_controls(const cJSON *j, Controls &c) {
     read_int(item(j, "mouse_sensitivity"), c.mouse_sensitivity, 10, 400);
     read_bool(item(j, "invert_y"), c.invert_y);
+    read_bool(item(j, "mouse_menus"), c.mouse_menus);
     const cJSON *b = item(j, "bindings");
     if (!cJSON_IsObject(b)) return;
     for (int a = 0; a < ACT_COUNT; a++) {
@@ -218,6 +219,7 @@ void save_settings() {
     cJSON *controls = cJSON_AddObjectToObject(j, "controls");
     cJSON_AddNumberToObject(controls, "mouse_sensitivity", s.controls.mouse_sensitivity);
     cJSON_AddBoolToObject(controls, "invert_y", s.controls.invert_y);
+    cJSON_AddBoolToObject(controls, "mouse_menus", s.controls.mouse_menus);
     cJSON *bindings = cJSON_AddObjectToObject(controls, "bindings");
     for (int a = 0; a < ACT_COUNT; a++) {
         cJSON *list = cJSON_AddArrayToObject(bindings, action_key(a));

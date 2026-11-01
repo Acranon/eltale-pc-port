@@ -81,6 +81,13 @@ ELHOST_API void ElHost_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_
  * Call after ElHost_Poll, with ElHost_GetPad. */
 ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, int *flags);
 
+/* The menus' pointer (port/mouse_menu.h; docs/CONTROLS.md "The mouse in menus") since the last call: where it is
+ * on the picture shown, in the 1x picture's units (x across a picture `width` wide: 320 at 4:3 and for the
+ * CPU-drawn screens, 426 at 16:9; y down 240), and flags: 1 over the picture and usable (the mouse in menus on,
+ * mouse look off, the menu closed), 2 the cursor shown, 4 a left click, 8 a right click (let go without a drag).
+ * Call after ElHost_Poll, with ElHost_GetPad. */
+ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int *flags);
+
 /* Play one AI buffer: interleaved 16-bit stereo, host order, at `rate` Hz. */
 ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate);
 

@@ -61,6 +61,7 @@ struct Controls {
     int bind[ACT_COUNT][BIND_SLOTS];
     int mouse_sensitivity = 100; // percent
     bool invert_y = false;       // mouse and camera keys: up looks down
+    bool mouse_menus = true;     // the mouse points and clicks in the game's menus (port/mouse_menu.h)
     Controls();                  // the defaults
 };
 
@@ -99,6 +100,8 @@ bool fatal_called();
 bool input_event(const SDL_Event &e);
 void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
 void input_camera(float *dx, float *dy, int *wheel, int *flags);
+// The menus' pointer (ElHost_GetPointer): where it is on the picture shown, and the clicks since the last call
+void input_pointer(float *x, float *y, int *width, int *flags);
 void input_shutdown();
 // ELTALE_INPUT_TEST: queue the script's events that are due (SDL's own queue, this process only)
 void input_test_pump();
@@ -136,6 +139,8 @@ public:
     // The game's thread is about to sleep `ns` nanoseconds until its next event (R6): a renderer that
     // shows pictures between the game's shows those that come due meanwhile, and returns in time.
     virtual void wait(uint64_t ns) { (void)ns; }
+    // The picture shown last: its size in pixels, and whether it is a CPU-drawn screen (320x240 at 1x)
+    virtual bool shown_size(uint32_t *w, uint32_t *h, bool *cpu) const { (void)w; (void)h; (void)cpu; return false; }
     // The MSAA counts the GPU can do (bits: 1, 2, 4, 8), 0 if not known.
     virtual uint32_t msaa_supported() const { return 0; }
     // settings.graphics changed: apply it.

@@ -22,6 +22,7 @@ extern void (*Port_ViHook)(u32 framebuffer);
 extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
 extern void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 extern void (*Port_LiveCamera)(float *dx, float *dy, int *wheel, int *flags);
+extern void (*Port_LivePointer)(float *x, float *y, int *width, int *flags);
 extern void (*Port_NativeTaskHook)(unsigned frame);
 extern void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
 extern void (*Port_PaceWaitHook)(uint64_t ns);
@@ -39,6 +40,7 @@ static int (*h_take_quick_key)(void);
 static void (*h_notice)(const char *);
 static void (*h_pad)(uint16_t *, int8_t *, int8_t *);
 static void (*h_camera)(float *, float *, int *, int *);
+static void (*h_pointer)(float *, float *, int *, int *);
 static void (*h_audio)(const int16_t *, uint32_t, uint32_t);
 static void (*h_shutdown)(void);
 static const void *(*h_render_api)(void);
@@ -198,12 +200,13 @@ int Port_WindowStart(void) {
     h_notice = (void (*)(const char *))SYM("ElHost_Notice");
     h_pad = (void (*)(uint16_t *, int8_t *, int8_t *))SYM("ElHost_GetPad");
     h_camera = (void (*)(float *, float *, int *, int *))SYM("ElHost_GetCamera");
+    h_pointer = (void (*)(float *, float *, int *, int *))SYM("ElHost_GetPointer");
     h_audio = (void (*)(const int16_t *, uint32_t, uint32_t))SYM("ElHost_QueueAudio");
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
     h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
     h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
     if (!h_init || !h_present || !h_present_cpu || !h_poll || !h_data_dir || !h_language ||
-        !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_camera || !h_audio || !h_shutdown || !h_wait) {
+        !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_camera || !h_pointer || !h_audio || !h_shutdown || !h_wait) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
         return -1;
     }
@@ -216,6 +219,7 @@ int Port_WindowStart(void) {
     Port_PaceWaitHook = h_wait; /* pictures between ticks (R6) */
     Port_LivePad = (void (*)(u16 *, s8 *, s8 *))h_pad;
     Port_LiveCamera = h_camera;
+    Port_LivePointer = h_pointer;
     Port_AiBufferHook = play_audio;
     Port_ViHook = present;
     return 0;

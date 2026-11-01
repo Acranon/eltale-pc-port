@@ -172,6 +172,10 @@ extern "C" ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, in
     input_camera(dx, dy, wheel, flags);
 }
 
+extern "C" ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int *flags) {
+    input_pointer(x, y, width, flags);
+}
+
 extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate) {
     audio_queue(samples, bytes, rate);
 }

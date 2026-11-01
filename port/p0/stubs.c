@@ -36,8 +36,15 @@ void Sfx_StopAllChannels(void) { }
 #endif
 #ifdef ELTALE_P1_OS
 #include "overlays/pakmenu/pakmenu.h"
-/* the Controller Pak manager (Start held at power-on) */
-s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) { return PakMenu_Run(a, b); }
+#include "port/mouse_menu.h"
+/* the Controller Pak manager (Start held at power-on); the mouse points at its screens while it runs */
+s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) {
+    s32 ret;
+    Port_MousePakManager(1);
+    ret = PakMenu_Run(a, b);
+    Port_MousePakManager(0);
+    return ret;
+}
 #else
 s32 func_801009EC(OSMesgQueue *a, OSMesgQueue *b) { (void)a; (void)b; return 0; }
 #endif
