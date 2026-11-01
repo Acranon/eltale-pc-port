@@ -582,7 +582,7 @@ static void rect_item(float x0, float y0, float x1, float y1, int tile, float s,
                     m.othermode_l, st.blend[0], st.blend[1], st.blend[2], st.blend[3], st.env[0], st.env[1], st.env[2], st.env[3],
                     tile, m.tile[0].format, m.tile[0].width, m.tile[0].height, m.tile[0].palette);
         if (full || id == ~0u) {
-            fprintf(stderr, "nd_2d: the renderer's buffers are full: loading everything again\n");
+            fprintf(stderr, "nd_2d: the renderer's buffers are full: loading again what is drawn\n");
             nd_model_reset();
             continue;
         }

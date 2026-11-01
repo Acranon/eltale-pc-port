@@ -107,7 +107,7 @@ void nd_attach(const ElRenderApi *a) {
 }
 
 void nd_after_reset(void) {
-    if (api) nd_model_reset();
+    if (api) nd_model_reset_all();
 }
 
 void nd_forget(uintptr_t host, uint32_t bytes) {

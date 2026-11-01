@@ -11,6 +11,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace render {
@@ -65,6 +66,14 @@ struct PictureStats {
     uint64_t fallback = 0, early = 0, gap = 0, mode = 0, camera = 0, cut = 0; // shown as is: why
 };
 
+// The resources' lifetime (docs/renderer/NATIVE_DRAW.md "Resets and full buffers")
+struct LifetimeStats {
+    uint64_t resets = 0;  // the game's Reset (reset): resources and recordings dropped
+    uint64_t flushes = 0; // full buffers (resources_reset): the recordings' resources kept, the rest dropped
+    uint64_t kept_meshes = 0, kept_materials = 0, kept_texels = 0; // what the flushes kept, summed
+    uint64_t stale = 0;   // items that named a mesh, group or material that is not there (skipped: 0)
+};
+
 class NativeDraw {
 public:
     bool init(Vulkan::Device &device);
@@ -82,6 +91,7 @@ public:
     void set_vi(uint64_t vi) { vi_now = vi; }
     const PictureStats &picture_stats() const { return pstats; }
     const InterpStats &interp_stats() const;
+    const LifetimeStats &lifetime_stats() const { return life; }
     void print_stats() const;
     // two retraces (a gameplay tick) and a quarter for the time the game's thread takes to build one
     static constexpr double BETWEEN_DELAY = 2.25;
@@ -100,6 +110,7 @@ public:
     uint32_t mesh_upload(const ElRdMeshDesc *mesh);
     void palette(uint32_t id, const uint16_t *entries, uint32_t count);
     void resources_reset();
+    void reset();
     void frame_begin(const ElRdFrameInfo *info);
     void camera(const ElRdCamera *camera);
     void lights(const ElRdLights *lights);
@@ -132,9 +143,13 @@ public:
 
 private:
     struct Mesh {
-        uint32_t first;  // vertices
+        uint32_t first, vertex_count;     // vertices
         uint32_t group_first, group_count;
+        uint32_t material_first, material_count; // its own materials (groups name them)
         float bounds[6];
+    };
+    struct Texture {
+        uint32_t first, count; // an upload's texels (the texel buffer, in 32-bit units)
     };
     struct Group {
         uint32_t first, count, material; // global vertex index, global material index
@@ -146,6 +161,7 @@ private:
         bool create(Vulkan::Device &device, size_t bytes);
         size_t append(const void *data, size_t bytes); // SIZE_MAX when full
         void write(size_t offset, const void *data, size_t bytes);
+        void move(size_t from, size_t to, size_t bytes); // (within the CPU copy; marked for upload)
         void upload(Vulkan::CommandBuffer &cmd);
     };
 
@@ -153,6 +169,17 @@ private:
     // the palettes as they were at the end of the recording `serial` (one of hist's, or the newest)
     void palettes_of(uint64_t serial);
     uint32_t upload_material(const ElRdMaterial &m);
+    void write_material(uint32_t index, const ElRdMaterial &m);
+    // resources_reset: keep what the recordings (finished, pending, being built) name, moved to the
+    // buffers' start and renumbered in them; the rest is dropped
+    void keep_recorded();
+    // render(): does the item name resources that are there? (no: counted in life.stale, skipped)
+    bool item_ok(const Recording &rec, const Recording::Item &it) const;
+    void small_buffers();        // ELTALE_ND_SMALL_BUFFERS (a test)
+    ElRdMeshDesc mesh_desc(uint32_t id, std::vector<ElRdGroup> &groups) const;
+    static uint64_t mesh_hash(const ElRdMeshDesc &d);
+    bool same_mesh(const ElRdMeshDesc &d, uint32_t id) const;
+    void print_lifetime() const; // P1_ND_LIFETIME
     bool want_dump(uint32_t frame) const;
     // the depth, the decal's copy of it and (MSAA) the multisampled colour, for this size and sample count
     bool ensure_targets(uint32_t width, uint32_t height, uint32_t samples);
@@ -163,6 +190,13 @@ private:
     std::vector<Mesh> meshes;
     std::vector<Group> groups;
     std::vector<ElRdMaterial> material_cpu; // for the pipeline state
+    std::vector<Texture> textures;          // the texel uploads, in the buffer's order (resources_reset)
+    LifetimeStats life;
+    // what the last full buffer kept, by content (an upload of the same is given it: resources_reset)
+    std::unordered_multimap<uint64_t, Texture> kept_texture_index;
+    std::unordered_multimap<uint64_t, uint32_t> kept_mesh_index, kept_rect_index;
+    bool small = false; // ELTALE_ND_SMALL_BUFFERS
+    uint32_t frame_base = 0, frame_last = 0; // recordings' numbers after a reset: the game's plus frame_base
 
     Recording building;
     std::deque<Recording> hist;    // the last few finished recordings, oldest first
