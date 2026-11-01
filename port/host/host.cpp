@@ -19,13 +19,13 @@ bool quit_requested;
 bool has_focus = true;
 
 void pump_events() {
+    input_test_pump();
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_requested = true;
         if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) has_focus = true;
         if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) has_focus = false;
-        input_event(e);
-        menu::handle_event(e);
+        if (!input_event(e)) menu::handle_event(e);
     }
 }
 
@@ -149,6 +149,10 @@ extern "C" ELHOST_API void ElHost_Notice(const char *text) { menu::notice(text);
 
 extern "C" ELHOST_API void ElHost_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y) {
     input_pad(buttons, stick_x, stick_y);
+}
+
+extern "C" ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, int *flags) {
+    input_camera(dx, dy, wheel, flags);
 }
 
 extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate) {

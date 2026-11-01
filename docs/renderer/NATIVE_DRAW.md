@@ -994,3 +994,15 @@ native unchanged.
 | `ELTALE_WINDOW_SIZE=WxH` | the window's size (hidden-window tests of the presenter's scaling) |
 | `ELTALE_PRESENT_DUMP_AT=n,m` | with `ELTALE_PRESENT_DUMP`: the window as shown at those pictures (`native_shown_<n>.png`) |
 | `ELTALE_PRESENT_BLIT=1` | the presenter's linear blit for Smooth pixel edges too |
+
+## The mouse camera's pictures between ticks (render.h v8, 2026-11-01)
+
+`ElRdCamera.flags` (v8): `EL_RDCAM_ORBIT` marks a tick whose view the player turned or zoomed with the mouse
+camera (docs/CONTROLS.md; `nd_camera` sets it from `Port_MouseCameraActive`). Between two such ticks
+`Interp::eye_at` moves the eye round the point looked at (yaw the short way, pitch and distance lerped; the
+endpoints use the same code, so `correct` still makes t = 0 and 1 exact) and the cut test leaves out the
+eye's move, the turn and the zoom: a mouse turn of 20 degrees a tick stays smooth. A jump of the point
+looked at or of the field of view is still a cut. Ticks without the flag are as before. `nd_billboard_cone`
+returns 181 degrees (no cone) while the view is the mouse camera's. `tools/interp_test.py` cases `mouse`
+and `mouse-battle`.
+

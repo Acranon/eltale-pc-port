@@ -366,7 +366,7 @@ void Interp::camera_at(float t, ElRdCamera &c) const {
     // the view: rebuilt from the interpolated eye and point looked at; the perspective from the
     // interpolated field of view; the shake snaps (a's until b's own picture)
     float eye[3], at[3], v[16], p[16], q[16], s[16];
-    for (int k = 0; k < 3; k++) { eye[k] = lerp(eye_a[k], eye_b[k], t); at[k] = lerp(at_a[k], at_b[k], t); }
+    eye_at(t, eye, at);
     look_at(eye, at, v, nullptr, nullptr);
     perspective(lerp(a->camera.fovy, b->camera.fovy, t), a->camera.aspect, lerp(a->camera.near_plane, b->camera.near_plane, t),
                 lerp(a->camera.far_plane, b->camera.far_plane, t), p);
@@ -399,6 +399,25 @@ void Interp::camera_at(float t, ElRdCamera &c) const {
         c.eye[k] = lerp(aim_a[k], aim_b[k], t);
         c.at[k] = at[k];
     }
+    if (orbit && t > 0.0f && t < 1.0f) // the aimed-at eye goes round with the view's (it differs by the height oscillation)
+        for (int k = 0; k < 3; k++) c.eye[k] = eye[k] + lerp(aim_a[k] - eye_a[k], aim_b[k] - eye_b[k], t);
+}
+
+// The mouse camera (orbit): yaw and pitch round the point looked at the short way, the distance lerped; else
+// both lerped
+void Interp::eye_at(float t, float *eye, float *at) const {
+    for (int k = 0; k < 3; k++) { eye[k] = lerp(eye_a[k], eye_b[k], t); at[k] = lerp(at_a[k], at_b[k], t); }
+    if (!orbit) return;
+    float da[3], db[3];
+    for (int k = 0; k < 3; k++) { da[k] = eye_a[k] - at_a[k]; db[k] = eye_b[k] - at_b[k]; }
+    const float ha = std::sqrt(da[0] * da[0] + da[2] * da[2]), hb = std::sqrt(db[0] * db[0] + db[2] * db[2]);
+    const float la = std::sqrt(ha * ha + da[1] * da[1]), lb = std::sqrt(hb * hb + db[1] * db[1]);
+    const float yaw = lerp_angle(std::atan2(da[0], da[2]), std::atan2(db[0], db[2]), t, 2 * PI);
+    const float pitch = lerp(std::atan2(da[1], ha), std::atan2(db[1], hb), t);
+    const float l = lerp(la, lb, t), h = l * std::cos(pitch);
+    eye[0] = at[0] + h * std::sin(yaw);
+    eye[1] = at[1] + l * std::sin(pitch);
+    eye[2] = at[2] + h * std::cos(yaw);
 }
 
 // ---- items ----------------------------------------------------------------------------------------
@@ -420,7 +439,7 @@ void Interp::root(const Move &m, const ElRdDraw &da, const ElRdDraw &db, float t
         if (m.kind == EL_KIND_BILLBOARD && between) {
             // turned with the interpolated camera (the game gives it the camera's yaw)
             float e[3], at[3];
-            for (int k = 0; k < 3; k++) { e[k] = lerp(eye_a[k], eye_b[k], cam_t); at[k] = lerp(at_a[k], at_b[k], cam_t); }
+            eye_at(cam_t, e, at);
             const float y0 = std::atan2(eye_a[0] - at_a[0], eye_a[2] - at_a[2]), y1 = std::atan2(e[0] - at[0], e[2] - at[2]);
             yaw = da.rot[1] + wrap_pi(y1 - y0);
         }
@@ -468,6 +487,7 @@ bool Interp::plan(const Recording &ra, const Recording &rb, const Recording *rbe
     moves2d.clear();
     fades.clear();
     *why = nullptr;
+    orbit = false;
     if (ra.info.mode != rb.info.mode) *why = "mode";
     else if (ra.has_camera != rb.has_camera) *why = "camera";
     if (*why) return false;
@@ -491,8 +511,13 @@ bool Interp::plan(const Recording &ra, const Recording &rb, const Recording *rbe
         if (log)
             std::printf("P1_INTERP_CAMERA frame=%u eye=%.1f at=%.1f cos=%.4f fovy=%.2f dist=%.1f/%.1f\n", ra.frame,
                         dist3(eye_a, eye_b), dist3(at_a, at_b), cosang, cb.fovy - ca.fovy, la, lb);
-        if (dist3(eye_a, eye_b) > CUT_MOVE || dist3(at_a, at_b) > CUT_MOVE || cosang < CUT_TURN ||
-            std::fabs(ca.fovy - cb.fovy) > CUT_FOVY || !(la > 0) || !(lb > 0) || std::fabs(la - lb) > CUT_ZOOM * std::fmax(la, lb)) {
+        // the mouse camera's turns and zooms are the player's own (port/mouse_camera.h): round the point looked
+        // at, a cut only when that point jumps or the field of view changes
+        orbit = (ca.flags & EL_RDCAM_ORBIT) && (cb.flags & EL_RDCAM_ORBIT);
+        const bool turn_cut = orbit ? false
+                                    : dist3(eye_a, eye_b) > CUT_MOVE || cosang < CUT_TURN ||
+                                          std::fabs(la - lb) > CUT_ZOOM * std::fmax(la, lb);
+        if (turn_cut || dist3(at_a, at_b) > CUT_MOVE || std::fabs(ca.fovy - cb.fovy) > CUT_FOVY || !(la > 0) || !(lb > 0)) {
             stats.cuts++;
             *why = "cut";
             return false;
@@ -501,7 +526,7 @@ bool Interp::plan(const Recording &ra, const Recording &rb, const Recording *rbe
         for (int e = 0; e < 2; e++) {
             const float t = float(e);
             float eye[3], at[3], v[16], p[16], q[16], s[16];
-            for (int k = 0; k < 3; k++) { eye[k] = lerp(eye_a[k], eye_b[k], t); at[k] = lerp(at_a[k], at_b[k], t); }
+            eye_at(t, eye, at);
             look_at(eye, at, v, nullptr, nullptr);
             perspective(lerp(ca.fovy, cb.fovy, t), ca.aspect, lerp(ca.near_plane, cb.near_plane, t),
                         lerp(ca.far_plane, cb.far_plane, t), p);

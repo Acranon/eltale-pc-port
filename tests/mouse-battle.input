@@ -1,0 +1,217 @@
+# The mouse camera in a battle (outdoors: map 2): tests/battle-spells.input (the user's quick save battle-stuck,
+# ELTALE_QUICK_LOAD_AT=100) with `mouse` rows: zoom out, a slow full turn round the player while the spells fly,
+# the view down to the floor (the eye stays above it) and up, zoom in, then a reset (middle click).
+5 0x1000 0 0
+7 0 0 0
+120 0 0 80
+200 0 0 0
+230 0x0008 0 0
+232 0 0 0
+260 0x8000 0 0
+262 0 0 0
+290 0x0004 0 0
+292 0 0 0
+320 0x8000 0 0
+322 0 0 0
+350 0x0002 0 0
+352 0 0 0
+380 0x8000 0 0
+382 0 0 0
+410 0x0001 0 0
+412 0 0 0
+440 0x8000 0 0
+442 0 0 0
+mouse 240 0 0 -2 0
+mouse 250 6 0 0 0
+mouse 252 6 0 0 0
+mouse 254 6 0 0 0
+mouse 256 6 0 0 0
+mouse 258 6 0 0 0
+mouse 260 6 0 0 0
+mouse 262 6 0 0 0
+mouse 264 6 0 0 0
+mouse 266 6 0 0 0
+mouse 268 6 0 0 0
+mouse 270 6 0 0 0
+mouse 272 6 0 0 0
+mouse 274 6 0 0 0
+mouse 276 6 0 0 0
+mouse 278 6 0 0 0
+mouse 280 6 0 0 0
+mouse 282 6 0 0 0
+mouse 284 6 0 0 0
+mouse 286 6 0 0 0
+mouse 288 6 0 0 0
+mouse 290 6 0 0 0
+mouse 292 6 0 0 0
+mouse 294 6 0 0 0
+mouse 296 6 0 0 0
+mouse 298 6 0 0 0
+mouse 300 6 0 0 0
+mouse 302 6 0 0 0
+mouse 304 6 0 0 0
+mouse 306 6 0 0 0
+mouse 308 6 0 0 0
+mouse 310 6 0 0 0
+mouse 312 6 0 0 0
+mouse 314 6 0 0 0
+mouse 316 6 0 0 0
+mouse 318 6 0 0 0
+mouse 320 6 0 0 0
+mouse 322 6 0 0 0
+mouse 324 6 0 0 0
+mouse 326 6 0 0 0
+mouse 328 6 0 0 0
+mouse 330 6 0 0 0
+mouse 332 6 0 0 0
+mouse 334 6 0 0 0
+mouse 336 6 0 0 0
+mouse 338 6 0 0 0
+mouse 340 6 0 0 0
+mouse 342 6 0 0 0
+mouse 344 6 0 0 0
+mouse 346 6 0 0 0
+mouse 348 6 0 0 0
+mouse 350 6 0 0 0
+mouse 352 6 0 0 0
+mouse 354 6 0 0 0
+mouse 356 6 0 0 0
+mouse 358 6 0 0 0
+mouse 360 6 0 0 0
+mouse 362 6 0 0 0
+mouse 364 6 0 0 0
+mouse 366 6 0 0 0
+mouse 368 6 0 0 0
+mouse 370 6 0 0 0
+mouse 372 6 0 0 0
+mouse 374 6 0 0 0
+mouse 376 6 0 0 0
+mouse 378 6 0 0 0
+mouse 380 6 0 0 0
+mouse 382 6 0 0 0
+mouse 384 6 0 0 0
+mouse 386 6 0 0 0
+mouse 388 6 0 0 0
+mouse 390 6 0 0 0
+mouse 392 6 0 0 0
+mouse 394 6 0 0 0
+mouse 396 6 0 0 0
+mouse 398 6 0 0 0
+mouse 400 6 0 0 0
+mouse 402 6 0 0 0
+mouse 404 6 0 0 0
+mouse 406 6 0 0 0
+mouse 408 6 0 0 0
+mouse 410 6 0 0 0
+mouse 412 6 0 0 0
+mouse 414 6 0 0 0
+mouse 416 6 0 0 0
+mouse 418 6 0 0 0
+mouse 420 6 0 0 0
+mouse 422 6 0 0 0
+mouse 424 6 0 0 0
+mouse 426 6 0 0 0
+mouse 428 6 0 0 0
+mouse 430 6 0 0 0
+mouse 432 6 0 0 0
+mouse 434 6 0 0 0
+mouse 436 6 0 0 0
+mouse 438 6 0 0 0
+mouse 440 6 0 0 0
+mouse 442 6 0 0 0
+mouse 444 6 0 0 0
+mouse 446 6 0 0 0
+mouse 448 6 0 0 0
+mouse 450 6 0 0 0
+mouse 452 6 0 0 0
+mouse 454 6 0 0 0
+mouse 456 6 0 0 0
+mouse 458 6 0 0 0
+mouse 460 6 0 0 0
+mouse 462 6 0 0 0
+mouse 464 6 0 0 0
+mouse 466 6 0 0 0
+mouse 468 6 0 0 0
+mouse 470 6 0 0 0
+mouse 472 6 0 0 0
+mouse 474 6 0 0 0
+mouse 476 6 0 0 0
+mouse 478 6 0 0 0
+mouse 480 6 0 0 0
+mouse 482 6 0 0 0
+mouse 484 6 0 0 0
+mouse 486 6 0 0 0
+mouse 488 6 0 0 0
+mouse 500 0 -8 0 0
+mouse 502 0 -8 0 0
+mouse 504 0 -8 0 0
+mouse 506 0 -8 0 0
+mouse 508 0 -8 0 0
+mouse 510 0 -8 0 0
+mouse 512 0 -8 0 0
+mouse 514 0 -8 0 0
+mouse 516 0 -8 0 0
+mouse 518 0 -8 0 0
+mouse 520 0 -8 0 0
+mouse 522 0 -8 0 0
+mouse 524 0 -8 0 0
+mouse 526 0 -8 0 0
+mouse 528 0 -8 0 0
+mouse 530 0 -8 0 0
+mouse 532 0 -8 0 0
+mouse 534 0 -8 0 0
+mouse 536 0 -8 0 0
+mouse 538 0 -8 0 0
+mouse 540 0 -8 0 0
+mouse 542 0 -8 0 0
+mouse 544 0 -8 0 0
+mouse 546 0 -8 0 0
+mouse 548 0 -8 0 0
+mouse 550 0 -8 0 0
+mouse 552 0 -8 0 0
+mouse 554 0 -8 0 0
+mouse 556 0 -8 0 0
+mouse 558 0 -8 0 0
+mouse 600 6 10 0 0
+mouse 602 6 10 0 0
+mouse 604 6 10 0 0
+mouse 606 6 10 0 0
+mouse 608 6 10 0 0
+mouse 610 6 10 0 0
+mouse 612 6 10 0 0
+mouse 614 6 10 0 0
+mouse 616 6 10 0 0
+mouse 618 6 10 0 0
+mouse 620 6 10 0 0
+mouse 622 6 10 0 0
+mouse 624 6 10 0 0
+mouse 626 6 10 0 0
+mouse 628 6 10 0 0
+mouse 630 6 10 0 0
+mouse 632 6 10 0 0
+mouse 634 6 10 0 0
+mouse 636 6 10 0 0
+mouse 638 6 10 0 0
+mouse 640 6 10 0 0
+mouse 642 6 10 0 0
+mouse 644 6 10 0 0
+mouse 646 6 10 0 0
+mouse 648 6 10 0 0
+mouse 650 6 10 0 0
+mouse 652 6 10 0 0
+mouse 654 6 10 0 0
+mouse 656 6 10 0 0
+mouse 658 6 10 0 0
+mouse 660 6 10 0 0
+mouse 662 6 10 0 0
+mouse 664 6 10 0 0
+mouse 666 6 10 0 0
+mouse 668 6 10 0 0
+mouse 670 6 10 0 0
+mouse 672 6 10 0 0
+mouse 674 6 10 0 0
+mouse 676 6 10 0 0
+mouse 678 6 10 0 0
+mouse 700 0 0 3 0
+mouse 800 0 0 0 1
+repeat 230 240

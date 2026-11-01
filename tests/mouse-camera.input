@@ -1,0 +1,137 @@
+# The mouse camera (port/p0/mouse_camera.c, docs/CONTROLS.md): New Game as tests/interp-walk.input (Start, then A
+# through the opening's messages to VI 1200), then in the throne room: zoom out, a slow turn right, look down, walk
+# up the stick (relative to the view), reset (middle click), walk again, quicker turns (orbit pictures between ticks),
+# zoom in. `mouse VI DX DY WHEEL FLAGS` rows: turn counts (0.006 rad across, 0.004 up and down), wheel steps
+# (+ in), flags 1 = reset.
+10 0x1000 0 0
+12 0 0 0
+40 0x1000 0 0
+42 0 0 0
+70 0x1000 0 0
+72 0 0 0
+100 0x1000 0 0
+102 0 0 0
+130 0x1000 0 0
+132 0 0 0
+160 0x1000 0 0
+162 0 0 0
+190 0x1000 0 0
+192 0 0 0
+220 0x1000 0 0
+222 0 0 0
+250 0x1000 0 0
+252 0 0 0
+280 0x1000 0 0
+282 0 0 0
+310 0x1000 0 0
+312 0 0 0
+340 0x1000 0 0
+342 0 0 0
+370 0x1000 0 0
+372 0 0 0
+400 0x1000 0 0
+402 0 0 0
+430 0x1000 0 0
+432 0 0 0
+460 0x1000 0 0
+462 0 0 0
+490 0x1000 0 0
+492 0 0 0
+520 0x1000 0 0
+522 0 0 0
+550 0x1000 0 0
+552 0 0 0
+580 0x1000 0 0
+582 0 0 0
+610 0x1000 0 0
+612 0 0 0
+640 0x1000 0 0
+642 0 0 0
+670 0x1000 0 0
+672 0 0 0
+730 0x8000 0 0
+732 0 0 0
+760 0x8000 0 0
+762 0 0 0
+790 0x8000 0 0
+792 0 0 0
+820 0x8000 0 0
+822 0 0 0
+850 0x8000 0 0
+852 0 0 0
+880 0x8000 0 0
+882 0 0 0
+910 0x8000 0 0
+912 0 0 0
+940 0x8000 0 0
+942 0 0 0
+970 0x8000 0 0
+972 0 0 0
+1000 0x8000 0 0
+1002 0 0 0
+1030 0x8000 0 0
+1032 0 0 0
+1060 0x8000 0 0
+1062 0 0 0
+1090 0x8000 0 0
+1092 0 0 0
+1120 0x8000 0 0
+1122 0 0 0
+1150 0x8000 0 0
+1152 0 0 0
+1180 0x8000 0 0
+1182 0 0 0
+mouse 1260 0 0 -3 0
+mouse 1280 20 0 0 0
+mouse 1284 20 0 0 0
+mouse 1288 20 0 0 0
+mouse 1292 20 0 0 0
+mouse 1296 20 0 0 0
+mouse 1300 20 0 0 0
+mouse 1304 20 0 0 0
+mouse 1308 20 0 0 0
+mouse 1312 20 0 0 0
+mouse 1316 20 0 0 0
+mouse 1320 20 0 0 0
+mouse 1324 20 0 0 0
+mouse 1328 20 0 0 0
+mouse 1332 20 0 0 0
+mouse 1336 20 0 0 0
+mouse 1344 0 40 0 0
+mouse 1348 0 40 0 0
+1400 0 0 80
+1480 0 0 0
+mouse 1500 0 0 0 1
+1530 0 0 80
+1590 0 0 0
+mouse 1620 -15 0 0 0
+mouse 1622 -15 0 0 0
+mouse 1624 -15 0 0 0
+mouse 1626 -15 0 0 0
+mouse 1628 -15 0 0 0
+mouse 1630 -15 0 0 0
+mouse 1632 -15 0 0 0
+mouse 1634 -15 0 0 0
+mouse 1636 -15 0 0 0
+mouse 1638 -15 0 0 0
+mouse 1640 -15 0 0 0
+mouse 1642 -15 0 0 0
+mouse 1644 -15 0 0 0
+mouse 1646 -15 0 0 0
+mouse 1648 -15 0 0 0
+mouse 1650 -15 0 0 0
+mouse 1652 -15 0 0 0
+mouse 1654 -15 0 0 0
+mouse 1656 -15 0 0 0
+mouse 1658 -15 0 0 0
+mouse 1700 0 -40 1 0
+mouse 1720 20 -4 0 0
+mouse 1724 20 -4 0 0
+mouse 1728 20 -4 0 0
+mouse 1732 20 -4 0 0
+mouse 1736 20 -4 0 0
+mouse 1740 20 -4 0 0
+mouse 1744 20 -4 0 0
+mouse 1748 20 -4 0 0
+mouse 1752 20 -4 0 0
+mouse 1756 20 -4 0 0

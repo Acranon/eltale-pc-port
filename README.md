@@ -62,5 +62,13 @@ Linux/WSL uses `make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/rom.z64
 FRAMES=60`. The [OS status](docs/P1_OS_STATUS.md) records the completed
 scheduler/event slices and the remaining audio, controller and Pak work.
 
+## Controls
+
+Keyboard and mouse by default: WASD move, Space A, Left Shift B, Q Z, Enter Start, E L, R R, arrow keys the
+C buttons, IJKL the D-pad, Left Ctrl walk; hold the right mouse button (or press Tab) and move the mouse to
+turn the camera, the wheel zooms, the middle button resets it. A controller works as on the N64 (right
+stick the C buttons). F1 opens the menu, where every binding can be changed; F2/F4 quick save and load.
+See [Controls](docs/CONTROLS.md).
+
 To change game source, edit `work/src/` and run `python3 tools/patches.py save`.
 The resulting `patches/p0.patch` is committed; `decomp/` stays clean.

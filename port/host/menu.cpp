@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -89,33 +90,58 @@ void audio_page() {
 }
 
 void controls_page() {
-    help("Remapping comes later. For now the controls are fixed:");
-    if (ImGui::BeginTable("controls", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn("N64");
-        ImGui::TableSetupColumn("Keyboard");
-        ImGui::TableSetupColumn("Controller");
+    int cap_action = -1, cap_slot = 0;
+    const bool capturing = input_capturing(&cap_action, &cap_slot);
+    if (capturing)
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%s: press a %s (Esc: cancel, Backspace: clear)",
+                           action_label(cap_action), cap_slot == BIND_PAD_SLOT ? "controller button or stick" : "key or mouse button");
+    else
+        help("Click a binding, then press the key, mouse button or controller button to use. A key does one thing: "
+             "binding it here takes it from where it was.");
+    Controls &c = settings.controls;
+    if (ImGui::SliderInt("Mouse camera speed", &c.mouse_sensitivity, 10, 400, "%d%%")) save_settings();
+    if (ImGui::Checkbox("Invert the camera's up and down", &c.invert_y)) save_settings();
+    help("Mouse camera: hold the right button and move the mouse (or turn mouse look on) to turn the view, the "
+         "wheel zooms, the middle button gives the camera back to the game. Movement follows the view. Not in "
+         "scenes the game films itself.");
+    if (ImGui::Button("Reset the controls to the defaults")) ask("Reset every control to its default?", RESET_CONTROLS);
+    const float table_h = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 0.25f;
+    if (ImGui::BeginTable("bindings", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY,
+                          ImVec2(0, table_h))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthStretch, 1.4f);
+        ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Key 2", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Controller", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableHeadersRow();
-        const char *rows[][3] = {
-            { "Stick", "Arrow keys or WASD", "Left stick" },
-            { "A", "X or Space", "A" },
-            { "B", "C or Left Shift", "X" },
-            { "Z", "Z", "Left trigger" },
-            { "Start", "Enter", "Start" },
-            { "L / R", "Q / E", "Shoulder buttons" },
-            { "C buttons", "I J K L", "Right stick" },
-            { "D-pad", "T F G H", "D-pad" },
-            { "Menu", "F1", "Back" },
-            { "Quick save", "F2", "" },
-            { "Quick load", "F4", "" },
-            { "Fullscreen", "F11 or Alt+Enter", "" },
-            { "Flash recorder (debug)", "F8", "" },
-        };
-        for (auto &row : rows) {
+        for (int a = 0; a < ACT_COUNT; a++) {
             ImGui::TableNextRow();
-            for (int c = 0; c < 3; c++) {
-                ImGui::TableSetColumnIndex(c);
-                ImGui::TextUnformatted(row[c]);
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(action_label(a));
+            for (int slot = 0; slot < BIND_SLOTS; slot++) {
+                ImGui::TableSetColumnIndex(slot + 1);
+                ImGui::PushID(a * BIND_SLOTS + slot);
+                const bool this_one = capturing && cap_action == a && cap_slot == slot;
+                std::string label = this_one ? "..." : binding_label(c.bind[a][slot]);
+                if (label.empty()) label = "-";
+                if (ImGui::Button(label.c_str(), ImVec2(-FLT_MIN, 0)) && !capturing) input_capture(a, slot);
+                ImGui::PopID();
             }
+        }
+        // the port's own keys, fixed
+        const char *fixed[][2] = {
+            { "Menu", "F1 (controller: Back)" },
+            { "Quick save / load", "F2 / F4" },
+            { "Fullscreen", "F11 or Alt+Enter" },
+            { "Flash recorder (debug)", "F8" },
+            { "Move (controller)", "Left stick" },
+        };
+        for (auto &row : fixed) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextDisabled("%s", row[0]);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", row[1]);
         }
         ImGui::EndTable();
     }
@@ -135,7 +161,15 @@ void build_menu() {
             if (ImGui::BeginTabItem("Game")) { game_page(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Audio")) { audio_page(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Graphics")) { graphics_page(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem("Controls")) { controls_page(); ImGui::EndTabItem(); }
+            // ELTALE_MENU_PAGE=controls: open on that page (tests: ELTALE_MENU_TEST with ELTALE_PRESENT_DUMP)
+            static const char *page = std::getenv("ELTALE_MENU_PAGE");
+            static bool page_set;
+            ImGuiTabItemFlags controls_flags = 0;
+            if (page && !page_set && !std::strcmp(page, "controls")) {
+                controls_flags = ImGuiTabItemFlags_SetSelected;
+                page_set = true;
+            }
+            if (ImGui::BeginTabItem("Controls", nullptr, controls_flags)) { controls_page(); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
     }
@@ -145,7 +179,12 @@ void build_menu() {
     if (ImGui::BeginPopupModal("Are you sure?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted(confirm ? confirm : "");
         if (ImGui::Button("Yes")) {
-            request = confirm_request;
+            if (confirm_request == RESET_CONTROLS) {
+                settings.controls = Controls();
+                save_settings();
+            } else {
+                request = confirm_request;
+            }
             confirm = nullptr;
             ImGui::CloseCurrentPopup();
         }

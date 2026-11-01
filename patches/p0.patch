@@ -339,7 +339,7 @@ index b78bc53..a366783 100644
      audio_sound_inst = audio_sound_bank->instArray[0];
      audio_sound_ids = alHeapAlloc(&audio_heap, 1, audio_sound_inst->soundCount * 2);
 diff --git a/src/game/camera/camera.c b/src/game/camera/camera.c
-index 590752a..c6420ef 100644
+index 590752a..8547372 100644
 --- a/src/game/camera/camera.c
 +++ b/src/game/camera/camera.c
 @@ -1,3 +1,4 @@
@@ -347,7 +347,17 @@ index 590752a..c6420ef 100644
  #include "game/camera/camera.h"
  #include "game/actor/actor.h"
  #include "game/battle/battle.h"
-@@ -141,6 +142,7 @@ void Camera_InitForMap(void) {
+@@ -9,6 +10,9 @@
+ #include "game/npc/npc.h"
+ #include "game/player/player.h"
+ #include "game/ui/hud.h"
++#ifdef ELTALE_P1_OS
++#include "port/mouse_camera.h"
++#endif
+ 
+ /*
+  * Camera: per-map presets, the mode handlers (follow, fixed eye, battle, delayed turn),
+@@ -141,6 +145,7 @@ void Camera_InitForMap(void) {
  
  void Camera_Update(GfxFrameData* arg0) {
      Camera* cam = &camera_state;
@@ -355,7 +365,15 @@ index 590752a..c6420ef 100644
      f32 a;
      s32 idx;
      s32 pad;
-@@ -165,13 +167,17 @@ void Camera_Update(GfxFrameData* arg0) {
+@@ -160,18 +165,25 @@ void Camera_Update(GfxFrameData* arg0) {
+         }
+         Camera_SetPreset(camera_preset_index);
+     }
++#ifdef ELTALE_P1_OS
++    Port_MouseCameraApply(); /* port: the mouse camera's view for this tick's drawing (port/mouse_camera.h) */
++#endif
+     camera_temp_vec.y = 0.0f;
+     if (camera_height_osc_enabled[0] != 0) {
          /* Reinterpretation: the callee writes only .y, here camera_temp_vec's second float. */
          Camera_UpdateHeightOscillation((Vec3f*)&camera_temp_vec);
      }
@@ -375,7 +393,7 @@ index 590752a..c6420ef 100644
          camera_shake_x *= -0.8;
          camera_shake_y *= -0.8;
          camera_shake_timer--;
-@@ -186,6 +192,8 @@ void Camera_Update(GfxFrameData* arg0) {
+@@ -186,6 +198,8 @@ void Camera_Update(GfxFrameData* arg0) {
      gSPPerspNormalize(gfx_dl_head++, camera_persp_norm);
      a = camera_fovy * 0.017453292519943295 / 2;
      camera_tan_half_fovy = sinf(a) / cosf(a);
@@ -398,13 +416,14 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..7165b51 100644
+index db2ffb3..73f30a7 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
-@@ -1,3 +1,10 @@
+@@ -1,3 +1,11 @@
 +#ifdef ELTALE_P0_BOOT_PROBE
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
++#include "port/mouse_camera.h"
 +#include "port/os.h"
 +#endif
 +#include "port/boot_probe.h"
@@ -412,7 +431,7 @@ index db2ffb3..7165b51 100644
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -31,6 +38,8 @@
+@@ -31,6 +39,8 @@
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
  #include "game/text/text_window.h"
@@ -421,7 +440,7 @@ index db2ffb3..7165b51 100644
  #include "game/event/cutscene.h"
  #include "game/event/scene.h"
  
-@@ -176,11 +185,18 @@ void Core_MainThread(void *arg0) {
+@@ -176,11 +186,18 @@ void Core_MainThread(void *arg0) {
          Bgm_Init();
          Core_ResetGameState();
          Menu_Init();
@@ -440,7 +459,7 @@ index db2ffb3..7165b51 100644
          switch (core_game_mode) {
              case 1:
                  Core_RunGameplayLoop();
-@@ -204,6 +220,7 @@ void Core_MainThread(void *arg0) {
+@@ -204,6 +221,7 @@ void Core_MainThread(void *arg0) {
                  Core_RunEndingLoop();
                  break;
          }
@@ -448,7 +467,7 @@ index db2ffb3..7165b51 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
-@@ -249,8 +266,14 @@ void Gfx_InitFrames(void) {
+@@ -249,8 +267,14 @@ void Gfx_InitFrames(void) {
      Dma_ReadRom(D_71920, D_80095AF0, D_753F0 - D_71920);
      gfx_segment1_base = D_80095AF0;
      Dma_ReadRom(D_D490C0, D_800C0000, D_D74AC0 - D_D490C0);
@@ -463,7 +482,7 @@ index db2ffb3..7165b51 100644
      D_80301000[0].data.msg = 2;
      D_80301000[0].data.framebuffer = D_803B5000;
      Gfx_InitFrameTask(&D_80301000[0]);
-@@ -274,7 +297,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+@@ -274,7 +298,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
      arg0->task.list.t.type = M_GFXTASK;
      arg0->task.list.t.flags = 0;
      arg0->task.list.t.ucode_boot = D_8004B980;
@@ -472,7 +491,7 @@ index db2ffb3..7165b51 100644
      arg0->task.list.t.ucode = D_8004BA50;
      arg0->task.list.t.ucode_data = D_80070260;
      arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -299,6 +322,10 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -299,6 +323,10 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      GfxFrameData *sub;
  
      gfx_dl_head = arg0->data.dl;
@@ -483,7 +502,7 @@ index db2ffb3..7165b51 100644
  
      gSPSegment(gfx_dl_head++, 0x00, 0x00000000);
      gSPSegment(gfx_dl_head++, 0x01, osVirtualToPhysical(gfx_segment1_base));
-@@ -324,43 +351,86 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,43 +352,89 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -563,6 +582,9 @@ index db2ffb3..7165b51 100644
              Cutscene_UpdateAndDrawImageCues();
          }
 +        ND_DL_END(EL_KIND_PICTURE, nd_mark);
++#ifdef ELTALE_P1_OS
++        Port_MouseCameraRestore(); /* port: the game's own eye back after the drawing (port/mouse_camera.h) */
++#endif
      } else if (core_game_mode == 2) {
 +        ND_DL_BEGIN(nd_mark);
 +        nd_2d_section(EL_KIND_MENU);
@@ -571,7 +593,7 @@ index db2ffb3..7165b51 100644
      } else if (core_game_mode == 3) {
          switch (func_8020C11C()) {
              case 0:
-@@ -401,11 +471,17 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -401,11 +475,17 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
          }
      } else if (core_game_mode == 5) {
          count = func_8020C15C();
@@ -590,7 +612,7 @@ index db2ffb3..7165b51 100644
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +496,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +500,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -598,7 +620,7 @@ index db2ffb3..7165b51 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -497,6 +574,9 @@ void Core_RunGameplayLoop(void) {
+@@ -497,6 +578,9 @@ void Core_RunGameplayLoop(void) {
          MapObjAnim_UpdateAll();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
          frame = &D_80301000[gfx_frame_index];
@@ -608,7 +630,7 @@ index db2ffb3..7165b51 100644
          if (!(core_flags & 0x87)) {
              if (!(player_state.actor.animFlags & 1) && Exit_CheckEnter(player_state.actor.x, player_state.actor.z, player_state.actor.rot) != 0) {
                  core_flags |= 0x80;
-@@ -558,6 +638,9 @@ void Core_RunGameplayLoop(void) {
+@@ -558,6 +642,9 @@ void Core_RunGameplayLoop(void) {
          nnsc_retrace_count = 0;
          gfx_frame_index ^= 1;
          core_frame_start_time = osGetTime();
@@ -618,7 +640,7 @@ index db2ffb3..7165b51 100644
      }
      if (core_flags & 0x200) {
          Audio_StopSeq(0);
-@@ -566,6 +649,9 @@ void Core_RunGameplayLoop(void) {
+@@ -566,6 +653,9 @@ void Core_RunGameplayLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -628,7 +650,7 @@ index db2ffb3..7165b51 100644
          }
      }
      if (core_flags & 0x400) {
-@@ -649,6 +735,9 @@ void Core_RunMessageCutsceneLoop(void) {
+@@ -649,6 +739,9 @@ void Core_RunMessageCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -638,7 +660,7 @@ index db2ffb3..7165b51 100644
          }
      }
  }
-@@ -660,6 +749,12 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -660,6 +753,12 @@ void Core_RunCameraCutsceneLoop(void) {
  
      msg = NULL;
      Dma_ReadRom(D_E43780, D_801C0000, D_E5BF60 - D_E43780);
@@ -651,7 +673,7 @@ index db2ffb3..7165b51 100644
      core_transition_timer = 0;
      fade_transition_style = 2;
      sfx_master_volume = 0;
-@@ -722,6 +817,9 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -722,6 +821,9 @@ void Core_RunCameraCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -661,7 +683,7 @@ index db2ffb3..7165b51 100644
          }
      }
      core_flags |= 0x20000;
-@@ -754,6 +852,9 @@ void Core_RunMenuLoop(void) {
+@@ -754,6 +856,9 @@ void Core_RunMenuLoop(void) {
          Bgm_Play(-1);
          while (bgm_current != -1) {
              Bgm_Update();
@@ -671,7 +693,7 @@ index db2ffb3..7165b51 100644
          }
      }
      if (menu_save_loaded != 0) {
-@@ -784,10 +885,14 @@ void Core_RunTitleLoop(void) {
+@@ -784,10 +889,14 @@ void Core_RunTitleLoop(void) {
          }
          osSendMesg(gfx_sched_mq, frame, OS_MESG_BLOCK);
          gfx_frame_index ^= 1;
@@ -686,7 +708,7 @@ index db2ffb3..7165b51 100644
  void Core_RunIntroLoop(void) {
      GfxFrame *frame;
  
-@@ -799,6 +904,9 @@ void Core_RunIntroLoop(void) {
+@@ -799,6 +908,9 @@ void Core_RunIntroLoop(void) {
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
@@ -696,7 +718,7 @@ index db2ffb3..7165b51 100644
          frame = &D_80301000[gfx_frame_index];
          if (gfx_frame_sent == 0) {
              gfx_frame_sent++;
-@@ -814,6 +922,7 @@ void Core_RunIntroLoop(void) {
+@@ -814,6 +926,7 @@ void Core_RunIntroLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -704,7 +726,7 @@ index db2ffb3..7165b51 100644
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
-@@ -888,3 +997,4 @@ void Fade_StartTransitionOut(void) {
+@@ -888,3 +1001,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
@@ -2765,7 +2787,7 @@ index e16ca6a..cb2771f 100644
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..3e0d6f2 100644
+index c8c3fd5..b61f54d 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
 @@ -1,3 +1,6 @@
@@ -2775,7 +2797,17 @@ index c8c3fd5..3e0d6f2 100644
  #include "common.h"
  #include "game/player/player.h"
  #include "game/actor/anim.h"
-@@ -102,6 +105,9 @@ s32 player_light_slot;
+@@ -5,6 +8,9 @@
+ #include "game/audio/sound.h"
+ #include "game/battle/battle.h"
+ #include "game/camera/camera.h"
++#ifdef ELTALE_P1_OS
++#include "port/mouse_camera.h"
++#endif
+ #include "game/core/dma.h"
+ #include "game/core/main.h"
+ #include "game/enemy/boss.h"
+@@ -102,6 +108,9 @@ s32 player_light_slot;
  
  void Player_Init(void) {
      Dma_ReadRom(D_869620, D_80206000, D_86F6F0 - D_869620);
@@ -2785,7 +2817,7 @@ index c8c3fd5..3e0d6f2 100644
      player_stats = player_default_stats;
      player_state.actor.scale = player_stats.scale;
      player_state.actor.collisionRadius = player_stats.body_radius;
-@@ -199,7 +205,7 @@ void Player_Spawn(void) {
+@@ -199,7 +208,7 @@ void Player_Spawn(void) {
                  p->actor.z = pos->z + player_temp_vec.y * p->actor.scale;
                  p->actor.animFlags = 1;
                  Player_LoadAnim(&player_state.actor);
@@ -2794,7 +2826,7 @@ index c8c3fd5..3e0d6f2 100644
                  MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
                  Sfx_Play(n, 8, 0xFF);
                  break;
-@@ -213,7 +219,7 @@ void Player_Spawn(void) {
+@@ -213,7 +222,7 @@ void Player_Spawn(void) {
                  p->move_step_z = player_temp_vec.y;
                  p->actor.animFlags = 1;
                  Player_LoadAnim(&player_state.actor);
@@ -2803,7 +2835,7 @@ index c8c3fd5..3e0d6f2 100644
                  MapObjAnim_Start(1, p->actor.frame, player_spawn_type, pos);
                  Sfx_Play(5, 0x21, 0xFF);
                  Sfx_Play(0xF, 0x21, 0xFF);
-@@ -361,7 +367,7 @@ void Player_Update(void) {
+@@ -361,7 +370,7 @@ void Player_Update(void) {
                      p->actor.rot = player_front_chest->rot;
                      p->finish_angle = player_front_chest->rot + 3.141592653589793;
                      p->item_id = player_front_chest->animSetIndex;
@@ -2812,7 +2844,7 @@ index c8c3fd5..3e0d6f2 100644
                      player_front_chest = NULL;
                  } else if (player_front_text_spot != NULL) {
                      TextSpot_LoadMessage(player_front_text_spot);
-@@ -464,6 +470,9 @@ void Player_Draw(struct GfxFrameData *arg0) {
+@@ -464,6 +473,9 @@ void Player_Draw(struct GfxFrameData *arg0) {
      Player *p = &player_state;
  
      gSPDisplayList(gfx_dl_head++, D_10000A0);
@@ -2822,7 +2854,20 @@ index c8c3fd5..3e0d6f2 100644
      Env_ApplyLightSlot(player_light_slot);
      if (player_state.state == 0xA || p->state == 0xB) {
          flag = 1;
-@@ -1171,6 +1180,9 @@ void Player_MoveRun(f32 sx, f32 sz, Actor *a, Player *p) {
+@@ -542,6 +554,12 @@ void Player_StateMove(Actor *a, Player *p, PlayerAnimTable *cd) {
+     if (x != 0.0f || z != 0.0f) {
+         player_temp_vec.x = x;
+         player_temp_vec.y = z;
++#ifdef ELTALE_P1_OS
++        /* port: relative to the mouse camera's view while it is turned (port/mouse_camera.h) */
++        if (Port_MouseCameraMoveYaw() != 0.0f)
++            Math_RotateVec2(camera_state.followYaw + Port_MouseCameraMoveYaw(), (Vec2f *)&player_temp_vec);
++        else
++#endif
+         Math_RotateVec2(camera_state.followYaw, (Vec2f *)&player_temp_vec);
+         x = player_temp_vec.x;
+         z = player_temp_vec.y;
+@@ -1171,6 +1189,9 @@ void Player_MoveRun(f32 sx, f32 sz, Actor *a, Player *p) {
  }
  
  void Player_GetAnimMotion(Actor *arg0, AnimSet *arg1, Vec3f *arg2) {
@@ -2832,7 +2877,7 @@ index c8c3fd5..3e0d6f2 100644
      Player_LoadAnim(arg0);
      Anim_UpdateRootMotion(arg0, &arg1[arg0->animIndex], arg0->scale);
      arg2->x = -arg0->unk44;
-@@ -1494,10 +1506,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
+@@ -1494,10 +1515,10 @@ void Player_StartObjectExit(Player *arg0, Actor *arg1) {
      arg1->animFlags |= 1;
  }
  
@@ -2845,7 +2890,7 @@ index c8c3fd5..3e0d6f2 100644
      arg0->state = 0xB;
      arg0->state_timer = 0x5A;
      arg1->animFlags |= 1;
-@@ -1843,7 +1855,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
+@@ -1843,7 +1864,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
      u16 t;
  
      a->stats->mp -= D_800C186E[p->spell_input_count];
@@ -2854,7 +2899,7 @@ index c8c3fd5..3e0d6f2 100644
      if (e->target_select_handler_index == 2) {
          p->flags |= 4;
          anim = 0x17;
-@@ -1852,7 +1864,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
+@@ -1852,7 +1873,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
          anim = 3;
          next = player_idle_anim;
      }

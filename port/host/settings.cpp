@@ -156,6 +156,23 @@ static void read_rt64_graphics(const cJSON *j, Graphics &g) {
     read_int(item(j, "refreshRateTarget"), g.frame_rate_target, 30, 240);
 }
 
+// "controls": per action (input.cpp's names) a list of three binding names ("" none: keyboard/mouse, keyboard/mouse,
+// controller); an action left out keeps its defaults
+static void read_controls(const cJSON *j, Controls &c) {
+    read_int(item(j, "mouse_sensitivity"), c.mouse_sensitivity, 10, 400);
+    read_bool(item(j, "invert_y"), c.invert_y);
+    const cJSON *b = item(j, "bindings");
+    if (!cJSON_IsObject(b)) return;
+    for (int a = 0; a < ACT_COUNT; a++) {
+        const cJSON *list = item(b, action_key(a));
+        if (!cJSON_IsArray(list)) continue;
+        for (int s = 0; s < BIND_SLOTS; s++) {
+            const cJSON *x = cJSON_GetArrayItem(list, s);
+            c.bind[a][s] = cJSON_IsString(x) ? binding_from_name(x->valuestring) : 0;
+        }
+    }
+}
+
 void load_settings() {
     std::ifstream f(settings_path(), std::ios::binary);
     if (!f) return;
@@ -173,6 +190,7 @@ void load_settings() {
     const cJSON *lang = item(j, "game", "language");
     if (cJSON_IsString(lang)) s.english = std::strcmp(lang->valuestring, "jp") != 0;
     read_int(item(j, "game", "font"), s.font, 0, 5);
+    if (cJSON_IsObject(item(j, "controls"))) read_controls(item(j, "controls"), s.controls);
     int version = 1;
     read_int(item(j, "version"), version, 1, 1000);
     const cJSON *g = item(j, "graphics");
@@ -210,6 +228,14 @@ void save_settings() {
     cJSON *game = cJSON_AddObjectToObject(j, "game");
     cJSON_AddStringToObject(game, "language", s.english ? "en" : "jp");
     cJSON_AddNumberToObject(game, "font", s.font);
+    cJSON *controls = cJSON_AddObjectToObject(j, "controls");
+    cJSON_AddNumberToObject(controls, "mouse_sensitivity", s.controls.mouse_sensitivity);
+    cJSON_AddBoolToObject(controls, "invert_y", s.controls.invert_y);
+    cJSON *bindings = cJSON_AddObjectToObject(controls, "bindings");
+    for (int a = 0; a < ACT_COUNT; a++) {
+        cJSON *list = cJSON_AddArrayToObject(bindings, action_key(a));
+        for (int b = 0; b < BIND_SLOTS; b++) cJSON_AddItemToArray(list, cJSON_CreateString(binding_name(s.controls.bind[a][b]).c_str()));
+    }
     cJSON *gr = cJSON_AddObjectToObject(j, "graphics");
     cJSON_AddStringToObject(gr, "preset", preset_keys[clampi(s.preset, 0, PRESET_CUSTOM)]);
     cJSON_AddStringToObject(gr, "resolution", key(resolution_keys, g.resolution));

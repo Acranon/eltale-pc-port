@@ -73,6 +73,9 @@ never initialised.
     "draw_distance": "far", "n64_fog": false, "n64_dither": false, "shader_warmup": true } }
 ```
 
+- `"controls"` (2026-11-01, docs/CONTROLS.md): mouse camera speed, invert, and per action three bindings
+  (two keyboard/mouse, one controller), rebound on the Controls page. The host also hands the game the
+  mouse camera's input (`ElHost_GetCamera`, read with `ElHost_GetPad`).
 - A version-1 file (eltale_rt64's menu) is read once: its RT64 `graphics` block maps to the
   switches RT64 had (resolution, multiplier, MSAA, scaling filter, three-point, frame rate), the
   rest as Everything on, and the preset is the one that matches (else Custom).

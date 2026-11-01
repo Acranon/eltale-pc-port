@@ -75,6 +75,8 @@ private:
     void root(const Move &m, const ElRdDraw &da, const ElRdDraw &db, float t, float cam_t, bool between, float *out) const;
     void eval(const Move &m, float t, float *out) const;
     void camera_at(float t, ElRdCamera &c) const;
+    // the eye and the point looked at at t: lerped, or (orbit) round the point looked at
+    void eye_at(float t, float *eye, float *at) const;
 
     const Recording *a = nullptr, *b = nullptr;
     Recording out;
@@ -86,6 +88,7 @@ private:
     float cv0[16], cv1[16], cp0[16], cp1[16], cq0[16], cq1[16]; // the rebuilds' endpoints
     float eye_a[3], eye_b[3], at_a[3], at_b[3]; // eye: the view matrix's (with the height oscillation)
     float aim_a[3], aim_b[3]; // the eye the effects aim at (camera_state's)
+    bool orbit = false;       // both ticks' views are the mouse camera's (EL_RDCAM_ORBIT)
 };
 
 // Matrix helpers (row vectors, m[row * 4 + col]), shared with the renderer's tests
