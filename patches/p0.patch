@@ -1600,7 +1600,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..e44b631 100644
+index ebb5c68..52940a2 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -1843,16 +1843,26 @@ index ebb5c68..e44b631 100644
      mapobj_scrolltex_offset += 2;
  }
  
-@@ -645,7 +704,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +704,17 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
 -    gSPDisplayList(gfx_dl_head++, map_backdrop_defs[env_area_settings->backdropId].dl);
 +    gSPDisplayList(gfx_dl_head++, (Gfx *)(uintptr_t)map_backdrop_defs[env_area_settings->backdropId].dl_addr);
++#ifdef ELTALE_P1_OS
++    /* Port: the native renderer's backdrop (nd_backdrop.c); the caller drops the commands above
++     * (ND_DL_END(EL_KIND_BACKDROP) in Gfx_BuildFrameDisplayList) */
++    if (ND_ON(EL_KIND_BACKDROP)) {
++        void nd_backdrop_draw(int which, const void *mtx, uint32_t dl, int r, int g, int b, float x, float y, float z);
++        nd_backdrop_draw(env_area_settings->backdropId, &arg0->mtx[gfx_mtx_index - 1],
++                         map_backdrop_defs[env_area_settings->backdropId].dl_addr, D_80084B60, D_80084B64, D_80084B68,
++                         camera_state.eyeX, camera_state.eyeY - 10.0f, camera_state.eyeZ);
++    }
++#endif
  }
  
  void MapObjAnim_ClearAll(void) {
-@@ -932,9 +991,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
+@@ -932,9 +1001,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
              s = p->obj;
              p->spinAngle -= 0.015707963267948967;
              Math_MtxRotScaleTrans(&arg0->mtx[gfx_mtx_index], 0.0f, p->yawDegrees * 0.017453292519943295, p->spinAngle, s->scale, s->x, s->y, s->z);
@@ -1868,7 +1878,7 @@ index ebb5c68..e44b631 100644
              D_8007C2A0++;
          }
          p++;
-@@ -951,8 +1016,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -951,8 +1026,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
      MapObj *s;
  
      idx = type - 0x11;
@@ -1883,7 +1893,7 @@ index ebb5c68..e44b631 100644
      first = 0;
      for (; count != 0; count--) {
          s = *list++;
-@@ -1040,6 +1111,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -1040,6 +1121,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;
