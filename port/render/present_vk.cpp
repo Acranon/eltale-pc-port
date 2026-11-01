@@ -213,14 +213,18 @@ bool make_swapchain() {
     }
     if (extent.width == 0 || extent.height == 0) return false; // minimised
 
-    // vsync: FIFO; without: immediate, else mailbox (no tearing, never waits), else FIFO after all
+    // vsync: FIFO (1), or mailbox when there is one (2: pictures between ticks, which must never wait for
+    // the display: no tearing, the newest picture shown at each refresh); without (0): immediate, else
+    // mailbox (no tearing, never waits), else FIFO after all
     uint32_t count = 0;
     vk.vkGetPhysicalDeviceSurfacePresentModesKHR(pr.dev.gpu, pr.surface, &count, nullptr);
     std::vector<VkPresentModeKHR> modes(count);
     vk.vkGetPhysicalDeviceSurfacePresentModesKHR(pr.dev.gpu, pr.surface, &count, modes.data());
     VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
-    if (!pr.vsync_wanted) {
-        for (VkPresentModeKHR want : {VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR}) {
+    if (pr.vsync_wanted != 1) {
+        const VkPresentModeKHR off[] = {VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR};
+        for (int i = pr.vsync_wanted == 2 ? 1 : 0; i < 2; i++) {
+            const VkPresentModeKHR want = off[i];
             bool found = false;
             for (VkPresentModeKHR m : modes) found |= m == want;
             if (found) {
@@ -430,7 +434,7 @@ void close_all() {
 
 } // namespace
 
-bool present_open(const PresentDevice &device, SDL_Window *window, bool vsync) {
+bool present_open(const PresentDevice &device, SDL_Window *window, int vsync) {
     pr = Presenter();
     pr.dev = device;
     pr.window = window;
@@ -503,7 +507,7 @@ bool present_imgui_init() {
     return pr.imgui;
 }
 
-void present_set_vsync(bool on) { pr.vsync_wanted = on; }
+void present_set_vsync(int mode) { pr.vsync_wanted = mode; }
 
 void present_set_scaling(int scaling) { pr.scaling = scaling; }
 

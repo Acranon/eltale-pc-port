@@ -56,6 +56,10 @@ ELHOST_API void ElHost_KeepRange(uint32_t start, uint32_t bytes);
 /* Show the game's frame the VI registers point at. While the menu is open the game waits in here. */
 ELHOST_API void ElHost_Present(const ElHostVi *vi);
 
+/* The game is about to sleep `ns` nanoseconds until its next event (its pacing, port/p0/host.c): the
+ * native renderer shows the pictures between ticks that come due meanwhile (R6) and returns in time. */
+ELHOST_API void ElHost_Wait(uint64_t ns);
+
 /* Show a screen the CPU drew: `pixels` are 320x240 RGBA5551 in host order (the Controller Pak
  * manager). The native renderer uploads it as one texture; RT64 is drawn through the exe's copy
  * display list instead (ElHost_DrawTask then ElHost_Present). */

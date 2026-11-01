@@ -107,6 +107,9 @@ public:
     virtual void present_game(const ElHostVi *vi, ImDrawData *overlay) = 0;
     virtual void present_cpu(const uint16_t *pixels, int width, int height, ImDrawData *overlay) = 0;
     virtual void present_again(ImDrawData *overlay) = 0;
+    // The game's thread is about to sleep `ns` nanoseconds until its next event (R6): a renderer that
+    // shows pictures between the game's shows those that come due meanwhile, and returns in time.
+    virtual void wait(uint64_t ns) { (void)ns; }
     // The Graphics switches this renderer acts on (Feature bits), and the MSAA counts it can do.
     virtual uint32_t wires() const = 0;
     virtual uint32_t msaa_supported() const { return 0; }
@@ -128,8 +131,11 @@ bool init();     // the ImGui context, fonts and style; the renderer's side (Ren
 void shutdown();
 bool handle_event(const SDL_Event &e); // true when the menu used it
 bool is_open();
-// This picture's overlay (the menu, the hint or a notice), or null when nothing is shown.
-ImDrawData *frame();
+// This picture's overlay (the menu, the hint or a notice), or null when nothing is shown. tick false:
+// a picture between two of the game's (R6), which ELTALE_MENU_TEST's picture count leaves out.
+ImDrawData *frame(bool tick = true);
+// F8 (the flash recorder) pressed since the last call
+bool take_flash_key();
 Request take_request();
 int take_quick_key();
 void notice(const char *text);

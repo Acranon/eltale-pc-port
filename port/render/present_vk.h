@@ -29,9 +29,10 @@ struct PresentDevice {
     void *lock_context;
 };
 
-bool present_open(const PresentDevice &device, SDL_Window *window, bool vsync);
+// vsync: 0 off (immediate, else mailbox), 1 FIFO, 2 mailbox when there is one (else FIFO)
+bool present_open(const PresentDevice &device, SDL_Window *window, int vsync);
 bool present_imgui_init();
-void present_set_vsync(bool on);
+void present_set_vsync(int mode);
 // 0 sharp pixels (nearest), else smooth (linear)
 void present_set_scaling(int scaling);
 

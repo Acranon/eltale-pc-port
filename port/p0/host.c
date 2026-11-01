@@ -75,6 +75,9 @@ void (*Port_PiDmaHook)(void *dst, u32 size);
 void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
 #endif
 
+/* (the window, R6) the game is about to sleep this long: pictures between ticks are shown meanwhile */
+void (*Port_PaceWaitHook)(uint64_t ns);
+
 void Port_HostPace(uint64_t virtual_ticks) {
     static uint64_t start_ns;
     if (!start_ns) start_ns = monotonic_ns();
@@ -84,6 +87,10 @@ void Port_HostPace(uint64_t virtual_ticks) {
      * racing to catch up */
     if (now > target + UINT64_C(100000000)) start_ns += now - target;
     target = start_ns + virtual_ticks * UINT64_C(1000000000) / UINT64_C(46875000);
+    if (Port_PaceWaitHook && now < target) {
+        Port_PaceWaitHook(target - now);
+        /* (the hook returns before the target; what it took is the game's time as before) */
+    }
     while ((now = monotonic_ns()) < target) {
         uint64_t remaining = target - now;
 #ifdef _WIN32

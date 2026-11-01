@@ -99,6 +99,10 @@ extern "C" ELHOST_API void ElHost_Present(const ElHostVi *vi) {
     menu_pause();
 }
 
+extern "C" ELHOST_API void ElHost_Wait(uint64_t ns) {
+    if (current) current->wait(ns);
+}
+
 extern "C" ELHOST_API void ElHost_PresentCpuFrame(const uint16_t *pixels, int width, int height) {
     if (!current) return;
     current->present_cpu(pixels, width, height, menu::frame());

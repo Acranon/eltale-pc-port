@@ -31,6 +31,7 @@ uint64_t hint_until;  // the "F1: menu" hint at start-up, in SDL ticks
 const char *confirm;  // the question a confirmation popup is asking, or null
 Request confirm_request;
 int quick_key;        // F2 (1) or F4 (2), until the game takes it
+bool flash_key;       // F8, until the renderer takes it
 std::mutex notice_mutex;
 std::string notice_text;
 uint64_t notice_until; // in SDL ticks
@@ -107,6 +108,7 @@ void controls_page() {
             { "Quick save", "F2", "" },
             { "Quick load", "F4", "" },
             { "Fullscreen", "F11 or Alt+Enter", "" },
+            { "Flash recorder (debug)", "F8", "" },
         };
         for (auto &row : rows) {
             ImGui::TableNextRow();
@@ -226,6 +228,10 @@ bool handle_event(const SDL_Event &e) {
             open = !open;
             return true;
         }
+        if (!open && k == SDLK_F8) {
+            flash_key = true;
+            return true;
+        }
         if (!open && (k == SDLK_F2 || k == SDLK_F4)) {
             quick_key = k == SDLK_F2 ? 1 : 2;
             return true;
@@ -249,8 +255,8 @@ bool handle_event(const SDL_Event &e) {
 
 bool is_open() { return open && request == NONE; }
 
-ImDrawData *frame() {
-    test_tick();
+ImDrawData *frame(bool tick) {
+    if (tick) test_tick();
     const uint64_t now = SDL_GetTicks();
     const bool hint = now < hint_until && !open;
     std::string note;
@@ -266,6 +272,12 @@ ImDrawData *frame() {
     else build_hint(hint, note);
     ImGui::Render();
     return ImGui::GetDrawData();
+}
+
+bool take_flash_key() {
+    const bool k = flash_key;
+    flash_key = false;
+    return k;
 }
 
 int take_quick_key() {

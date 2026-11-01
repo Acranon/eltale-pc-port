@@ -26,6 +26,7 @@ extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
 extern void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 extern void (*Port_NativeTaskHook)(unsigned frame);
 extern void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
+extern void (*Port_PaceWaitHook)(uint64_t ns);
 void Port_OsRequestStop(void);
 
 static int renderer = EL_RENDERER_RT64;
@@ -34,6 +35,7 @@ static void (*h_draw)(const uint8_t *, uint32_t, uint32_t, uint32_t);
 static void (*h_keep)(uint32_t, uint32_t);
 static void (*h_present)(const ElHostVi *);
 static void (*h_present_cpu)(const uint16_t *, int, int);
+static void (*h_wait)(uint64_t);
 static int (*h_poll)(void);
 static const char *(*h_data_dir)(void);
 static int (*h_language)(void);
@@ -192,6 +194,7 @@ int Port_WindowStart(void) {
     h_keep = (void (*)(uint32_t, uint32_t))SYM("ElHost_KeepRange");
     h_present = (void (*)(const ElHostVi *))SYM("ElHost_Present");
     h_present_cpu = (void (*)(const uint16_t *, int, int))SYM("ElHost_PresentCpuFrame");
+    h_wait = (void (*)(uint64_t))SYM("ElHost_Wait");
     h_poll = (int (*)(void))SYM("ElHost_Poll");
     h_data_dir = (const char *(*)(void))SYM("ElHost_DataDir");
     h_language = (int (*)(void))SYM("ElHost_Language");
@@ -204,7 +207,7 @@ int Port_WindowStart(void) {
     h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
     h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
     if (!h_init || !h_draw || !h_keep || !h_present || !h_present_cpu || !h_poll || !h_data_dir || !h_language ||
-        !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_audio || !h_shutdown) {
+        !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_audio || !h_shutdown || !h_wait) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
         return -1;
     }
@@ -221,6 +224,7 @@ int Port_WindowStart(void) {
         Port_GfxTaskHook = draw_task;
     } else {
         attach_native();
+        Port_PaceWaitHook = h_wait; /* pictures between ticks (R6) */
     }
     Port_LivePad = (void (*)(u16 *, s8 *, s8 *))h_pad;
     Port_AiBufferHook = play_audio;
