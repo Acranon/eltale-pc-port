@@ -666,7 +666,7 @@ part of a recording: a picture between uses the newest palettes (a few pixels in
 | tools/interp_strip.py | a PNG grid or GIF of a range of ticks with their pictures between (the owner's strips) |
 | tools/pace_test.py | real time in a hidden window at given rates: pictures a second, interval spread and worst, retraces a second (60 = the game's speed), the picture kinds; `--sim` (`ELTALE_PRESENT_SIM=1`) the schedule alone |
 | `ELTALE_PRESENT_LOG=file` | `P wall v kind` per picture shown, `V wall vi` per retrace |
-| F8 (or `ELTALE_FLASH_AT=N`: at the Nth picture, a test) | the flash recorder: the last 64 pictures shown (kept on the GPU) to `<data folder>/flash_<vi>_<date>/` with `pictures.txt` (retrace and phase); `flash_find.py --neighbours` reads it |
+| F8 (or `ELTALE_FLASH_AT=N`: on from the start, written at the Nth picture, a test) | the flash recorder: off until the first F8 (since nr/present: its 64 images are made then, and only then is each picture copied into them), then F8 writes the last 64 pictures shown (kept on the GPU) to `<data folder>/flash_<vi>_<date>/` with `pictures.txt` (retrace and phase); `flash_find.py --neighbours` reads it |
 
 ### Results (2026-11-01)
 
@@ -1109,3 +1109,60 @@ looked at or of the field of view is still a cut. Ticks without the flag are as 
 returns 181 degrees (no cone) while the view is the mouse camera's. `tools/interp_test.py` cases `mouse`
 and `mouse-battle`.
 
+## The presenter's robustness (2026-11-01, nr/present)
+
+- **A lost GPU device ends the game cleanly.** The presenter's Vulkan calls (wait, acquire, submit, present, ImGui's)
+  go through `check()` (present_vk.cpp), which marks `VK_ERROR_DEVICE_LOST`; `present_lost()` says so and nothing is
+  presented after. The renderer (render_native.cpp `show`) then stops drawing and calls `host::fatal` (host.cpp): a
+  line on stderr, the line in the data folder's `error.log`, a message box (not with `ELTALE_HIDDEN_WINDOW`) and the
+  game asked to quit at its next poll, as closing the window does (its own shutdown path). Granite's own submits only
+  log an error, so a loss shows up at the next picture's present (a sixtieth of a second at most).
+  `VK_ERROR_SURFACE_LOST_KHR` (acquire, present or the surface's capabilities) makes the window's surface and
+  swapchain again in place and the game goes on; a new surface that cannot be presented to in the same format, or
+  surfaces lost again and again (16), are a loss as above.
+  Test: `ELTALE_SIM_GPU_LOST=device:N` or `surface:N` (the Nth picture presented acts as if the GPU said so, before the
+  acquire). Hidden window, New Game walk: `device:300` ends the game 2.5 s in (exit 0, `P1_OS_OK` printed, the
+  pipeline cache saved, `error.log` written); `surface:300` makes the surface again and plays on to frame 1500 (the
+  same `P1_OS_OK` as without; pictures shown after it: `ELTALE_PRESENT_DUMP_AT`). A real lost device has not been
+  tried (Granite's `wait_idle` at the end gets the loss's error and goes on).
+- **Minimised, nothing is drawn.** `not_shown()`: the window minimised, or occluded as SDL reports it (a visible
+  window only: the tests' hidden windows are not), and no picture is built or presented, at the retraces or between
+  them (`wait()` returns at once: the game's own pacing sleeps). The game's timing is its own and goes on: hidden
+  window at 240, `ELTALE_SIM_MINIMISED=600-1100` (retraces 600 to 1100 act as minimised): 0 pictures in the span (2,004
+  without), 60.00 retraces a second through it, the same `P1_OS_OK` (frames 1500, last hash, DMA chunks) and the same
+  7,921 pictures after it as a run without.
+- **Resizes settle first.** With Match the window (or the window's widescreen shape) every step of a drag made the
+  picture again (a GPU wait) and the Smooth pixel edges image too. Now, while the window's size changed less than
+  0.25 s ago (`RESIZE_SETTLE`), the picture keeps its size and shape (the game is told the shape only with the new
+  picture) and the presenter fits it (Smooth pixel edges uses the blit meanwhile); the new picture is made once the
+  window has settled. `ELTALE_SIM_RESIZE=N` (a test): from the Nth picture, 150 pictures each 4 pixels wider and 2
+  taller; `ELTALE_RESIZE_SETTLE=0` the old way; `P1_PRESENT` at the end counts pictures and window images made. Match
+  the window and the window's shape, 1280x960 hidden window: pictures made 22 -> 2, window images 149 -> 1; picture
+  intervals during the drag mean 14.3 -> 8.8 ms (the swapchain is still made again at every step: it must match the
+  window).
+- **The flash recorder is lazy.** Its 64 images (at most 2x: 852x480 at 16:9, ~105 MB of GPU memory) and the copy
+  into them each picture are made only once F8 has turned it on; F8 again writes them (the Graphics page says which).
+- **Shader warm-up** says on the Graphics page that it takes effect at the next start (the list is read and made at
+  the start only). The presenter's area-filter pipeline (Smooth pixel edges, `present_area.frag`) is now one the
+  warm-up can make: its SPIR-V is in the warm-up's shader table and its lines are tagged `p` (its pass is one sample
+  whatever the MSAA), made with the first MSAA count started. A run writes it into the data folder's list
+  (`G p ...`), and the next start makes it ahead (11 made ahead, 0 in play, instead of 1 in play). The shipped list
+  (`nd_pipeline_list.h`) has no `p` line until `tools/warm_test.py --collect` and `tools/pipeline_list.py` are run
+  again (the collect runs use a hidden 1280x960 window at Smooth pixel edges, so they will record it).
+
+### The terrain rings at a scale (measured, not changed)
+
+The audit's numbers (battle 500, the mean over the reference's ring pixels: reference 163, native 1x 158, native 4x
+box-shrunk to 1x 147) suggested the RDP drew the 1-2 pixel ring segments fatter. Measured against the same run with
+the effect kind dropped (`frame_test --native` without `effect`: the reference and native pictures without the rings),
+the rings' light (the luminance they add, summed over the rings' boxes) is the same at every scale: reference 110,742,
+native 1x 110,474, native 4x shrunk 110,352 (within 0.4%). A segment (D_800C4840) is not a thin quad: it is a strip
+3 units tall (`ScaleAxes(2, len, 1.5)` of a quad at x = 1, z -1..1: 3 to 10 pixels at 1x in this frame) whose line
+is its 8x8 I8 texture's profile across it (rows 0x55, 0xfe, 0x5b of eight: the line is an eighth of the strip). At
+1x each pixel samples that profile at a point, so the line comes out one pixel at nearly its peak; at 4x it is drawn
+as it is, 0.6 of an N64 pixel wide, and shrunk to 1x it falls across two rows (the 200 brightest pixels: 150 at 1x,
+126 at 4x shrunk). The 1x difference on the reference's own pixels is the line's place, not its weight. A minimum
+width (the strip's z scaled so its projected width is at least k N64 pixels, tried in nd_renderer.cpp) only adds
+light: k 4/5/6/8 -> 1x 111,578 / 112,452 / 113,746 / 118,282, 4x 111,259 / 112,437 / 113,660 / 118,256 (peak at 4x
+126 -> 131 at k 8), so the 1x picture moves away from the reference. Left as the reference draws it; the streaks
+(D_800EB8E8, melee hits) are in no test frame and were not looked at.

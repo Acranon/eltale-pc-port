@@ -15,7 +15,13 @@
 //
 // ELTALE_PRESENT_LOG=file: a line per picture shown ("P wall v kind": kind n newest, b between, f as is
 // for a reason) and per retrace ("V wall vi"), for tools/pace_test.py; ELTALE_PRESENT_SIM=1: the pacing
-// alone (nothing drawn or presented). F8: the flash recorder (the last pictures shown, to a folder).
+// alone (nothing drawn or presented). F8: the flash recorder (off until the first F8; then F8 writes the last
+// pictures shown to a folder).
+//
+// The window (docs/renderer/NATIVE_DRAW.md "The presenter's robustness"): minimised, nothing is drawn or presented
+// (the game runs on); while it is being resized the picture keeps its size until the size has settled; a lost GPU
+// device ends the game through host::fatal. Tests: ELTALE_SIM_MINIMISED=a-b, ELTALE_SIM_RESIZE=N (with
+// ELTALE_RESIZE_SETTLE=s), ELTALE_SIM_GPU_LOST (present_vk.cpp); P1_PRESENT at the end.
 //
 // R7 (modern options, docs/renderer/NATIVE_DRAW.md "Modern options"): the picture is 320x240 times the resolution
 // scale (Original 1x, a multiple, or Match the window: the window's height over 240, rounded up, so the presenter
@@ -184,6 +190,9 @@ public:
         if (dir && *dir) dump_dir = dir;
         if (const char *l = std::getenv("ELTALE_PRESENT_LOG")) log = std::fopen(l, "w");
         sim = std::getenv("ELTALE_PRESENT_SIM") != nullptr;
+        flash_on = std::getenv("ELTALE_FLASH_AT") != nullptr || std::getenv("ELTALE_FLASH") != nullptr;
+        if (const char *e = std::getenv("ELTALE_SIM_MINIMISED")) std::sscanf(e, "%llu-%llu", &sim_hidden_from, &sim_hidden_to);
+        if (const char *e = std::getenv("ELTALE_SIM_RESIZE")) sim_resize_at = std::atol(e);
         return true;
     }
 
@@ -219,6 +228,10 @@ public:
         vi_wall = (vi_wall > 0 && std::fabs(now - (vi_wall + VI_SECONDS)) < 0.004) ? vi_wall + VI_SECONDS : now;
         cpu_shown = false;
         if (log) std::fprintf(log, "V %.6f %llu\n", now, (unsigned long long)vi);
+        if (lost || not_shown()) {
+            next_due = 0; // (the grid of due times starts again when it is shown)
+            return;
+        }
         if (!between_on()) {
             // original timing: the newest recording at each retrace (none yet: the clear colour)
             draw_and_show(render::native_draw().latest(), overlay, 'n', double(vi));
@@ -234,7 +247,7 @@ public:
     }
 
     void wait(uint64_t ns) override {
-        if (!between_on() || cpu_shown) return;
+        if (!between_on() || cpu_shown || lost || not_shown()) return;
         const double deadline = wall() + double(ns) * 1e-9, interval = 1.0 / rate();
         for (;;) {
             const double now = wall();
@@ -254,6 +267,7 @@ public:
         vi_wall = wall();
         next_due = 0;
         cpu_shown = true; // (no pictures between over it: wait() waits for the game's frames again)
+        if (lost || not_shown()) return;
         // the RGBA5551 screen into the picture, as RGBA8 (each 5 bits widened, so they come back exact)
         CommandBufferHandle cmd = begin();
         uint32_t *out = static_cast<uint32_t *>(cmd->update_image(*cpu_picture));
@@ -279,6 +293,7 @@ public:
     }
 
     void present_again(ImDrawData *overlay) override {
+        if (lost || not_shown()) return;
         const bool first = !menu_dumped && overlay && !dump_dir.empty();
         menu_dumped |= first;
         show(overlay, first ? "native_menu" : nullptr);
@@ -326,7 +341,10 @@ public:
         ImGui::TextDisabled("Picture %ux%u, MSAA %ux; draw distance %.1fx", picture ? picture->get_width() : 0,
                             picture ? picture->get_height() : 0, samples_now(), render::native_draw().draw_distance());
         render::pipeline_warm_page();
-        ImGui::TextDisabled("F8: the flash recorder (the last %d pictures shown, into the data folder)", FLASH_PICTURES);
+        if (flash_on)
+            ImGui::TextDisabled("F8: write the flash recorder's last %d pictures shown into the data folder", FLASH_PICTURES);
+        else
+            ImGui::TextDisabled("F8: turn on the flash recorder (then F8 writes the last %d pictures shown)", FLASH_PICTURES);
     }
 
     void shutdown() override {
@@ -337,6 +355,9 @@ public:
             return;
         }
         if (!cpu_picture) return;
+        std::printf("P1_PRESENT pictures_made=%llu window_pictures_made=%llu flash=%d lost=%d\n", (unsigned long long)pictures_made,
+                    (unsigned long long)window_pictures_made, flash_on ? 1 : 0, lost ? 1 : 0);
+        std::fflush(stdout);
         device.wait_idle();
         render::pipeline_warm_close();
         render::native_draw().shutdown();
@@ -390,12 +411,36 @@ private:
     // the game's picture at this shape and size (made again when the widescreen switch, the scale or the window
     // changes): R7a's shape (picture_size_1x for wanted_aspect: 240 high, an even width) times R7b's scale, so a
     // wide picture is wide at every scale. The game is told the shape (aspect) for its next ticks.
+    //
+    // While the window is being resized (its size changed less than RESIZE_SETTLE ago) the picture and the shape stay
+    // as they are and the presenter fits them into the window: a drag would otherwise wait for the GPU and make the
+    // picture (and the window-size image of Smooth pixel edges) again at every step of it.
+    static constexpr double RESIZE_SETTLE = 0.25;
+    bool resizing() {
+        int ww = 0, wh = 0;
+        window_pixels(&ww, &wh);
+        const double now = wall();
+        if (ww != win_w || wh != win_h) {
+            if (win_w >= 0) win_changed = now;
+            win_w = ww, win_h = wh;
+        }
+        // ELTALE_RESIZE_SETTLE=s (a test): the time to settle (0: every step made again, as before)
+        static const double settle = std::getenv("ELTALE_RESIZE_SETTLE") ? std::atof(std::getenv("ELTALE_RESIZE_SETTLE")) : RESIZE_SETTLE;
+        return now - win_changed < settle;
+    }
     bool ensure_picture() {
-        render::native_draw().set_aspect(wanted_aspect(window()));
+        sim_resize_step();
+        const bool moving = resizing();
+        const float aspect = wanted_aspect(window());
         uint32_t w1, h1;
-        render::NativeDraw::picture_size_1x(render::native_draw().aspect(), &w1, &h1);
+        render::NativeDraw::picture_size_1x(aspect, &w1, &h1);
         const uint32_t s = scale_now(), w = w1 * s, h = h1 * s;
-        if (picture && picture->get_width() == w && picture->get_height() == h) return true;
+        if (picture && picture->get_width() == w && picture->get_height() == h) {
+            render::native_draw().set_aspect(aspect);
+            return true;
+        }
+        if (picture && moving) return true; // (made when the window has settled)
+        render::native_draw().set_aspect(aspect);
         device.wait_idle();
         flash.clear();
         flash_count = 0;
@@ -409,6 +454,7 @@ private:
             std::fprintf(stderr, "[render] no %ux%u picture image\n", w, h);
             return false;
         }
+        pictures_made++;
         std::fprintf(stderr, "[render] picture %ux%u (%ux)\n", w, h, s);
         return true;
     }
@@ -492,7 +538,7 @@ private:
             cmd->begin_render_pass(rp);
             cmd->end_render_pass();
         }
-        flash_keep(*cmd, v);
+        if (flash_on) flash_keep(*cmd, v);
         finish(cmd);
         shown_image = picture.get();
         render::pipeline_warm_tick();
@@ -506,9 +552,21 @@ private:
         if (!dump_dir.empty() && dump_at.find("," + std::to_string(shown_count) + ",") != std::string::npos)
             at_name = "native_shown_" + std::to_string(shown_count);
         show(overlay, first && !dump_dir.empty() ? "native_clear" : at_name.empty() ? nullptr : at_name.c_str());
-        // F8, or ELTALE_FLASH_AT=N (a test): the flash recorder at the Nth picture
+        // F8: the flash recorder. It keeps nothing until the first F8 turns it on (its 64 pictures are ~100 MB of GPU
+        // memory and a copy each picture); F8 again writes what it kept. ELTALE_FLASH_AT=N (a test): on from the
+        // start, written at the Nth picture kept.
         static const long flash_at = std::getenv("ELTALE_FLASH_AT") ? std::atol(std::getenv("ELTALE_FLASH_AT")) : 0;
-        if (menu::take_flash_key() || (flash_at > 0 && flash_count == uint64_t(flash_at))) flash_write();
+        if (menu::take_flash_key()) {
+            if (flash_on) {
+                flash_write();
+            } else {
+                flash_on = true;
+                menu::notice("Flash recorder on: F8 again writes the last pictures shown");
+                std::fprintf(stderr, "[render] flash recorder on\n");
+            }
+        } else if (flash_at > 0 && flash_count == uint64_t(flash_at)) {
+            flash_write();
+        }
     }
 
     void count_rate(double now) {
@@ -518,6 +576,37 @@ private:
             rate_start = now;
             rate_count = 0;
         }
+    }
+
+    // Minimised (or occluded: a visible window covered, as SDL reports it) the game runs on as ever (its timing,
+    // audio and ticks are its own) but no picture is drawn or presented, between ticks or at them.
+    // ELTALE_SIM_MINIMISED=a-b (a test, with a hidden window): retraces a to b act as minimised.
+    bool not_shown() {
+        SDL_Window *w = window();
+        const SDL_WindowFlags f = w ? SDL_GetWindowFlags(w) : 0;
+        const bool now = (f & SDL_WINDOW_MINIMIZED) || ((f & SDL_WINDOW_OCCLUDED) && !(f & SDL_WINDOW_HIDDEN)) ||
+                         (sim_hidden_to > 0 && vi >= sim_hidden_from && vi <= sim_hidden_to);
+        if (now != paused) {
+            paused = now;
+            if (now) paused_at = vi;
+            std::fprintf(stderr, now ? "[render] minimised at retrace %llu: no pictures until shown again\n"
+                                     : "[render] shown again at retrace %llu (%llu retraces without pictures)\n",
+                         (unsigned long long)vi, (unsigned long long)(vi - paused_at));
+        }
+        return now;
+    }
+
+    // ELTALE_SIM_RESIZE=N (a test, with a hidden window): from the Nth picture, a drag of the window's corner: 4 pixels
+    // wider and 2 taller each picture for 150 pictures
+    void sim_resize_step() {
+        if (sim_resize_at <= 0 || !window()) return;
+        static long n = 0;
+        n++;
+        if (n < sim_resize_at || n >= sim_resize_at + 150) return;
+        int ww = 0, wh = 0;
+        SDL_GetWindowSize(window(), &ww, &wh);
+        SDL_SetWindowSize(window(), ww + 4, wh + 2);
+        SDL_SyncWindow(window());
     }
 
     // ---- F8: the flash recorder (KF4's): the last pictures shown, kept on the GPU ----
@@ -632,6 +721,7 @@ private:
             if (!area_program) return nullptr;
         }
         if (!window_picture || window_picture->get_width() != w || window_picture->get_height() != h) {
+            if (resizing()) return nullptr; // (the blit while the window is being resized: made when it settles)
             device.wait_idle();
             ImageCreateInfo info = ImageCreateInfo::render_target(w, h, VK_FORMAT_R8G8B8A8_UNORM);
             info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -639,6 +729,7 @@ private:
             info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
             window_picture = device.create_image(info);
             if (!window_picture) return nullptr;
+            window_pictures_made++;
         }
         CommandBufferHandle cmd = begin();
         RenderPassInfo rp;
@@ -674,6 +765,12 @@ private:
             ++notice_pictures == 3)
             dump_name = "native_notice";
         render::present_frame(img.get_image(), img.get_width(), img.get_height(), overlay, dump_name ? &rgba : nullptr, &w, &h);
+        if (const char *why = render::present_lost()) {
+            // the GPU is gone: nothing more is drawn or shown, and the game ends at its next poll (host::fatal)
+            lost = true;
+            host::fatal(why);
+            return;
+        }
         if (dump_name && !rgba.empty()) {
             const std::string path = dump_dir + "/" + dump_name + ".png";
             if (render_png_write(path.c_str(), rgba.data(), w, h)) std::fprintf(stderr, "[render] wrote %s\n", path.c_str());
@@ -738,6 +835,15 @@ private:
     std::vector<ImageHandle> flash;
     std::vector<double> flash_v;
     uint64_t flash_count = 0;
+    bool flash_on = false;   // F8 turned it on (its pictures are made then)
+    bool lost = false;       // the GPU device is lost: nothing is drawn (the game is ending: host::fatal)
+    bool paused = false;     // minimised: no pictures (not_shown)
+    uint64_t paused_at = 0;
+    unsigned long long sim_hidden_from = 0, sim_hidden_to = 0; // ELTALE_SIM_MINIMISED
+    long sim_resize_at = 0;  // ELTALE_SIM_RESIZE
+    int win_w = -1, win_h = -1; // the window's size when last looked at, and when it last changed (resizing())
+    double win_changed = 0;
+    uint64_t pictures_made = 0, window_pictures_made = 0; // (P1_PRESENT at the end: remade on resizes)
 };
 
 } // namespace

@@ -136,6 +136,8 @@ void graphics_page() {
         Row row(FEATURE_SHADER_WARMUP);
         ImGui::Checkbox("Build shaders at start (no hitch on a first visit)", &g.shader_warmup);
     }
+    if (renderer()->wires() & FEATURE_SHADER_WARMUP)
+        help("Takes effect the next time the game starts.");
 
     renderer()->graphics_page_extra();
 

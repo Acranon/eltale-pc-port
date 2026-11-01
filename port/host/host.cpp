@@ -7,7 +7,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <memory>
+#include <string>
 
 namespace host {
 namespace {
@@ -48,6 +50,32 @@ void window_pixels(int *w, int *h) {
     *w = *h = 0;
     if (win) SDL_GetWindowSizeInPixels(win, w, h);
 }
+
+namespace {
+bool fatal_done;
+}
+
+void fatal(const char *message) {
+    if (fatal_done) return;
+    fatal_done = true;
+    quit_requested = true;
+    std::fprintf(stderr, "[host] fatal: %s The game ends.\n", message);
+    std::fflush(stderr);
+    if (FILE *f = std::fopen((data_dir() + "/error.log").c_str(), "a")) {
+        char when[32] = "?";
+        const std::time_t t = std::time(nullptr);
+        if (const std::tm *lt = std::localtime(&t)) std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", lt);
+        std::fprintf(f, "%s %s\n", when, message);
+        std::fclose(f);
+    }
+    if (!std::getenv("ELTALE_HIDDEN_WINDOW")) {
+        const std::string text = std::string(message) + "\n\nThe game has to close. Anything not saved is lost.\n(This was also written to " +
+                                 data_dir() + "/error.log.)";
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Eltale Monsters", text.c_str(), nullptr);
+    }
+}
+
+bool fatal_called() { return fatal_done; }
 
 void set_fullscreen(bool on) {
     settings.fullscreen = on;

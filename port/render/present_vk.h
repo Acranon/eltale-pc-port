@@ -45,6 +45,12 @@ bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h);
 bool present_frame(VkImage source, uint32_t w, uint32_t h, ImDrawData *overlay, std::vector<uint32_t> *window_rgba,
                    uint32_t *width, uint32_t *height);
 
+// The GPU device was lost (VK_ERROR_DEVICE_LOST from the presenter's own calls, or the window's surface was lost
+// and could not be made again): a line saying so, else null. Nothing more is presented once it is set; the
+// renderer ends the game (host::fatal). A lost surface alone is made again in place (a new surface and swapchain).
+// ELTALE_SIM_GPU_LOST=device:N or surface:N (a test): the Nth picture presented acts as if the GPU said so.
+const char *present_lost();
+
 void present_close();
 
 } // namespace render
