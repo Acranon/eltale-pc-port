@@ -170,6 +170,7 @@ void build_menu() {
                 page_set = true;
             }
             if (ImGui::BeginTabItem("Controls", nullptr, controls_flags)) { controls_page(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Map")) { automap::settings_page(); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
     }
@@ -308,18 +309,22 @@ bool is_open() { return open && request == NONE; }
 ImDrawData *frame(bool tick) {
     if (tick) test_tick();
     const uint64_t now = SDL_GetTicks();
-    const bool hint = now < hint_until && !open;
+    // (not over the area map's test pictures, ELTALE_AUTOMAP_SHOTS and ELTALE_AUTOMAP_DUMP: no hint, no notices)
+    static const bool no_hint = std::getenv("ELTALE_AUTOMAP_SHOTS") != nullptr || std::getenv("ELTALE_AUTOMAP_DUMP") != nullptr;
+    const bool hint = now < hint_until && !open && !no_hint;
     std::string note;
     {
         std::lock_guard<std::mutex> lock(notice_mutex);
-        if (now < notice_until && !open) note = notice_text;
+        if (now < notice_until && !open && !no_hint) note = notice_text;
     }
-    if (!up || (!open && !hint && note.empty())) return nullptr;
+    const bool map = automap::wants_overlay();
+    if (!up || (!open && !hint && note.empty() && !map)) return nullptr;
     renderer()->imgui_new_frame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    if (map) automap::draw(); // (under the menu: its own draw lists)
     if (open) build_menu();
-    else build_hint(hint, note);
+    else if (hint || !note.empty()) build_hint(hint, note);
     ImGui::Render();
     return ImGui::GetDrawData();
 }

@@ -47,6 +47,7 @@ enum Action {
     ACT_D_UP, ACT_D_DOWN, ACT_D_LEFT, ACT_D_RIGHT,
     ACT_LOOK_HOLD, ACT_LOOK_TOGGLE, ACT_CAM_LEFT, ACT_CAM_RIGHT, ACT_CAM_UP, ACT_CAM_DOWN, ACT_ZOOM_IN, ACT_ZOOM_OUT,
     ACT_CAM_RESET,
+    ACT_MAP, // the area map (automap.cpp)
     ACT_COUNT
 };
 enum { BIND_SLOTS = 3, BIND_PAD_SLOT = 2 };
@@ -64,6 +65,17 @@ struct Controls {
     Controls();                  // the defaults
 };
 
+// The area map (automap.cpp, docs/AUTOMAP.md): settings.json "map"
+struct MapSettings {
+    bool minimap = true;
+    int corner = 1;       // the minimap's: 0 top right, 1 bottom right, 2 top left, 3 bottom left
+    int size = 24;        // the minimap's side, percent of the picture's height (10..45)
+    int reach = 8;        // the minimap's reach from its centre to its edge, hundreds of units (3..30)
+    int opacity = 85;     // the minimap's, percent (20..100)
+    int background = 92;  // the full map's backdrop, percent (40..100)
+    bool pause = false;   // the game waits while the full map is open
+};
+
 struct Settings {
     int volume = 70; // percent
     bool mute_in_background = false;
@@ -73,6 +85,7 @@ struct Settings {
     int preset = PRESET_EVERYTHING;
     Graphics graphics = preset_graphics(PRESET_EVERYTHING);
     Controls controls;
+    MapSettings map;
 };
 extern Settings settings;
 
@@ -142,11 +155,29 @@ public:
     virtual void graphics_changed() = 0;
     // Lines of its own at the end of the Graphics page (ImGui), if any.
     virtual void graphics_page_extra() {}
+    // The area map (automap.cpp): where the game's picture is in the window, in pixels (x0, y0, x1, y1; false: not
+    // known), and a test's request to write the next picture shown as a PNG named `name` (ELTALE_PRESENT_DUMP's
+    // folder)
+    virtual bool picture_rect(float *rect) { (void)rect; return false; }
+    virtual void request_dump(const char *name) { (void)name; }
+    virtual bool dump_pending() const { return false; } // (asked, not written yet)
     virtual void shutdown() = 0;
 };
 
 Renderer *make_native_renderer();
 Renderer *renderer();
+
+// ---- automap.cpp: the area map ------------------------------------------------------------------
+namespace automap {
+// An event before the game's input sees it: true when the map took it (the open map's mouse, Esc)
+bool event(const SDL_Event &e);
+void toggle();            // the map key
+bool full_open();         // the full map is shown (it takes the mouse)
+bool holds_game();        // ... and the game waits (settings.map.pause)
+bool wants_overlay();     // something to draw this picture (the full map or the minimap)
+void draw();              // into ImGui's frame (menu::frame calls it, under the menu)
+void settings_page();     // the F1 menu's Map page
+} // namespace automap
 
 // ---- menu.cpp: the F1 menu, the start-up hint and notices ---------------------------------------
 namespace menu {

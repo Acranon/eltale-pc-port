@@ -234,7 +234,7 @@ public:
         }
         if (!between_on()) {
             // original timing: the newest recording at each retrace (none yet: the clear colour)
-            draw_and_show(render::native_draw().latest(), overlay, 'n', double(vi));
+            draw_and_show(render::native_draw().picture(double(vi), false), overlay, 'n', double(vi));
             return;
         }
         // pictures between: shown on the grid of due times; a retrace shows one only when one is due
@@ -296,7 +296,9 @@ public:
         if (lost || not_shown()) return;
         const bool first = !menu_dumped && overlay && !dump_dir.empty();
         menu_dumped |= first;
-        show(overlay, first ? "native_menu" : nullptr);
+        std::string name = first ? "native_menu" : !dump_dir.empty() ? pending_dump : "";
+        pending_dump.clear();
+        show(overlay, name.empty() ? nullptr : name.c_str());
     }
 
 
@@ -315,6 +317,21 @@ public:
         render::pipeline_warm_start(samples_now());
         next_due = 0;
     }
+
+    bool picture_rect(float *rect) override {
+        const Image *img = shown_image ? shown_image : picture.get();
+        if (!img) return false;
+        int x = 0, y = 0, w = 0, h = 0;
+        if (!render::present_fit_rect(img->get_width(), img->get_height(), &x, &y, &w, &h)) return false;
+        rect[0] = float(x);
+        rect[1] = float(y);
+        rect[2] = float(x + w);
+        rect[3] = float(y + h);
+        return true;
+    }
+
+    void request_dump(const char *name) override { pending_dump = name ? name : ""; }
+    bool dump_pending() const override { return !pending_dump.empty(); }
 
     void graphics_page_extra() override {
         ImGui::Spacing();
@@ -545,6 +562,9 @@ private:
         std::string at_name;
         if (!dump_dir.empty() && dump_at.find("," + std::to_string(shown_count) + ",") != std::string::npos)
             at_name = "native_shown_" + std::to_string(shown_count);
+        // (the area map's test pictures: automap.cpp asks while it builds this picture's overlay)
+        if (at_name.empty() && !pending_dump.empty() && !dump_dir.empty()) at_name = pending_dump;
+        pending_dump.clear();
         show(overlay, first && !dump_dir.empty() ? "native_clear" : at_name.empty() ? nullptr : at_name.c_str());
         // F8: the flash recorder. It keeps nothing until the first F8 turns it on (its 64 pictures are ~100 MB of GPU
         // memory and a copy each picture); F8 again writes what it kept. ELTALE_FLASH_AT=N (a test): on from the
@@ -807,6 +827,7 @@ private:
     ImageHandle picture;          // the game's (320x240 times the resolution scale)
     ImageHandle cpu_picture;      // a CPU-drawn screen's (320x240)
     const Image *shown_image = nullptr; // the one shown last (present_again shows it again)
+    std::string pending_dump;           // request_dump's name for the next picture
     ImageHandle window_picture;          // the shown picture at the window's size ("Smooth pixel edges")
     Program *area_program = nullptr;     // present_area.frag
     bool cleared = false;

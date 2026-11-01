@@ -39,6 +39,9 @@ void present_set_scaling(int scaling);
 // The size a w x h picture is shown at in the window now (false: no window to show it in)
 bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h);
 
+// Where a w x h picture is shown in the window now, in pixels (false: no window to show it in)
+bool present_fit_rect(uint32_t w, uint32_t h, int *x, int *y, int *fit_w, int *fit_h);
+
 // Show `source` (a w x h image in GENERAL layout that the queue wrote before this) fitted 4:3 into
 // the window, black around it, with `overlay` (null: none) over it. With `window_rgba`, the window
 // as shown is read back into it (RGBA, R in the low byte; *width and *height its size).

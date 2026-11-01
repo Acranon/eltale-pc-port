@@ -55,6 +55,10 @@ void nd_forget(uintptr_t host, uint32_t bytes);
  * frame's number, as P1_GFX_TASK counts them). */
 void nd_frame_begin(void);
 void nd_frame_end(unsigned frame);
+/* The area map's feed (nd_automap.c, port/automap.h): the host's two entry points, and the tick (after
+ * nd_frame_end, with the same frame number) */
+void nd_automap_connect(void *area_fn, void *player_fn);
+void nd_automap_tick(unsigned frame);
 
 /* R7 (widescreen): the picture's shape for this tick (ElRenderApi.aspect, asked at nd_frame_begin):
  * 1.3333334f (the game's own 4/3) unless the native renderer draws a wider picture. ND_ASPECT() goes into

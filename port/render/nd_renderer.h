@@ -88,6 +88,13 @@ public:
     // game's virtual clock's phase in it), and between two due
     // times the picture is the pair's picture between (nd_interp.h). `between` false: the newest as is.
     const Recording *picture(double v, bool between);
+    // The recordings (their frame numbers) the last picture was made from: a, or between a and b at t
+    struct Shown {
+        uint32_t a = 0, b = 0;
+        float t = 0;
+        bool valid = false;
+    };
+    const Shown &shown_frames() const { return shown; }
     void set_vi(uint64_t vi) { vi_now = vi; }
     const PictureStats &picture_stats() const { return pstats; }
     const InterpStats &interp_stats() const;
@@ -212,6 +219,9 @@ private:
     bool planned_ok = false;
     const char *planned_why = nullptr;
     PictureStats pstats;
+    Shown shown;
+    void note_shown(const Recording *a, const Recording *b, double t);
+    const Recording *pick(double v, bool between);
     int dump_between = 0;          // ELTALE_DUMP_BETWEEN: pictures per tick in the dumps
     Recording::State state = {};
     float distance = 1.0f;

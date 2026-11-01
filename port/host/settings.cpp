@@ -178,6 +178,14 @@ void load_settings() {
     if (cJSON_IsString(lang)) s.english = std::strcmp(lang->valuestring, "jp") != 0;
     read_int(item(j, "game", "font"), s.font, 0, 5);
     if (cJSON_IsObject(item(j, "controls"))) read_controls(item(j, "controls"), s.controls);
+    // the area map (automap.cpp)
+    read_bool(item(j, "map", "minimap"), s.map.minimap);
+    read_int(item(j, "map", "minimap_corner"), s.map.corner, 0, 3);
+    read_int(item(j, "map", "minimap_size"), s.map.size, 10, 45);
+    read_int(item(j, "map", "minimap_reach"), s.map.reach, 3, 30);
+    read_int(item(j, "map", "minimap_opacity"), s.map.opacity, 20, 100);
+    read_int(item(j, "map", "background"), s.map.background, 40, 100);
+    read_bool(item(j, "map", "pause_game"), s.map.pause);
     int version = 1;
     read_int(item(j, "version"), version, 1, 1000);
     const cJSON *g = item(j, "graphics");
@@ -223,6 +231,14 @@ void save_settings() {
         cJSON *list = cJSON_AddArrayToObject(bindings, action_key(a));
         for (int b = 0; b < BIND_SLOTS; b++) cJSON_AddItemToArray(list, cJSON_CreateString(binding_name(s.controls.bind[a][b]).c_str()));
     }
+    cJSON *map = cJSON_AddObjectToObject(j, "map");
+    cJSON_AddBoolToObject(map, "minimap", s.map.minimap);
+    cJSON_AddNumberToObject(map, "minimap_corner", s.map.corner);
+    cJSON_AddNumberToObject(map, "minimap_size", s.map.size);
+    cJSON_AddNumberToObject(map, "minimap_reach", s.map.reach);
+    cJSON_AddNumberToObject(map, "minimap_opacity", s.map.opacity);
+    cJSON_AddNumberToObject(map, "background", s.map.background);
+    cJSON_AddBoolToObject(map, "pause_game", s.map.pause);
     cJSON *gr = cJSON_AddObjectToObject(j, "graphics");
     cJSON_AddStringToObject(gr, "preset", preset_keys[clampi(s.preset, 0, PRESET_CUSTOM)]);
     cJSON_AddStringToObject(gr, "resolution", key(resolution_keys, g.resolution));

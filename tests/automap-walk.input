@@ -1,0 +1,11 @@
+# The area map's path check (tools/automap_path.py, docs/AUTOMAP.md): the user's quick save compass-spirit
+# (ELTALE_QUICK_LOAD_AT=100, out/bugsaves), then a walk on the field: stick right, up, left, down-left, up-right,
+# then still. Start at 5 skips the intro to the title, where the quick load starts.
+5 0x1000 0 0
+7 0 0 0
+160 0 80 0
+260 0 0 80
+420 0 -80 0
+520 0 -60 -60
+620 0 60 60
+780 0 0 0

@@ -28,6 +28,7 @@ void nd_backdrop_attach(void) {
 /* `which`: the backdrop (env_area_settings->backdropId), the item's stable id. `mtx`: the Mtx the game
  * built; x, y, z: its inputs (Math_MtxRotScaleTrans with no rotation, scale 1), for R6. */
 void nd_backdrop_draw(int which, const void *mtx, uint32_t dl, int r, int g, int b, float x, float y, float z) {
+    if (nd_automap_truth()) return; /* (the map's truth view: no sky) */
     const NdMesh *mesh = nd_model_get(dl, entry_backdrop);
     if (!mesh) return;
     nd_model_use(mesh);

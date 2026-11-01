@@ -28,4 +28,11 @@ void nd_shadow_attach(void); /* nd_shadow.c */
 void nd_actor_attach(void); /* nd_actor.c */
 void nd_effect_attach(void); /* nd_effect.c: EL_KIND_EFFECT and EL_KIND_SCREEN */
 
+/* nd_automap.c: the area map's truth view (a test, docs/AUTOMAP.md): this tick seen from straight above, the camera
+ * the renderer gets replaced by it; no fog, sky or 2D then, and every map object of the sub-area drawn */
+int nd_automap_truth(void);
+const NdMesh *nd_map_object_mesh(const struct MapObj *obj); /* nd_map.c */
+void nd_automap_truth_camera(ElRdCamera *cam);
+void nd_automap_frame_begin(void);
+
 #endif

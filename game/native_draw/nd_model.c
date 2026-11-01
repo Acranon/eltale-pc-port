@@ -74,6 +74,8 @@ struct NdMesh {
     uint16_t *palettes;
     int palette_count;
     NdMesh *next;
+    float *pos;          /* the triangles' corners (x, y, z, three a triangle), object space: the area map's */
+    uint32_t pos_count;  /* corners */
 };
 
 static struct {
@@ -662,6 +664,7 @@ uint32_t nd_model_id(const NdMesh *mesh) { return mesh->id; }
 static void free_mesh(NdMesh *m) {
     free(m->ranges);
     free(m->palettes);
+    free(m->pos);
     free(m);
 }
 
@@ -728,6 +731,13 @@ static NdMesh *convert(uint32_t dl, const void *entry) {
     m->range_count = out.range_count;
     m->ranges = malloc(sizeof(Range) * (size_t)(out.range_count ? out.range_count : 1));
     memcpy(m->ranges, out.ranges, sizeof(Range) * (size_t)out.range_count);
+    m->pos_count = out.count;
+    m->pos = malloc(sizeof(float) * 3 * (size_t)(out.count ? out.count : 1));
+    for (uint32_t i = 0; i < out.count; i++) {
+        m->pos[i * 3 + 0] = out.v[i].x;
+        m->pos[i * 3 + 1] = out.v[i].y;
+        m->pos[i * 3 + 2] = out.v[i].z;
+    }
     m->palette_count = out.palette_count;
     m->palettes = malloc(sizeof(uint16_t) * (size_t)(out.palette_count ? out.palette_count : 1));
     memcpy(m->palettes, out.palettes, sizeof(uint16_t) * (size_t)out.palette_count);
@@ -844,4 +854,9 @@ uint32_t nd_model_palette_source(const uint8_t *src, int native, int count) {
     p.run[0].src = src;
     p.run[0].native = (uint8_t)native;
     return palette_intern(&p);
+}
+
+const float *nd_model_positions(const NdMesh *mesh, uint32_t *count) {
+    *count = mesh ? mesh->pos_count : 0;
+    return mesh ? mesh->pos : NULL;
 }

@@ -1,0 +1,5 @@
+# tests/automap.events without the map: the same walk (tools/automap_test.py compares where the player goes).
+5 key_down Return
+7 key_up Return
+430 key_down W
+470 key_up W
