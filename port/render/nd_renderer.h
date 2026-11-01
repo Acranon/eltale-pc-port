@@ -150,6 +150,7 @@ private:
     };
 
     void dump_frame(const Recording &rec, const std::string &name);
+    void dump_picture_at(const Recording &rec, const std::string &name, uint32_t scale, const DrawOptions &opt);
     // the palettes as they were at the end of the recording `serial` (one of hist's, or the newest)
     void palettes_of(uint64_t serial);
     uint32_t upload_material(const ElRdMaterial &m);
@@ -190,6 +191,7 @@ private:
     Vulkan::ImageHandle dump_picture;
     DrawOptions dump_opt;             // the dumps' look (the N64's; ELTALE_DUMP_* for the modern options)
     uint32_t dump_scale = 1;
+    bool dump_pair = false;           // ELTALE_DUMP_PAIR: also the 1x picture without MSAA (name.1x.png)
     std::string dump_dir, dump_spec;
 };
 

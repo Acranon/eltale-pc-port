@@ -932,3 +932,65 @@ draws a tick at 2x.)
 | `tools/warm_test.py` | the hitch with and without the list (cold, warm, shipped), `--collect` for pipeline_list.py |
 | `tools/pace_test.py --scale N --msaa N --distance far` | pacing at the options |
 
+
+## 2D at a scale (2026-11-01, nr/fix2d)
+
+The owner's Everything on (16:9, Match the window, MSAA 4x, 240) showed thin lines along the HUD digits and
+meters, the element levels and the spell panel, and striped item icons. Three causes:
+
+- **MSAA took every 2D edge as half covered.** The viewport moves half a picture pixel (the RDP samples a pixel at
+  its corner), so a rectangle's edge at N64 x lands on picture pixel x * scale + 0.5: through the middle of a
+  pixel. One sample per pixel decides that by the edge's rounding; MSAA's samples sit either side of the middle, so
+  the first pixel inside and the first pixel past each right and bottom edge came out half covered, the one past
+  the edge with the texel beyond the rectangle's last row or column (the next glyph's row, a clamped or wrapped
+  column). Fix (nd_renderer.cpp `render`, `crisp` = a bigger picture or MSAA): a rectangle's corners go back by
+  half a picture pixel, so its edges are whole picture pixels, while s and t stay the same function of the place
+  (each pixel still samples its corner, then OPT_RECT its N64 pixel's). Screen draws (the letterbox and the
+  fade: `EL_RDD_SCREEN`) get the same half pixel in clip space. At 1x without MSAA nothing moves (the native,
+  wide and reference pictures are the same bytes).
+- **Item icons (every scale, 1x too):** `gDPLoadTextureBlock` loads a CI8 (or 4-bit) texture as a 16-bit block.
+  The icons are DMA'd into the game's own memory (`item_icon_cache_tex`, native .bss: bytes in order), but nd_2d's
+  TMEM by reference read a 16-bit load's source as host-order halfwords, so each pair of texels came out swapped
+  (the stripes; R4's flame bug in the model loader was the same and is fixed there by waiting for the render tile's
+  size). Fix (nd_2d.c `nd_2d_load_block`): such a load's unit is the sampling tile's texel size (`Load.unit` 0).
+  No save in the lists had items, so the census and the compare never drew one: `tests/render_frames_2d.txt` now
+  has `items` (the "items" quick save: `python tools/make_items_save.py` writes it from battle-stuck with twelve
+  items; tests/item-icons.input opens the item menu and moves the cursor).
+- **The presenter's scaling** (not the lines, but the same pictures): Match the window rounds the scale up and the
+  presenter fitted the picture with a linear `vkCmdBlitImage` (2 x 2 taps a window pixel: 1200 lines into a 1080
+  window mixes unevenly, and above 2:1 it skips picture pixels). *Smooth pixel edges* now has its own scaling
+  (render_native.cpp `scaled_for_window`, shaders/present_area.frag): the picture is drawn at the size the window
+  shows it at (`present_fit_size`) with an area filter on linear light (each window pixel the share-weighted
+  average of the picture pixels under it: blocks stay blocks with one mixed pixel at an edge; made larger it is
+  sharp bilinear), and the presenter copies that 1:1. *Sharp* (nearest) and *Smooth* (linear) keep the blit.
+  `ELTALE_PRESENT_BLIT=1` keeps the blit for every mode (to compare). At 1080p (2130x1200 into 1920x1080) the
+  two differ by a mean of 0.4 of 255; pacing at 240 with 5x MSAA 4x far in a 1920x1080 hidden window: 240.0
+  pictures a second, interval 4.17 ms (spread 0.08, worst 4.79).
+
+### The check (tools/frame_test.py --scale)
+
+`python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves --scale N [--msaa M] [--aspect A]`: every
+list with the 2D kinds alone native, each dump at scale N with MSAA M (default 4) and shape A (default 16:9) and,
+from the same recording, at 1x without MSAA (`ELTALE_DUMP_PAIR=1`: frame_N.1x.png). `render_compare.py --blocks`
+counts the N64 pixels whose block in the big picture is not the 1x pixel throughout (8 bits, 2 steps, no 3x3
+rule: the faults are one picture pixel thin), against `tests/render_baselines/scale4-msaa4-16x9/` and
+`scale5-msaa4-off/`. What is left is the 2D meshes, drawn at full resolution on purpose (the compass disc, about
+670 a frame; the element flash): 0 in every frame without one.
+
+| set | before (sum over the lists) | after |
+|---|---|---|
+| 4x, MSAA 4x, 16:9 | ng 36,445, intro 44,161, menu 24,666, title_en 24,790, ending 14,766, tour 15,150, items 4,420, ... | ng, intro, title, fonts, save, ending, battle, chests, panel 0; tour 8,217, menu 1,986, items 1,318 (the compass) |
+| 5x MSAA 4x 4:3, 6x MSAA 8x 16:9, 3x no MSAA 16:9, 1x MSAA 4x | | the same: only the 2D meshes (1x MSAA 4x: 40 over the tour, the compass's edges) |
+
+Tests run for the fix: p1_checks --tour unchanged (New Game 74b8baf63f9c1889 / be0b67b7b718648e, the map tour
+a2d2e81245d538d4 30,374 frames, ...), `frame_test.py --twice` OK (the new run's reference hashes added to
+render_ref.txt), `--native` and `--wide` every baseline OK and 113 of 115 pictures the same bytes as before the fix
+(the two others are the new run's icons), interp_test OK (ng, walk, flames, spells, tour, ending), host_checks
+native unchanged.
+
+| | |
+|---|---|
+| `ELTALE_DUMP_PAIR=1` | each headless dump also as `<name>.1x.png` (1x, no MSAA) |
+| `ELTALE_WINDOW_SIZE=WxH` | the window's size (hidden-window tests of the presenter's scaling) |
+| `ELTALE_PRESENT_DUMP_AT=n,m` | with `ELTALE_PRESENT_DUMP`: the window as shown at those pictures (`native_shown_<n>.png`) |
+| `ELTALE_PRESENT_BLIT=1` | the presenter's linear blit for Smooth pixel edges too |

@@ -1,0 +1,3 @@
+# render_compare --blocks baseline: font1: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_600 0
+sum 0

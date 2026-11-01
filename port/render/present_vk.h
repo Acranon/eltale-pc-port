@@ -33,8 +33,11 @@ struct PresentDevice {
 bool present_open(const PresentDevice &device, SDL_Window *window, int vsync);
 bool present_imgui_init();
 void present_set_vsync(int mode);
-// 0 sharp pixels (nearest), else smooth (linear)
+// 0 sharp pixels (nearest), else smooth (linear). "Smooth pixel edges" (2) is scaled by the renderer before
+// (render_native.cpp, present_area.frag) to present_fit_size's size, which the presenter then copies as it is
 void present_set_scaling(int scaling);
+// The size a w x h picture is shown at in the window now (false: no window to show it in)
+bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h);
 
 // Show `source` (a w x h image in GENERAL layout that the queue wrote before this) fitted 4:3 into
 // the window, black around it, with `overlay` (null: none) over it. With `window_rgba`, the window

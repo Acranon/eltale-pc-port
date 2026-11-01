@@ -31,6 +31,14 @@ the 4:3 native pictures of the same frames from a --native run (--wide-ref, defa
 the same 3D (the vertical field of view is kept, so the middle of a wide picture is the 4:3 one), while the
 HUD's LEFT and RIGHT items have moved out to the edges. Baselines tests/render_baselines/wide/<run>.txt.
 --twice compares the native pictures of the two dumps. Work folder default out/frame_test_wide.
+
+--scale N (2D at a resolution scale, docs/renderer/NATIVE_DRAW.md "2D at a scale"): the 2D kinds alone (SCALE_KINDS)
+native, each dump at scale N with MSAA (--msaa, default 4) and shape --aspect (ELTALE_WIDESCREEN, default 16:9: the
+Everything on preset), and again at 1x without MSAA (ELTALE_DUMP_PAIR: frame_N.1x.png, the same recording).
+render_compare.py --blocks counts the N64 pixels whose block in the big picture is not the 1x pixel (2D must be
+the 1x texels as whole blocks: no line, fringe or half-covered edge) against tests/render_baselines/<scale set>/
+(e.g. scale4-msaa4-16x9; the 2D meshes, drawn at full resolution, leave a few). Work folder default
+out/frame_test_scale.
 """
 
 import argparse
@@ -47,6 +55,8 @@ ROOT = Path(__file__).resolve().parent.parent
 EXE = ".exe" if sys.platform == "win32" else ""
 # the kinds the native renderer draws so far (render.h EL_KIND_* names): what "--native all" means
 NATIVE_KINDS = ["map", "billboard", "backdrop", "actor", "shadow", "effect", "screen", "hud", "text", "menu", "picture"]
+# the 2D kinds (--scale)
+SCALE_KINDS = ["hud", "text", "menu", "picture"]
 
 
 def parse_list(path: Path):
@@ -93,7 +103,16 @@ def dump(run, work: Path, args) -> Path:
     env.update(run["env"])
     env["ELTALE_DATA_DIR"] = str(d / "data")
     cmd = [str(args.exe), "--headless", "--fast", *run["argv"], "--rom", str(args.rom)]
-    if args.wide:
+    if args.scale:
+        (d / "native").mkdir()
+        env["ELTALE_WIDESCREEN"] = args.aspect
+        env["ELTALE_DUMP_SCALE"] = str(args.scale)
+        env["ELTALE_DUMP_MSAA"] = str(args.msaa)
+        env["ELTALE_DUMP_PAIR"] = "1"
+        env["ELTALE_NATIVE_KINDS"] = args.native
+        env["ELTALE_DUMP_FRAMES"] = ",".join(str(f) for f in run["frames"])
+        cmd += ["--dump-frames", str(d / "native")]
+    elif args.wide:
         (d / "native").mkdir()
         env["ELTALE_WIDESCREEN"] = args.wide
         env["ELTALE_DUMP_FRAMES"] = ",".join(str(f) for f in run["frames"])
@@ -101,7 +120,7 @@ def dump(run, work: Path, args) -> Path:
     else:
         env["ELTALE_FRAME_IMAGE"] = "1"
         env["ELTALE_DUMP_IMAGE"] = ",".join(str(f) for f in run["frames"])
-    if args.native and not args.wide:
+    if args.native and not args.wide and not args.scale:
         (d / "native").mkdir()
         env["ELTALE_ND_COMPARE"] = "1"
         env["ELTALE_DL_KINDS"] = args.native
@@ -131,7 +150,7 @@ def native_hashes(run, d: Path):
 
 
 def render(run, d: Path, args):
-    if args.wide:
+    if args.wide or args.scale:
         return native_hashes(run, d)
     bins = [d / "out" / f"frame_{f}.bin" for f in run["frames"]]
     missing = [b.name for b in bins if not b.is_file()]
@@ -201,7 +220,16 @@ def main() -> int:
                     help="widescreen: every kind native at ASPECT (default 16:9), compared with --wide-ref's 4:3 pictures")
     ap.add_argument("--wide-ref", type=Path, default=ROOT / "out/frame_test_native",
                     help="the work folder of a 4:3 --native run of the same lists (its <run>/native pictures)")
+    ap.add_argument("--scale", type=int, metavar="N", help="2D at scale N against the 1x picture in blocks")
+    ap.add_argument("--msaa", type=int, default=4, help="--scale: MSAA samples (default 4)")
+    ap.add_argument("--aspect", default="16:9", help="--scale: ELTALE_WIDESCREEN (default 16:9; off for 4:3)")
     args = ap.parse_args()
+    if args.scale:
+        args.native = ",".join(SCALE_KINDS)
+        if args.baselines is None:
+            args.baselines = ROOT / "tests/render_baselines" / f"scale{args.scale}-msaa{args.msaa}-{args.aspect.replace(':', 'x')}"
+        if args.work == ROOT / "out/frame_test":
+            args.work = ROOT / "out/frame_test_scale"
     if args.wide:
         args.native = args.native or "all"
         if args.baselines is None:
@@ -214,7 +242,7 @@ def main() -> int:
         if bad:
             raise SystemExit(f"frame_test: not a native kind: {' '.join(bad)} (done: {' '.join(NATIVE_KINDS)})")
         args.native = ",".join(kinds)
-        if args.baselines is None:
+        if args.baselines is None and not args.scale:
             s = "all" if sorted(kinds) == sorted(NATIVE_KINDS) else "+".join(kinds)
             args.baselines = ROOT / "tests/render_baselines" / s
     if not args.list:
@@ -268,6 +296,8 @@ def main() -> int:
             d = args.work / r["name"]
             base = args.baselines / f"{r['name']}.txt"
             ref = (args.wide_ref.resolve() / r["name"] / "native") if args.wide else (d / "png")
+            if args.scale:
+                ref = d / "native"
             if args.wide and not ref.is_dir():
                 print(f"FRAME_TEST {r['name']} no 4:3 pictures in {ref} (run --native first): not compared")
                 fails += 1
@@ -276,6 +306,8 @@ def main() -> int:
                    "--out", str(d / "diff"), "--name", r["name"], "--baseline", str(base)]
             if args.wide:
                 cmd.insert(-2, "--centre")
+            if args.scale:
+                cmd.insert(-2, "--blocks")
             if args.write_baseline:
                 args.baselines.mkdir(parents=True, exist_ok=True)
                 cmd.append("--write-baseline")

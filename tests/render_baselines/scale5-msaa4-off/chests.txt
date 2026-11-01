@@ -1,0 +1,9 @@
+# render_compare --blocks baseline: chests: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_12651 0
+frame_13854 0
+frame_5437 0
+frame_6202 0
+frame_7295 0
+frame_7514 0
+frame_9263 0
+sum 0

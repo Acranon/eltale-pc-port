@@ -9,6 +9,8 @@
 # panel:    the battle-stuck save: the enemy name panel (225), the spell input (250), and English.
 # menu_en:  the item menu, the pause menu's status and map pages in English.
 # ending_en: the epilogue pages in English.
+# items:    the item menu with icons (the "items" save: python tools/make_items_save.py), the first and the second
+#           item highlighted (CI8 icons loaded as a 16-bit block from the game's own memory).
 title_en  | ELTALE_LANG=en --frames 700 --input tests/title-new-game.input | 50 200 275 600 700
 font1     | ELTALE_LANG=en ELTALE_FONT=1 --frames 600 --input tests/title-new-game.input | 600
 font2     | ELTALE_LANG=en ELTALE_FONT=2 --frames 600 --input tests/title-new-game.input | 600
@@ -24,3 +26,4 @@ panel     | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 --fr
 panel_en  | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 ELTALE_LANG=en --frames 300 --input tests/battle-stuck.input | 225 250 300
 menu_en   | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_LANG=en --frames 650 --input tests/item-menu.input | 250 400 420 460 620
 ending_en | ELTALE_START_MODE=5 ELTALE_LANG=en --frames 3500 | 450 2700 3450
+items     | @save=items ELTALE_QUICK_LOAD_AT=100 --frames 260 --input tests/item-icons.input | 200 250

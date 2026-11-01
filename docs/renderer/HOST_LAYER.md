@@ -83,7 +83,7 @@ never initialised.
 |---|---|---|---|---|---|
 | Resolution | original 320x240 | match window | match window | wired | wired (R7b) |
 | MSAA | off | 4x | 4x | wired | wired (R7b) |
-| Scaling to the window | sharp | smooth pixel edges | smooth pixel edges | wired | wired (sharp/linear) |
+| Scaling to the window | sharp | smooth pixel edges | smooth pixel edges | wired | wired (sharp: nearest blit; smooth: linear blit; smooth pixel edges: area filter, NATIVE_DRAW.md "2D at a scale") |
 | N64 three-point filtering | on | on | on | wired | wired (R2) |
 | Frame rate | original 30 | original 30 | fixed 240 | wired (RT64's interpolation) | wired (R6: pictures between ticks) |
 | Vsync | on | on | on | — | wired |

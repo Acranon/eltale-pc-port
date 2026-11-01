@@ -239,6 +239,9 @@ bool NativeDraw::init(Device &dev) {
     if (const char *e = std::getenv("ELTALE_DUMP_LOOK"))
         if (!std::strcmp(e, "modern")) dump_opt.border = dump_opt.n64_fog = false;
     if (const char *e = std::getenv("ELTALE_DUMP_SCALE")) dump_scale = uint32_t(std::min(std::max(std::atoi(e), 1), 8));
+    // ELTALE_DUMP_PAIR=1 (tools/frame_test.py --scale): each dump also as the 1x picture without MSAA, which the
+    // bigger one's 2D must equal in whole blocks (render_compare.py --blocks)
+    dump_pair = std::getenv("ELTALE_DUMP_PAIR") && std::atoi(std::getenv("ELTALE_DUMP_PAIR")) != 0;
     if (const char *e = std::getenv("ELTALE_DUMP_MSAA")) {
         const int n = std::atoi(e);
         dump_opt.samples = n >= 8 ? 8 : n >= 4 ? 4 : n >= 2 ? 2 : 1;
@@ -606,6 +609,8 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     const float scale = float(ph) / float(H); // (picture pixels per N64 pixel: the height is always 240 of them)
     if (!ensure_targets(pw, ph, opt.samples ? opt.samples : 1)) return;
     const uint32_t samples = msaa_color ? uint32_t(msaa_color->get_create_info().samples) : 1u;
+    // 2D edges on the picture's pixel edges (a bigger picture or MSAA; at 1x without MSAA nothing moves): below
+    const bool crisp = ph != H || samples > 1;
     vertices.upload(cmd);
     materials.upload(cmd);
     texels.upload(cmd);
@@ -655,16 +660,24 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                     // the RDP's texel at pixel (x, y): s0 + (x - x0) * dsdx; a little over, so a texel
                     // boundary the interpolation lands just under still floors to the right texel
                     const float eps = 1.0f / 256, x0 = d.rect[0], y0 = d.rect[1], x1 = d.rect[2], y1 = d.rect[3];
-                    // (in a bigger picture the edges go to the N64 pixels the 1x picture covers: a pixel is in when
-                    // its corner is, so a fractional edge rounds up, and no part-row of a texel shows)
+                    // (in a bigger picture, or with MSAA, the edges go to the N64 pixels the 1x picture covers: a
+                    // pixel is in when its corner is, so a fractional edge rounds up, and no part-row of a texel shows)
                     float ex0 = x0, ey0 = y0, ex1 = x1, ey1 = y1;
-                    if (ph != H) ex0 = std::ceil(x0), ey0 = std::ceil(y0), ex1 = std::ceil(x1), ey1 = std::ceil(y1);
+                    if (crisp) ex0 = std::ceil(x0), ey0 = std::ceil(y0), ex1 = std::ceil(x1), ey1 = std::ceil(y1);
+                    // ... and lie on the picture's pixel edges, not on its pixel centres: the viewport's half-pixel
+                    // move puts an edge at N64 x on picture pixel x * scale + 0.5, which a single sample decides by
+                    // the rounding of the edge, and MSAA's samples (either side of the centre) took as half covered:
+                    // every rectangle got a half-blended line of the texel past its last row and column (the HUD
+                    // digits' lines, the spell panel's line at its right). Back by half a picture pixel the edges are
+                    // whole picture pixels; s and t stay the same function of the place, so each pixel still samples
+                    // its corner (OPT_RECT then its N64 pixel's)
+                    const float back = crisp ? 0.5f / scale : 0.0f;
                     auto vert = [&](float x, float y) {
                         ElRdVertex v = {};
-                        v.x = x + (stretch ? (x > ex0 ? 2.0f * side : 0.0f) : dx); // (STRETCH: its right edge)
-                        v.y = y;
-                        v.s = d.st[0] + (x - x0) * d.st[2] + eps;
-                        v.t = d.st[1] + (y - y0) * d.st[3] + eps;
+                        v.x = x - back + (stretch ? (x > ex0 ? 2.0f * side : 0.0f) : dx); // (STRETCH: its right edge)
+                        v.y = y - back;
+                        v.s = d.st[0] + (x - back - x0) * d.st[2] + eps;
+                        v.t = d.st[1] + (y - back - y0) * d.st[3] + eps;
                         rect_vertices.push_back(v);
                     };
                     rect_first.resize(i + 1, 0);
@@ -693,7 +706,18 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 options[i] = OPT_SKIP;
                 continue;
             }
-            if (it.draw.flags & EL_RDD_SCREEN) std::memcpy(g.mvp, it.draw.matrix, sizeof g.mvp);
+            if (it.draw.flags & EL_RDD_SCREEN) {
+                std::memcpy(g.mvp, it.draw.matrix, sizeof g.mvp);
+                // a screen draw's edges (the letterbox, the fade) are N64 pixel edges too: back by half a picture
+                // pixel, as a rectangle's, or MSAA took the first picture row past each edge as half covered
+                if (crisp) {
+                    const float tx = -1.0f / float(pw), ty = 1.0f / float(ph); // (clip y is flipped by the vertex stage)
+                    for (int r = 0; r < 4; r++) {
+                        g.mvp[r * 4] += tx * g.mvp[r * 4 + 3];
+                        g.mvp[r * 4 + 1] += ty * g.mvp[r * 4 + 3];
+                    }
+                }
+            }
             else mul(it.draw.matrix, cam.projection, g.mvp);
             for (int l = 0; l < 3; l++) {
                 to_object(it.draw.matrix, s.lights.dir[l][0], s.lights.dir[l][1], s.lights.dir[l][2], g.light_dir[l]);
@@ -919,9 +943,22 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
 
 void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
     if (!device) return;
-    uint32_t w1, h1; // R7a: the picture's shape (ELTALE_WIDESCREEN) at 1x, times ELTALE_DUMP_SCALE
+    // the N64 look (the border, three-point filtering, the N64's fog) at 1x, unless ELTALE_DUMP_* say otherwise
+    DrawOptions opt = dump_opt;
+    dump_picture_at(rec, name, dump_scale, opt);
+    if (dump_pair) {
+        opt.samples = 1;
+        dump_picture_at(rec, name + ".1x", 1, opt);
+    }
+    if (name.compare(0, 6, "frame_") == 0 && name.find('_', 6) == std::string::npos)
+        std::printf("P1_NATIVE_FRAME frame=%u items=%zu\n", rec.frame, rec.items.size());
+    std::fflush(stdout);
+}
+
+void NativeDraw::dump_picture_at(const Recording &rec, const std::string &name, uint32_t scale, const DrawOptions &opt_in) {
+    uint32_t w1, h1; // R7a: the picture's shape (ELTALE_WIDESCREEN) at 1x, times the scale
     picture_size_1x(aspect_value, &w1, &h1);
-    const uint32_t dw = w1 * dump_scale, dh = h1 * dump_scale;
+    const uint32_t dw = w1 * scale, dh = h1 * scale;
     if (dump_picture && (dump_picture->get_width() != dw || dump_picture->get_height() != dh)) dump_picture.reset();
     if (!dump_picture) {
         ImageCreateInfo info = ImageCreateInfo::render_target(dw, dh, VK_FORMAT_R8G8B8A8_UNORM);
@@ -930,9 +967,8 @@ void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
         info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
         dump_picture = device->create_image(info);
     }
-    // the N64 look (the border, three-point filtering, the N64's fog) at 1x, unless ELTALE_DUMP_* say otherwise
     // (widescreen: no border; the 4:3 dumps keep the N64 look with it)
-    DrawOptions opt = dump_opt;
+    DrawOptions opt = opt_in;
     if (w1 != W) opt.border = false;
     CommandBufferHandle cmd = device->request_command_buffer();
     cmd->full_barrier();
@@ -956,9 +992,6 @@ void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
     for (uint32_t &p : rgba) p |= 0xFF000000u;
     const std::string path = dump_dir + "/" + name + ".png";
     if (!render_png_write(path.c_str(), rgba.data(), dw, dh)) std::fprintf(stderr, "[render] cannot write %s\n", path.c_str());
-    if (name.compare(0, 6, "frame_") == 0 && name.find('_', 6) == std::string::npos)
-        std::printf("P1_NATIVE_FRAME frame=%u items=%zu\n", rec.frame, rec.items.size());
-    std::fflush(stdout);
     device->next_frame_context();
 }
 

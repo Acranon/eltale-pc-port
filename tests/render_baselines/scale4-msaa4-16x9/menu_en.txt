@@ -1,0 +1,7 @@
+# render_compare --blocks baseline: menu_en: N64 pixels whose block differs from the 1x picture, per frame, and their sum. Numbers only.
+frame_250 659
+frame_400 0
+frame_420 0
+frame_460 0
+frame_620 668
+sum 1327

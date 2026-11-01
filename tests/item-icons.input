@@ -1,0 +1,16 @@
+# The item menu's icons and descriptions, from the "items" quick save (tools/make_items_save.py makes it from
+# out/bugsaves/battle-stuck, not committed). Title (Start), the quick load at VI 100, R opens the item menu,
+# the stick moves the cursor right twice (the description changes, the highlighted icon moves), B closes it.
+#   ELTALE_DATA_DIR=<copy> ELTALE_QUICK_LOAD_AT=100 eltale-p1 --headless --fast --frames 400
+#       --input tests/item-icons.input --rom ...
+# Used by tests/render_frames_2d.txt (runs "items", "items_en").
+5 0x1000 0 0
+7 0 0 0
+300 0x0010 0 0
+302 0 0 0
+420 0 80 0
+428 0 0 0
+480 0 80 0
+488 0 0 0
+700 0x4000 0 0
+702 0 0 0

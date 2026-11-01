@@ -281,7 +281,11 @@ void nd_2d_load_block(uint32_t tile, uint32_t uls, uint32_t ult, uint32_t lrs, u
     size_t start = ((size_t)(ult & 0xFFF) * st.timg.width + (uls & 0xFFF));
     l.src = st.timg.p.p + (bpp ? start * (size_t)bpp : start / 2);
     l.native = (uint8_t)st.timg.p.native;
-    l.unit = (uint8_t)(bpp > 1 ? bpp : 1);
+    /* a 4- or 8-bit texture is loaded as a 16-bit block (gDPLoadTextureBlock): in native memory (the game's
+     * .bss, a byte array) its bytes are in order, so its unit is the texel size of the tile that samples it
+     * (0 here; nd_model.c's load_block waits for the render tile the same way). Taken as halfwords, each
+     * pair of 8-bit texels came out swapped (the item icons' stripes) */
+    l.unit = (uint8_t)(l.native && bpp == 2 ? 0 : bpp > 1 ? bpp : 1);
     add_load(&l);
 }
 
@@ -338,7 +342,8 @@ void nd_2d_matrix(uintptr_t address, uint32_t flags) {
 
 /* ---- TMEM and textures ---------------------------------------------------------------------------- */
 
-static uint8_t tmem_byte(uint32_t a) {
+/* `unit`: the sampling tile's texel bytes, for a load whose source unit is the tile's (Load.unit 0) */
+static uint8_t tmem_byte(uint32_t a, int unit) {
     a &= 0xFFF;
     for (int i = st.load_count - 1; i >= 0; i--) {
         const Load *l = &st.load[i];
@@ -348,10 +353,10 @@ static uint8_t tmem_byte(uint32_t a) {
             uint32_t row = off / l->row_tmem, col = off % l->row_tmem;
             if (row >= l->rows) row = l->rows - 1, col = off - row * l->row_tmem;
             if (col >= l->row_bytes) continue;
-            return mem_byte(l->src + (size_t)row * l->row_src + col, l->native, l->unit);
+            return mem_byte(l->src + (size_t)row * l->row_src + col, l->native, l->unit ? l->unit : unit);
         }
         if (off >= l->row_bytes) continue;
-        return mem_byte(l->src + off, l->native, l->unit);
+        return mem_byte(l->src + off, l->native, l->unit ? l->unit : unit);
     }
     return 0;
 }
@@ -364,7 +369,7 @@ static uint32_t texel(const Tile *t, uint32_t s, uint32_t tt, int ci) {
     uint32_t base = (uint32_t)t->tmem * 8 + tt * (uint32_t)t->line * 8;
     switch (t->siz) {
     case 0: {
-        uint32_t b = tmem_byte(base + s / 2);
+        uint32_t b = tmem_byte(base + s / 2, 1);
         uint32_t v = (s & 1) ? b & 0xF : b >> 4;
         if (ci) return v;
         if (t->fmt == 3) { uint32_t i = v >> 1; i = i << 5 | i << 2 | i >> 1; return rgba8(i, i, i, (v & 1) ? 255 : 0); }
@@ -372,20 +377,20 @@ static uint32_t texel(const Tile *t, uint32_t s, uint32_t tt, int ci) {
         return rgba8(v, v, v, v);
     }
     case 1: {
-        uint32_t v = tmem_byte(base + s);
+        uint32_t v = tmem_byte(base + s, 1);
         if (ci) return v;
         if (t->fmt == 3) { uint32_t i = (v >> 4) * 17, a = (v & 15) * 17; return rgba8(i, i, i, a); }
         return rgba8(v, v, v, v);
     }
     case 2: {
-        uint32_t v = (uint32_t)tmem_byte(base + s * 2) << 8 | tmem_byte(base + s * 2 + 1);
+        uint32_t v = (uint32_t)tmem_byte(base + s * 2, 2) << 8 | tmem_byte(base + s * 2 + 1, 2);
         if (ci) return v & 0xFF;
         if (t->fmt == 3) return rgba8(v >> 8, v >> 8, v >> 8, v & 0xFF);
         return rgba8(c5(v >> 11 & 31), c5(v >> 6 & 31), c5(v >> 1 & 31), (v & 1) ? 255 : 0);
     }
     default: {
         uint32_t a = base + s * 2;
-        return rgba8(tmem_byte(a), tmem_byte(a + 1), tmem_byte(a + 0x800), tmem_byte(a + 0x801));
+        return rgba8(tmem_byte(a, 4), tmem_byte(a + 1, 4), tmem_byte(a + 0x800, 4), tmem_byte(a + 0x801, 4));
     }
     }
 }
