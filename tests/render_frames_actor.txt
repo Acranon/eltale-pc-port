@@ -1,0 +1,6 @@
+# Extra frames for the actor kind (docs/renderer/NATIVE_DRAW.md, "Actors"), same format as
+# tests/render_frames.txt. tools/frame_test.py --list tests/render_frames_actor.txt --native actor
+#     --baselines tests/render_baselines/actor
+# chests: the map tour, ~160 VIs after arriving in sub-areas with chests close to the player (13/11,
+# 14/10, 14/12, 15/12, 17/7, 19/2) and with point-sampled NPCs (14/0: Npc_DrawAll's far filter).
+chests | ELTALE_MAP_TOUR=1 --frames 14000 | 5437 6202 7295 7514 9263 12651 13854
