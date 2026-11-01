@@ -179,6 +179,7 @@ void nd_frame_begin(void) {
     nd_aspect = api->aspect ? api->aspect() : 1.3333334f;
     if (!(nd_aspect >= 1.3333334f && nd_aspect < 8.0f)) nd_aspect = 1.3333334f;
     api->frame_begin(&info);
+    nd_automap_frame_begin();
     in_frame++; /* the next frame can be built before the last one's task starts (menus, the title) */
     nd_2d_frame_begin();
 }
@@ -256,6 +257,7 @@ void nd_camera(struct GfxFrameData *f, const void *shake_mtx) {
     c.eye[0] = camera_state.eyeX; c.eye[1] = camera_state.eyeY; c.eye[2] = camera_state.eyeZ;
     c.at[0] = camera_state.atX; c.at[1] = camera_state.atY; c.at[2] = camera_state.atZ;
     c.flags = Port_MouseCameraActive() ? EL_RDCAM_ORBIT : 0;
+    if (nd_automap_truth()) nd_automap_truth_camera(&c); /* (a test: the map's truth view) */
     api->camera(&c);
 }
 
@@ -295,5 +297,6 @@ void nd_fog_color(int r, int g, int b, int a) { if (nd_kinds) color(api->fog_col
 void nd_fog_position(int near_, int far_) {
     if (!nd_kinds) return;
     /* gSPFogPosition's arithmetic */
+    if (nd_automap_truth()) { api->fog_position(0, 0); return; } /* (the map's truth view: no fog) */
     api->fog_position((int16_t)(128000 / (far_ - near_)), (int16_t)((500 - near_) * 256 / (far_ - near_)));
 }

@@ -26,13 +26,15 @@ void pump_events() {
         if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_requested = true;
         if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) has_focus = true;
         if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) has_focus = false;
+        if (!menu::is_open() && automap::event(e)) continue; // (the open map's mouse; the menu comes first)
         if (!input_event(e)) menu::handle_event(e);
     }
 }
 
-// While the menu is open the game waits here: the last picture again, with the menu over it
+// While the menu is open (or the area map, with its pause on) the game waits here: the last picture again, with the
+// menu or the map over it
 void menu_pause() {
-    while (menu::is_open() && !quit_requested) {
+    while ((menu::is_open() || automap::holds_game()) && !quit_requested) {
         SDL_Delay(15);
         pump_events();
         current->present_again(menu::frame());

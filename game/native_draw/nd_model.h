@@ -28,6 +28,10 @@ const NdMesh *nd_model_get(uint32_t dl, const void *entry);
 /* The mesh's renderer id (ElRdDraw.mesh). */
 uint32_t nd_model_id(const NdMesh *mesh);
 
+/* The mesh's triangles' corners in object space (x, y, z each; three a triangle), `count` corners (the area map's
+ * water, nd_automap.c). */
+const float *nd_model_positions(const NdMesh *mesh, uint32_t *count);
+
 /* The mesh is drawn this frame: its palettes are sent at nd_model_frame_end. */
 void nd_model_use(const NdMesh *mesh);
 

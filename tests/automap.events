@@ -1,0 +1,24 @@
+# The area map (port/host/automap.cpp, tools/automap_test.py) with SDL events from ELTALE_INPUT_TEST (a hidden
+# window): TICK = pad reads. Enter skips the intro to the title, where ELTALE_QUICK_LOAD_AT=100 loads the user's quick
+# save compass-spirit (map 0 area 1). Then M opens the full map, the wheel zooms in two steps, a left drag moves it,
+# a right click fits it again, W walks with the map open (the game is not paused), Esc closes it, M opens it again
+# and M closes it. tests/automap-none.events is the same without the map's keys and mouse: the player walks the same.
+5 key_down Return
+7 key_up Return
+300 key_down M
+302 key_up M
+330 wheel 2
+360 mouse_down left
+362 motion 120 60
+364 motion 80 40
+366 mouse_up left
+400 mouse_down right
+402 mouse_up right
+430 key_down W
+470 key_up W
+500 key_down Escape
+502 key_up Escape
+520 key_down M
+522 key_up M
+560 key_down M
+562 key_up M

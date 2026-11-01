@@ -124,6 +124,8 @@ static void far_take(MapObj *s) {
 void nd_map_far_opaque(void) {
     far_opaque_n = far_billboard_n = far_billboard_game = far_xlu_n = 0;
     far_k = nd_api()->draw_distance ? nd_api()->draw_distance() : 1.0f;
+    const int truth = nd_automap_truth(); /* (the map's truth view: every cell of the sub-area) */
+    if (truth) far_k = 1000.0f;
     if (far_k <= 1.0f) return;
     const MapGrid *g = map_subarea_grid;
     int n = 0, r = 0;
@@ -139,7 +141,7 @@ void nd_map_far_opaque(void) {
         s32 cz = (camera_state.eyeZ - g->originZ) / g->cellD;
         float rf = (r + 0.5f) * far_k;
         int R = (int)rf;
-        if (R > 40) R = 40;
+        if (R > 40) R = truth ? (g->w > g->h ? g->w : g->h) : 40;
         for (int dz = -R; dz <= R; dz++)
             for (int dx = -R; dx <= R; dx++) {
                 if ((float)(dx * dx + dz * dz) > rf * rf) continue;
@@ -228,4 +230,12 @@ void nd_map_far_translucent(int game_set_env) {
                         s->angle, 0.0f, 0.0f);
     }
     if (!game_set_env) nd_env_color(before[0], before[1], before[2], before[3]);
+}
+
+/* The mesh a map object is drawn with (its pass's entry, as the game's draw makes it: the same cached mesh), for the
+ * area map's water (nd_automap.c): wave and translucent objects (MapObj_DrawTranslucent), scrolling-texture ones */
+const NdMesh *nd_map_object_mesh(const MapObj *obj) {
+    const u16 kind = (u8)obj->kind;
+    const void *entry = (kind >= 0x40 && kind < 0x45) ? (const void *)entry_scroll[kind - 0x40] : (const void *)entry_xlu;
+    return nd_model_get((u32)(uptr)map_obj_models[obj->model].dl, entry);
 }

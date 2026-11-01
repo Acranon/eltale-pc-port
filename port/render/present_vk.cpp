@@ -587,6 +587,15 @@ bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h) 
     return true;
 }
 
+bool present_fit_rect(uint32_t w, uint32_t h, int *x, int *y, int *fit_w, int *fit_h) {
+    if (!pr.up || w == 0 || h == 0) return false;
+    int drawable_w = 0, drawable_h = 0;
+    SDL_GetWindowSizeInPixels(pr.window, &drawable_w, &drawable_h);
+    if (drawable_w <= 0 || drawable_h <= 0) return false;
+    fit(drawable_w, drawable_h, int(w), int(h), x, y, fit_w, fit_h);
+    return *fit_w > 0 && *fit_h > 0;
+}
+
 bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawData *overlay,
                    std::vector<uint32_t> *window_rgba, uint32_t *width, uint32_t *height) {
     if (!pr.up || pr.lost) return false;

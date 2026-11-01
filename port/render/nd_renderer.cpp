@@ -862,8 +862,22 @@ void NativeDraw::frame_end(uint32_t frame) {
 }
 
 const Recording *NativeDraw::picture(double v, bool between) {
-    if (hist.empty()) return nullptr;
-    if (!between) return &hist.back();
+    const Recording *r = pick(v, between);
+    return r;
+}
+
+// the recordings the last picture was made from (the area map's arrow follows them: docs/AUTOMAP.md)
+void NativeDraw::note_shown(const Recording *a, const Recording *b, double t) {
+    // (the game's own numbers: recordings after a reset count on from frame_base)
+    shown.a = a ? a->frame - frame_base : 0;
+    shown.b = b ? b->frame - frame_base : shown.a;
+    shown.t = b ? float(t < 0 ? 0 : t > 1 ? 1 : t) : 0.0f;
+    shown.valid = a != nullptr;
+}
+
+const Recording *NativeDraw::pick(double v, bool between) {
+    if (hist.empty()) { note_shown(nullptr, nullptr, 0); return nullptr; }
+    if (!between) { note_shown(&hist.back(), nullptr, 0); return &hist.back(); }
     // the newest recording due by v
     int k = -1;
     for (int i = int(hist.size()) - 1; i >= 0; i--)
@@ -871,14 +885,17 @@ const Recording *NativeDraw::picture(double v, bool between) {
     if (k < 0) { // none due yet: the oldest kept (a start, after a reset)
         pstats.fallback++;
         pstats.early++;
+        note_shown(&hist.front(), nullptr, 0);
         return &hist.front();
     }
     if (size_t(k) + 1 == hist.size()) { // nothing newer yet: the newest as it is
         pstats.newest++;
+        note_shown(&hist.back(), nullptr, 0);
         return &hist.back();
     }
     const Recording &a = hist[size_t(k)], &b = hist[size_t(k) + 1];
     const double span = b.time - a.time, t = (v - (a.time + BETWEEN_DELAY)) / span;
+    note_shown(&a, nullptr, 0);
     if (t <= 0) { pstats.newest++; return &a; }
     if (span > 4) { pstats.fallback++; pstats.gap++; return &a; } // a pause, a load: no picture between
     if (planned_a != a.serial || planned_b != b.serial) {
@@ -894,6 +911,7 @@ const Recording *NativeDraw::picture(double v, bool between) {
         return &a;
     }
     pstats.between++;
+    note_shown(&a, &b, t);
     return &interp->build(float(t < 1 ? t : 1));
 }
 

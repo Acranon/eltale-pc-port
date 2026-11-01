@@ -559,6 +559,7 @@ static void emit(ElRd2D *d) {
     memcpy(d->prim, st.prim, 4);
     memcpy(d->blend, st.blend, 4);
     memcpy(d->fog, st.fog, 4);
+    if (nd_automap_truth()) return; /* (the map's truth view: no 2D) */
     nd_api()->draw_2d(d);
 }
 

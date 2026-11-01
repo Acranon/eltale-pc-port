@@ -27,12 +27,16 @@ a controller slot.
 | Camera up / down (look up / down) | Page Up / Page Down, keypad 8 / 2 | |
 | Zoom in / out | `=` / `-`, keypad + / -, mouse wheel | |
 | Camera reset | middle mouse button, keypad 5 | |
+| Area map (open/close) | M | |
 
 Fixed keys: F1 (or the controller's Back) the menu, F2 quick save, F4 quick load, F11 or Alt+Enter
 fullscreen, F8 the flash recorder (debug). Alt+Enter only switches fullscreen, never presses Start: from
 its press, Enter is not a game key until it is let go and 400 ms have passed (port/host/input.cpp).
 
 In the game's menus the mouse points and clicks (below, "The mouse in menus"): left click A, right click B.
+While the full area map is open (docs/AUTOMAP.md) the mouse is the map's: the wheel zooms it, a left drag moves it,
+a right click fits it again, and Esc closes it; the keyboard and the pad still drive the game (unless the Map page's
+pause is on).
 
 ## Rebinding
 
@@ -189,7 +193,7 @@ eye and the point looked at) for every tick the view is applied.
 
 Each action (input.cpp's names: `stick_up`, `walk`, `a`, `b`, `z`, `start`, `l`, `r`, `c_up`..., `d_up`...,
 `look_hold`, `look_toggle`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `zoom_in`,
-`zoom_out`, `camera_reset`) lists three bindings: SDL scancode names, `Mouse Left|Middle|Right|X1|X2`,
+`zoom_out`, `camera_reset`, `map`) lists three bindings: SDL scancode names, `Mouse Left|Middle|Right|X1|X2`,
 `Pad <SDL button name>` or `Pad +<axis>` / `Pad -<axis>`; `""` is none. An action left out keeps its
 defaults.
 

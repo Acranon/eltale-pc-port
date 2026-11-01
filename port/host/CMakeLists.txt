@@ -126,7 +126,7 @@ target_include_directories(eltale_cjson PUBLIC "${ROOT}/third_party/cjson")
 
 # ---- eltale_host.dll ------------------------------------------------------------------------------
 add_library(eltale_host SHARED
-    host.cpp settings.cpp input.cpp audio.cpp menu.cpp menu_graphics.cpp
+    host.cpp settings.cpp input.cpp audio.cpp menu.cpp menu_graphics.cpp automap.cpp
     ../render/render_native.cpp ../render/nd_renderer.cpp ../render/nd_interp.cpp ../render/present_vk.cpp ../render/png.c
     ../render/nd_pipeline_warm.cpp)
 # eltale_host.dll on Windows, libeltale_host.so on Linux (the names port/gfx/host_bridge.c loads)

@@ -46,6 +46,7 @@ static void (*h_shutdown)(void);
 static const void *(*h_render_api)(void);
 static void (*h_set_dump)(const char *, const char *);
 static int (*h_init_headless)(void);
+static void *h_am_area, *h_am_player; /* the area map's feed (port/automap.h) */
 static const char *dump_dir;
 static int quick_key;
 static unsigned quick_key_age; /* retraces since the key was pressed */
@@ -115,6 +116,12 @@ static void shutdown_host(void) {
  * ELTALE_DUMP_IMAGE's, else all) as DIR/frame_N.png (docs/renderer/NATIVE_DRAW.md) */
 void Port_WindowSetDumpDir(const char *dir) { dump_dir = dir; }
 
+/* The graphics task's start: the native renderer's tick ends, then the area map's feed (game/native_draw/nd_automap.c) */
+static void native_task(unsigned frame) {
+    nd_frame_end(frame);
+    nd_automap_tick(frame);
+}
+
 /* The native renderer's tick and its model cache, once the host is up */
 static void attach_native(void) {
     const ElRenderApi *api = h_render_api ? (const ElRenderApi *)h_render_api() : NULL;
@@ -125,7 +132,8 @@ static void attach_native(void) {
         h_set_dump(dump_dir, spec ? spec : "");
     }
     nd_attach(api);
-    Port_NativeTaskHook = nd_frame_end;
+    nd_automap_connect(h_am_area, h_am_player); /* (an older DLL without them: no map) */
+    Port_NativeTaskHook = native_task;
     Port_DmaForgetHook = nd_forget;
 }
 
@@ -172,6 +180,8 @@ int Port_NativeHeadlessStart(void) {
     h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
     h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
+    h_am_area = SYM("ElHost_AutomapArea");
+    h_am_player = SYM("ElHost_AutomapPlayer");
     if (!h_init_headless || !h_render_api || !h_set_dump || !h_shutdown) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
         return -1;
@@ -205,6 +215,8 @@ int Port_WindowStart(void) {
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
     h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
     h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
+    h_am_area = SYM("ElHost_AutomapArea");
+    h_am_player = SYM("ElHost_AutomapPlayer");
     if (!h_init || !h_present || !h_present_cpu || !h_poll || !h_data_dir || !h_language ||
         !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_camera || !h_pointer || !h_audio || !h_shutdown || !h_wait) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");

@@ -57,6 +57,7 @@ const ActionInfo actions[ACT_COUNT] = {
     { "zoom_in", "Zoom in", 0 },
     { "zoom_out", "Zoom out", 0 },
     { "camera_reset", "Camera reset", 0 },
+    { "map", "Area map (open/close)", 0 },
 };
 
 // The camera keys' turn per tick, in mouse counts (port/p0/mouse_camera.c: 0.006 rad a count across, 0.004 up
@@ -149,17 +150,19 @@ void show_cursor(bool on) {
 
 // a press of `code`: the actions it is bound to that act on the press (the camera's edges)
 void pressed(int code) {
-    for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT })
+    for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT, ACT_MAP })
         for (int s = 0; s < BIND_SLOTS; s++)
             if (settings.controls.bind[a][s] == code) {
                 if (menu::is_open()) continue;
+                if (a == ACT_MAP) { automap::toggle(); continue; }
+                if (automap::full_open() && a != ACT_LOOK_TOGGLE) continue; // (the open map has the mouse)
                 if (a == ACT_LOOK_TOGGLE) look_toggled = !look_toggled;
                 else if (a == ACT_CAM_RESET) reset_clicks++;
                 else zoom_steps += a == ACT_ZOOM_IN ? 1 : -1;
             }
 }
 
-bool looking() { return (look_toggled || look_held()) && focused() && !menu::is_open(); }
+bool looking() { return (look_toggled || look_held()) && focused() && !menu::is_open() && !automap::full_open(); }
 
 // The cursor is captured (relative mode) while the mouse turns the camera. Never with a hidden window (tests):
 // the desktop's mouse is not ours to take.
@@ -252,7 +255,7 @@ void pointer_event(const SDL_Event &e, bool was_looking) {
         }
     }
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_RIGHT && !menu::is_open() &&
-        capture_action < 0) {
+        !automap::full_open() && capture_action < 0) { // (the open map's right click fits the map)
         // a right click: let go without a drag (mouse look on its button), or any (the button not mouse look's)
         const bool look_button = drag_button == SDL_BUTTON_RIGHT;
         if ((look_button && !drag_started && !look_toggled) || (!look_button && !look_hold_button(SDL_BUTTON_RIGHT) && !was_looking)) {
@@ -419,6 +422,7 @@ Controls::Controls() {
     set(ACT_ZOOM_IN, key(SDL_SCANCODE_EQUALS), key(SDL_SCANCODE_KP_PLUS), 0);
     set(ACT_ZOOM_OUT, key(SDL_SCANCODE_MINUS), key(SDL_SCANCODE_KP_MINUS), 0);
     set(ACT_CAM_RESET, BIND_MOUSE | SDL_BUTTON_MIDDLE, key(SDL_SCANCODE_KP_5), 0);
+    set(ACT_MAP, key(SDL_SCANCODE_M), 0, 0);
 }
 
 const char *action_label(int a) { return a >= 0 && a < ACT_COUNT ? actions[a].label : ""; }
@@ -555,7 +559,7 @@ bool input_event(const SDL_Event &e) {
         acc_dx += mx * k;
         acc_dy += my * k * (settings.controls.invert_y ? -1.0f : 1.0f);
     }
-    if (e.type == SDL_EVENT_MOUSE_WHEEL && focused() && !menu::is_open())
+    if (e.type == SDL_EVENT_MOUSE_WHEEL && focused() && !menu::is_open() && !automap::full_open())
         acc_wheel += (float)e.wheel.integer_y * (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f);
     update_capture();
     return false;
@@ -636,7 +640,7 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
     const int left = left_clicks, right = right_clicks;
     left_clicks = right_clicks = 0;
     if (!settings.controls.mouse_menus || !pointer_known || !pointer_inside || !focused() || menu::is_open() ||
-        looking() || !window() || !renderer())
+        automap::full_open() || looking() || !window() || !renderer()) // (the open map has the mouse)
         return;
     uint32_t pw = 0, ph = 0;
     bool cpu = false;
