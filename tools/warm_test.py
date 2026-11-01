@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pipelines made ahead (R7, docs/renderer/NATIVE_DRAW.md "Modern options"): the hitch of pipelines made in play,
-with and without the list, in hidden windows (ELTALE_HIDDEN_WINDOW=1), and the lists for the shipped one.
+with and without the list, in hidden 1600x900 windows (ELTALE_HIDDEN_WINDOW=1, ELTALE_WINDOW_SIZE: a size no scale
+fits, so Smooth pixel edges goes through the presenter's area filter), and the lists for the shipped one.
 
     python tools/warm_test.py --rom ROM [--exe EXE] [--msaa 4[,8..]] [--looks everything[,classic..]]
                               [--collect DIR] [--cases ng,spells,menu,ending,tour] [--modes cold,warm,shipped]
@@ -68,6 +69,7 @@ LOOKS = {
     "dither": dict(EVERYTHING, n64_dither=True),
     "border": dict(EVERYTHING, widescreen="off", border=True, n64_fog=True),
 }
+WINDOW_SIZE = "1600x900"
 # environment variables that would change what a run draws (scrubbed: the look and the case say it all)
 SCRUB = re.compile(r"^ELTALE_")
 
@@ -80,7 +82,9 @@ def run(args, case, look, msaa, data, warm):
     settings = {"version": 2, "audio": {"volume": 0}, "game": {"language": "jp"}, "graphics": graphics}
     (data / "settings.json").write_text(json.dumps(settings))
     env = {k: v for k, v in os.environ.items() if not SCRUB.match(k)}
-    env.update(ELTALE_HIDDEN_WINDOW="1", ELTALE_DATA_DIR=str(data), __GL_SHADER_DISK_CACHE="0",
+    # a 1600x900 window (no scale of the picture fits it: Match the window rounds up to 960 lines), so Smooth pixel
+    # edges shows the picture through the presenter's area filter and its pipeline ("p") is made and listed too
+    env.update(ELTALE_HIDDEN_WINDOW="1", ELTALE_WINDOW_SIZE=WINDOW_SIZE, ELTALE_DATA_DIR=str(data), __GL_SHADER_DISK_CACHE="0",
                __GL_SHADER_DISK_CACHE_PATH=str(data / "glcache"), ELTALE_WARM="1" if warm else "0", **env_extra)
     cmd = [args.exe, "--window", "--renderer", "native", "--fast", *argv, "--rom", args.rom]
     r = subprocess.run(cmd, env=env, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")

@@ -966,9 +966,12 @@ mille of the depth range: at the disc's edge 82-95% fog) and the far plane at 10
 
 - The pipeline cache (`native_pipelines.bin`) and every pipeline Granite makes are kept in the data folder
   (`native_pipeline_list.txt`, KF4's line format: shaders by SPIR-V hash and layout, the compatible render pass,
-  the state); the shipped list is `port/render/nd_pipeline_list.h` (60 pipelines: MSAA 1x 12, 2x/4x/8x 16 each),
+  the state); the shipped list is `port/render/nd_pipeline_list.h` (61 pipelines: MSAA 1x 12, 2x/4x/8x 16 each, the presenter's area filter 1),
   made by `tools/pipeline_list.py` from `tools/warm_test.py` cold runs (New Game and a walk, a battle with every
-  element's spells, the item menu and pages, the ending, and the whole map tour) at MSAA 1, 2, 4 and 8 in every look.
+  element's spells, the item menu and pages, the ending, and the whole map tour) at MSAA 1, 2, 4 and 8 in every look,
+  in a hidden 1600x900 window (`ELTALE_WINDOW_SIZE`: no scale of the picture fits it, so Smooth pixel edges goes
+  through the presenter's area filter; at 1280x960 every look's picture was the window's size and it was never made).
+  A regen where no run makes a pipeline the list lacks keeps it as it is and runs the check.
 - **Making it again** (after a shader, Granite or 2D change; stale lines are skipped by their hash, so a stale list
   costs only room), one command, about 6 minutes with `--jobs 2`:
   `python tools/warm_test.py --rom ROM --regen --jobs 2` (cold runs of every case x MSAA x look, merged into the
@@ -1147,8 +1150,9 @@ and `mouse-battle`.
   warm-up can make: its SPIR-V is in the warm-up's shader table and its lines are tagged `p` (its pass is one sample
   whatever the MSAA), made with the first MSAA count started. A run writes it into the data folder's list
   (`G p ...`), and the next start makes it ahead (11 made ahead, 0 in play, instead of 1 in play). The shipped list
-  (`nd_pipeline_list.h`) has no `p` line until `tools/warm_test.py --collect` and `tools/pipeline_list.py` are run
-  again (the collect runs use a hidden 1280x960 window at Smooth pixel edges, so they will record it).
+  (`nd_pipeline_list.h`) has its `p` line since the merge into native/render (warm_test's runs now use a 1600x900
+  window: at 1280x960 every look's picture was the window's size, so the filter was never used and the first regen
+  recorded nothing; without the line a 1600x900 New Game made it in play, 11 ms).
 
 ### The terrain rings at a scale (measured, not changed)
 
