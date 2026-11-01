@@ -257,7 +257,7 @@ The 3D picture is 304x224 inside an 8-pixel border (scissor 8..312, 8..232). HUD
 | Element levels (4 icons + numbers, max-level glow tris) | origin (28,198), icons every 22 px | bottom-left |
 | Compass disc + N + target dot | origin (260,24), disc centre (277,41), r≈17 | top-right |
 | Enemy info panel (battle) | origin (181,26), 110 wide | top-right |
-| Spell input panel | origin (34,140), 110 wide, 4 rows | left |
+| Spell input panel | origin (34,140), 110 wide, 4 rows | centre (R7a: its rows sit around the allocation cross) |
 | Spell name label | origin (105,50), 110 wide (centred) | centre |
 | Element allocation panel | origin (129,72), 64x80 (centred) | centre |
 | Text windows | (34,148,252,68) bottom, (34,20,252,68) top, (40,30/150,240,52), choice (180,110,30,40) | centre |

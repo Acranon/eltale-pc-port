@@ -128,7 +128,8 @@ the map tour and the ending: 0 flagged; pacing at 240 even, the game at 60 retra
 
 ### R7: Modern options
 - Resolution scale and MSAA.
-- **Widescreen:**
+- **Widescreen:** **done 2026-11-01** (R7a, branch nr/wide): see [NATIVE_DRAW.md](NATIVE_DRAW.md), "Widescreen"
+  (the switch: off / 16:9 / match the window; Everything on is 16:9, the Classic presets 4:3).
   - aspect in the perspective call and in `Camera_WorldToScreen` x;
   - a wider billboard cone;
   - HUD anchored left, right or centre;

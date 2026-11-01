@@ -55,6 +55,7 @@ game (exe)                                         eltale_host.dll
 | `ELTALE_ND_LOG=1` / `2` | a line per mesh made (2: and its materials), and anything the loader did not expect |
 | `ELTALE_ND_VIEW=1..4` | a test view: the shade, TEXEL0, the shade alpha (fog), the combiner output |
 | `ELTALE_ND_DEBUG=1` | per picture: camera, item count, the first item's first vertex in clip space |
+| `ELTALE_WIDESCREEN=off\|16:9\|window\|N` | R7a: the picture's shape (overrides the Graphics page; headless dumps are 4:3 without it); see "Widescreen" |
 | `ELTALE_DL_CENSUS=1` | at exit, `P1_DL_CENSUS`: the display-list commands left in the frame lists, per kind (R5's exit check: 0 with every kind native) |
 | `ELTALE_ND_LOG=2` / `3` | also each 2D rectangle with its material (3: and the colour registers as set) |
 
@@ -507,8 +508,8 @@ is left in the frame lists** (`ELTALE_DL_CENSUS=1`, below).
   the element (the HUD functions each set one: meters 2, element levels 3, compass 4, spell input 5, spell
   name 6, allocation 7, markers 8-13, status indicators 14, enemy panel 15, popups 16; the floating
   numbers 1).
-- **Anchors** (`EL_RD2D_ANCHOR_*` in `ElRd2D.flags`): HUD meters, element levels and spell input LEFT,
-  the compass and the enemy panel RIGHT, spell name and allocation CENTRE, markers, status indicators,
+- **Anchors** (`EL_RD2D_ANCHOR_*` in `ElRd2D.flags`): HUD meters and element levels LEFT,
+  the compass and the enemy panel RIGHT, spell input, spell name and allocation CENTRE, markers, status indicators,
   popups and floating numbers WORLD (placed by `Camera_WorldToScreen`), fill rectangles covering the
   width STRETCH, everything else (text, menus, pictures) CENTRE. Each item also gives its screen
   rectangle (a mesh: where its origin lands), and a mesh its model matrix alone (`ElRd2D.model`): the
@@ -701,12 +702,108 @@ of exactly 2 retraces that was a quarter of them (a tick is finished 0.3-0.5 of 
 timed by the virtual clock and 2.25 retraces, 3.5%, in runs of 2-3 pictures where the game itself took a
 retrace longer for a tick (as Original shows it too).
 
+## Widescreen (R7a, 2026-11-01)
+
+The Graphics page's **Widescreen** switch: *Off (4:3)*, *16:9* or *Match the window* (the window's shape,
+from 4:3 to 32:9). Everything on sets 16:9; Classic and Classic + visuals set Off. settings.json keeps it as
+`"widescreen": "off" | "16:9" | "window"` (a file from before R7 with `true`/`false` reads as 16:9/off).
+`ELTALE_WIDESCREEN=off|16:9|window|<number>` overrides it (tests; headless "window" is 16:9). With 16:9 the
+window starts 16:9 (1706x960, smaller if the display's usable area is). RT64 stays 4:3 (the switch is
+greyed there).
+
+### The design: the picture is wider, the game's units are not
+
+- **The picture** is 240 units high and Vw = 240 x aspect wide; at 1x its width is an even number of
+  pixels (16:9: 426x240), so the 4:3 middle starts on a whole pixel and 2D stays pixel-exact.
+  `NativeDraw::picture_size_1x` gives the size, `aspect_of_1x` the shape the game is told (426/240 = 1.775 for
+  16:9: the perspective matches the picture exactly). R7b's resolution scale multiplies that size; the
+  renderer works from the picture's own size (`render()`: `vw = 240 x width / height`, the half-pixel
+  move and the border in units of a game pixel), the depth images follow it (`ensure_depth`), and the
+  presenter fits the picture's own shape (`fit`).
+- **The game asks** `ElRenderApi.aspect()` (render.h v6) at each tick's start (`nd_frame_begin`, kept in
+  `nd_aspect`; 1.3333334f, the game's own constant, whenever the native renderer is off). Three places use
+  it (patches/p0.patch, all `port (R7)`):
+  - `Camera_Update`: `guPerspectiveF(..., ND_ASPECT(), ...)` instead of 1.3333334f. The vertical field of
+    view is kept, so the middle 320 columns of a wide picture are the 4:3 picture.
+  - `MapObj_DrawBillboards`: the cone `a < camera_fovy` becomes `a < nd_billboard_cone(camera_fovy)`:
+    fovy plus what the wider picture adds at each side (atan(tan(fovy/2) x aspect) - atan(tan(fovy/2) x
+    4/3); fovy 35 at 16:9: 41.4 degrees), so billboards don't pop at the new edges. Exactly fovy at 4:3.
+  - `Hud_DrawClippedTextureRect`: the HUD's clip columns (0..320) reach the picture's sides for WORLD
+    elements (markers, status indicators, popups, the out-of-range icon; `nd_2d_clip_x`), and a WORLD
+    texture rectangle's x is read as signed (`nd_2d_texrect`: left of the 4:3 screen is x < 0, which the
+    RDP's 12 bits would wrap). LEFT/RIGHT/CENTRE elements keep the 4:3 clip (the HP panel still slides in
+    from beyond the left edge).
+  - `Camera_Update`'s shake: a translate in clip space, so its x is scaled by (4/3) / aspect to move the
+    picture as many pixels as at 4:3 (without it a battle hit shook the 3D 2 pixels further).
+- **The spell input rows are CENTRE** (R5 had them LEFT): they sit around the element allocation cross in
+  the middle, and LEFT pulled them away from it.
+- **Camera_WorldToScreen needs no change.** Its x is 160 - 120 x/w in a 320-wide screen's units, and on
+  a picture Vw wide the same point is at Vw/2 - 120 x/w: the same value moved by (Vw - 320) / 2, which is
+  what the WORLD anchor does. Its y (which game logic reads: `hud_npc_marker_screen_y` picks the text
+  window) is untouched by any aspect.
+- **2D is placed by its anchor** (render.h `EL_RD2D_ANCHOR_*`, set by the sites since R5), in the
+  renderer only, so pictures between ticks need nothing new (2D items are lerped in 320-wide units and
+  placed when drawn): CENTRE and WORLD move by (Vw - 320) / 2, LEFT stays, RIGHT moves by Vw - 320,
+  STRETCH (fills covering the width) keeps its left edge and moves its right edge by Vw - 320. A 2D mesh
+  (the compass, the element glows) gets the same move as a column change on its clip-space matrix.
+  CENTRE items are cut to the 4:3 middle (scissor): text windows and menus are centred and unstretched,
+  and full-screen pictures (the title, the intro, the ending's pages, picture cues, the save menu) are
+  pillarboxed, with nothing a 4:3 screen hides (a sprite sliding in) showing at the sides.
+- **Full width by themselves**: the 3D, the fade quad and the letterbox (`EL_RDD_SCREEN` draws go
+  straight to clip space, which is the whole picture), and STRETCH fills.
+- **The Controller Pak manager** (320x240, drawn by the CPU) is shown in a 4:3 picture, pillarboxed by
+  the presenter.
+- **Pictures between ticks**: the camera's aspect is in each recording (`ElRdCamera.aspect`, was a
+  constant 4/3) and the interpolator rebuilds the perspective with it; 2D is placed at draw time. A
+  picture made just after the switch, from a recording of the old shape, is drawn into the new picture
+  (one tick slightly stretched).
+- Headless dumps (`--dump-frames`) take ELTALE_WIDESCREEN; a wide dump has no border (the 4:3 dumps keep
+  the N64 look with it).
+
+### The 4:3 assumptions left as they are
+
+- The 2D layouts are a 320x240 screen's: text windows, menus, the title, intro and ending pages and the
+  picture cues stay 4:3 in the middle (pillarbox); the HUD's corners move out to the edges.
+- The Controller Pak manager (CPU-drawn 320x240): pillarboxed.
+- The game's 304x224 scissor (the 8-pixel border): the owner's decision is no border; with the border
+  switch on, the border is at the wide picture's edges.
+- Other culls are not a 4:3 frustum: the map's grid search is a disc around the eye, NPCs a distance from
+  the player, `Effect_QueueMapObjEmitter` a half-plane (+-90 degrees: fine to 180), the RSP's CULLDL boxes
+  are ignored natively (the GPU clips), the far plane and fog are the map's (R7b's draw distance).
+- The backdrop is a whole cylinder at the eye: nothing to widen.
+- RT64 (the fallback until R8) and the paraLLEl-RDP reference stay 4:3.
+- The display-list path keeps the game's frame list; with widescreen its perspective is the wide one, so
+  `ELTALE_ND_COMPARE` pictures of the reference are only meaningful at 4:3.
+
+### Tests (2026-11-01)
+
+- `tools/frame_test.py --rom ROM --wide [--twice] [--write-baseline] [--sheet X.png]`: every list at 16:9
+  (no reference: the native pictures only), each picture's middle against the 4:3 native picture of the
+  same frame from a `--native` run (`render_compare.py --centre`, inside the border). Baselines
+  `tests/render_baselines/wide/`. The game is the same at 16:9 (the audio of every run equals the 4:3
+  run's: New Game be0b67b7b718648e, the map tour a2d2e81245d538d4, the battle 9fbe0f649e30e541).
+- Results: 0 solid pixels in the middle of every picture without the HUD's corners (New Game, the ending
+  and its camera tour, the title, the fonts, the intro, the save menu); the gameplay runs differ by the
+  HUD's LEFT and RIGHT items only, which moved to the edges (checked on the diff pictures; tour 46,019 over
+  18 frames, battle 27,363 over 7, spells 25,754 over 11, the panel 11,445, the compass 8,026). `--twice`:
+  the same pictures.
+- The 4:3 checks are as before R7a: `--native` (the R5 numbers: ng 499, tour 6,891, ending 1,987, battle
+  1,504, menu 125, chests 1,712, spells 1,721, spirit 11, the 2D list as before), the reference `--twice`
+  (every hash in tests/render_ref.txt), tests/p1_checks.sh --tour and tests/host_checks.sh native (the same
+  lines with ELTALE_WIDESCREEN=off and with the default 16:9; the window starts 1706x960).
+- `ELTALE_WIDESCREEN=16:9 python tools/interp_test.py`: ng, walk, flames, tour and ending OK (ends 0/0, interp_ends
+  0 differ, flash_find 0 flagged), the game's audio as at 4:3. Spells: ends and interp_ends clean, flash_find flags
+  one picture (frame_581_750, 0.22% against the 0.20% limit): a smoke puff of the spell moving fast at the new left
+  edge, smooth in the pictures between and brighter at tick 582 (an effect colour that snaps, as designed); a
+  heuristic's miss in the side area a 4:3 picture does not have, not a flash (checked by eye).
+
 ## What is left after R5
 
 - Every kind draws natively under `--renderer native`; the display-list census is 0 (R5's gate). RT64 and
   the frame image are only the fallback and the reference (R8 removes them from play).
 - Pictures between ticks: R6, above.
-- Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
-  move and the 8-pixel border scale with it.
+- Resolution scale and MSAA (R7b): the picture and depth images are 320x240 at 4:3 (widescreen, R7a:
+  wider, from the picture's own size); the half-pixel move and the 8-pixel border are in game pixels
+  (`px` in `render()`) and scale with it.
 - The pipeline list / warm-up (R7): one program, few pipeline states.
 - Near-plane clipping as the RSP does it, the RDP dither (N64 dither switch): the residual differences.
