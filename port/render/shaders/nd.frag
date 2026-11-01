@@ -15,8 +15,22 @@ layout(location = 4) in vec2 v_zw;
 layout(location = 0) out vec4 o_color;
 
 // The depth buffer as it was before this decal draw (nd_renderer.cpp copies it when a decal comes after
-// a depth write): the RDP's decal test is two-sided, so it is done here (OPT_DECAL).
+// a depth write): the RDP's decal test is two-sided, so it is done here (OPT_DECAL). With MSAA (nd_ms.frag:
+// ND_MSAA) it is multisampled and the test reads its first sample (the draw is shaded once a pixel).
+#ifdef ND_MSAA
+layout(set = 0, binding = 5) uniform sampler2DMS depth_before;
+#define DEPTH_AT(p) texelFetch(depth_before, p, 0).r
+#define DEPTH_SIZE() textureSize(depth_before)
+#else
 layout(set = 0, binding = 5) uniform sampler2D depth_before;
+#define DEPTH_AT(p) texelFetch(depth_before, p, 0).r
+#define DEPTH_SIZE() textureSize(depth_before, 0)
+#endif
+
+// The picture's scale (its pixels per N64 pixel): from the depth's height (the width grows with widescreen)
+float picture_scale() {
+    return float(DEPTH_SIZE().y) / 240.0;
+}
 
 // The RDP's Z_MODE decal: pass where |z - z in memory| <= dz max, dz = |dz/dx| + |dz/dy| of the pixel
 // (the new one's, and the one stored with the memory's z) rounded up to a power of two, in the RDP's
@@ -24,16 +38,16 @@ layout(set = 0, binding = 5) uniform sampler2D depth_before;
 // in either after one scale: d.fog.w = N64 screen-z units per unit of depth (nd_renderer.cpp). The
 // tolerance is in N64 pixels (a bigger picture keeps the N64's window).
 bool decal_pass(Draw d, float dz_new) {
-    ivec2 p = ivec2(gl_FragCoord.xy), size = textureSize(depth_before, 0);
-    float px = float(size.x) / 320.0;
-    float z = gl_FragCoord.z, zm = texelFetch(depth_before, p, 0).r;
+    ivec2 p = ivec2(gl_FragCoord.xy), size = DEPTH_SIZE();
+    float px = picture_scale();
+    float z = gl_FragCoord.z, zm = DEPTH_AT(p);
     float dzn = dz_new * px;
     // the memory's dz: its surface's slope from the neighbours (the smaller side, so an edge counts less)
     ivec2 hi = size - 1;
-    float zl = texelFetch(depth_before, clamp(p - ivec2(1, 0), ivec2(0), hi), 0).r;
-    float zr = texelFetch(depth_before, clamp(p + ivec2(1, 0), ivec2(0), hi), 0).r;
-    float zu = texelFetch(depth_before, clamp(p - ivec2(0, 1), ivec2(0), hi), 0).r;
-    float zd = texelFetch(depth_before, clamp(p + ivec2(0, 1), ivec2(0), hi), 0).r;
+    float zl = DEPTH_AT(clamp(p - ivec2(1, 0), ivec2(0), hi));
+    float zr = DEPTH_AT(clamp(p + ivec2(1, 0), ivec2(0), hi));
+    float zu = DEPTH_AT(clamp(p - ivec2(0, 1), ivec2(0), hi));
+    float zd = DEPTH_AT(clamp(p + ivec2(0, 1), ivec2(0), hi));
     float dzm = (min(abs(zm - zl), abs(zr - zm)) + min(abs(zm - zu), abs(zd - zm))) * px;
     float dz = max(dzn, dzm) * d.fog.w;
     dz = exp2(ceil(log2(max(dz, 1.0))));
@@ -236,6 +250,15 @@ void main() {
     bool two = (oh >> 20 & 3u) == 1u;
     uint tlut = oh >> 14 & 3u, filt = oh >> 12 & 3u;
     vec2 tc = (oh >> 19 & 1u) != 0u ? v_tc : v_tc_affine;
+    // R7: a 2D rectangle in a bigger picture samples its N64 pixel's corner (the texel the 1x picture has there):
+    // text and pictures stay crisp, without the filter's blend with a neighbouring (often keyed-out) texel
+    if ((pc.options & OPT_RECT) != 0u) {
+        int sc = int(picture_scale() + 0.5);
+        if (sc > 1) {
+            ivec2 k = ivec2(gl_FragCoord.xy) % sc;
+            tc -= dFdx(tc) * float(k.x) + dFdy(tc) * float(k.y);
+        }
+    }
 
     env = rgba8((m.own & 2u) != 0u ? m.env : d.colors.x);
     prim = rgba8((m.own & 1u) != 0u ? m.prim : d.colors.y);
@@ -286,17 +309,30 @@ void main() {
     uint p = two ? ol >> 28 & 3u : ol >> 30 & 3u, ma = two ? ol >> 24 & 3u : ol >> 26 & 3u;
     uint mm = two ? ol >> 20 & 3u : ol >> 22 & 3u, mb = two ? ol >> 16 & 3u : ol >> 18 & 3u;
     float out_a = 1.0;
+    bool blended = false;
     if ((ol & 0x4000u) != 0u) {
         if (mm == 1u) {
             pixel = blend_input(p, pixel, blendc, fogc);
             out_a = float(clamp(blend_a(ma, pixel_a, fogc), 0, 255)) / 255.0;
+            blended = true;
         } else if (p != 1u) {
             pixel = blend_cycle(p, ma, mm, mb, pixel, pixel_a, blendc, fogc);
         }
     } else {
         pixel = blend_input(p == 1u ? 0u : p, pixel, blendc, fogc);
     }
-    o_color = vec4(vec3(clamp(pixel, 0, 255)) / 255.0, out_a);
+    pixel = clamp(pixel, 0, 255);
+    // R7, the N64 dither (Classic): the RDP writes 5 bits a channel, rounding up where the 3 bits it drops are
+    // over its magic square's value at the N64 pixel. A draw the GPU blends with the picture is left smooth
+    // (the RDP dithers after the blend, which happens after this stage here)
+    if ((pc.options & OPT_DITHER) != 0u && !blended) {
+        const int magic[16] = int[16](0, 6, 1, 7, 4, 2, 5, 3, 1, 7, 0, 6, 5, 3, 4, 2);
+        ivec2 n64 = ivec2(gl_FragCoord.xy / picture_scale());
+        int dv = magic[(n64.y & 3) * 4 + (n64.x & 3)];
+        ivec3 c5 = min((pixel >> 3) + ivec3(greaterThan(pixel & 7, ivec3(dv))), ivec3(31));
+        pixel = c5 << 3 | c5 >> 2;
+    }
+    o_color = vec4(vec3(pixel) / 255.0, out_a);
     // ELTALE_ND_VIEW (a test)
     uint view = pc.pad;
     if (view == 1u) o_color = vec4(v_shade.rgb, 1.0);

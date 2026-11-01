@@ -25,9 +25,9 @@ struct Graphics {
     bool three_point = true;   // N64 three-point texture filtering
     int scaling = 2;           // to the window: 0 sharp pixels, 1 smooth, 2 smooth pixel edges
     bool vsync = true;
-    bool widescreen = true;
+    bool widescreen = true;    // (R7a wires it; the presets already set it: Classic and Classic + visuals off)
     bool border = false;       // the N64's 8-pixel border (the game's 304x224 scissor)
-    int draw_distance = 1;     // 0 original, 1 far
+    int draw_distance = 1;     // 0 original (1x), 1 far (2x), 2 farther (3x): render_native.cpp distance_now
     bool n64_fog = false;      // the N64's fog (else per-pixel, modern)
     bool n64_dither = false;   // the N64's dither and its noise
     bool shader_warmup = true; // pipelines made at start (no hitch on a first visit)

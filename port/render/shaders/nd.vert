@@ -31,10 +31,14 @@ void main() {
         for (int i = 0; i < 3; i++) col += max(dot(n, d.light_dir[i].xyz), 0.0) * d.light_col[i].rgb;
         shade.rgb = min(col, vec3(1.0));
     }
+    // R7 draw distance (tile_offset.w = k > 1): the fog and the far plane as if the vertex were k times
+    // nearer. The perspective's z/w is A - C/w (A = tile_offset.z), so z/w at w/k is A + k (z/w - A)
+    float z = clip.z;
+    if (d.tile_offset.w > 1.0) z = d.tile_offset.z * clip.w + d.tile_offset.w * (clip.z - d.tile_offset.z * clip.w);
     // the RSP's fog factor: z / |w| (so a vertex behind the camera is fully fogged; the clipper then
     // interpolates it like the colour). Measured against the reference, perspective-correct interpolation
     // of the shade fits the RDP's pictures best (its clipped polygons' new vertices).
-    float fog = clip.w != 0.0 ? clamp(clip.z / abs(clip.w) * d.fog.x + d.fog.y, 0.0, 255.0) / 255.0 : 1.0;
+    float fog = clip.w != 0.0 ? clamp(z / abs(clip.w) * d.fog.x + d.fog.y, 0.0, 255.0) / 255.0 : 1.0;
     if ((v.flags & RDV_FOG) != 0u) shade.a = fog;
 
     vec2 tc = vec2(v.s, v.t);
@@ -46,9 +50,9 @@ void main() {
     }
 
     v_shade = shade;
-    v_zw = clip.zw;
+    v_zw = vec2(z, clip.w);
     v_tc = tc;
     v_tc_affine = tc;
-    v_far = clip.w - clip.z;
+    v_far = clip.w - z;
     gl_Position = vec4(clip.x, -clip.y, d.fog.z, clip.w);
 }

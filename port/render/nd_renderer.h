@@ -19,6 +19,10 @@ struct DrawOptions {
     bool border = false;      // the N64's 8-pixel border: scissor 304x224 inside 320x240
     bool three_point = true;  // N64 three-point filtering (else four-point bilinear)
     bool n64_fog = false;     // the N64's fog factor, per vertex (else per pixel)
+    // R7 (modern options): the picture's size is the caller's (320x240 times the resolution scale);
+    uint32_t samples = 1;        // MSAA samples (1, 2, 4, 8): drawn multisampled, resolved into the picture
+    float draw_distance = 1.0f;  // the fog and the far plane this many times as far (1: the game's)
+    bool n64_dither = false;     // the RDP's dither: the picture in 5 bits a channel with its magic square
 };
 
 // One tick: what the game drew, in order, and the state each draw was made with
@@ -81,7 +85,8 @@ public:
     void print_stats() const;
     // two retraces (a gameplay tick) and a quarter for the time the game's thread takes to build one
     static constexpr double BETWEEN_DELAY = 2.25;
-    // Draw `rec` into `picture` (320x240 RGBA8, GENERAL layout), with its own depth buffer
+    // Draw `rec` into `picture` (RGBA8, GENERAL layout: 320x240 times the resolution scale), with its own
+    // depth buffer (and with opt.samples > 1 its own multisampled colour, resolved into the picture)
     void render(Vulkan::CommandBuffer &cmd, Vulkan::Image &picture, const Recording *rec, const DrawOptions &opt);
 
     // Headless pictures for the compare tools: frames whose number is in `spec` (as ELTALE_DUMP_IMAGE:
@@ -106,6 +111,12 @@ public:
     uint32_t material_2d(const ElRdMaterial *material);
     void draw_2d(const ElRd2D *item);
     void frame_phase(float p) { phase = p; }
+    // R7: the draw distance (1 the game's): the game's map pass reads it each tick (render.h draw_distance)
+    // and the pictures push the fog and far plane by it. ELTALE_DRAW_DISTANCE=k fixes it (tests, the dumps).
+    float draw_distance() const { return distance; }
+    void set_draw_distance(float k) {
+        if (!distance_forced) distance = k < 1.0f ? 1.0f : k;
+    }
 
 private:
     struct Mesh {
@@ -131,6 +142,8 @@ private:
     void palettes_of(uint64_t serial);
     uint32_t upload_material(const ElRdMaterial &m);
     bool want_dump(uint32_t frame) const;
+    // the depth, the decal's copy of it and (MSAA) the multisampled colour, for this size and sample count
+    bool ensure_targets(uint32_t width, uint32_t height, uint32_t samples);
 
     Vulkan::Device *device = nullptr;
     Vulkan::Program *program = nullptr;
@@ -153,10 +166,17 @@ private:
     PictureStats pstats;
     int dump_between = 0;          // ELTALE_DUMP_BETWEEN: pictures per tick in the dumps
     Recording::State state = {};
+    float distance = 1.0f;
+    bool distance_forced = false;
 
     Vulkan::ImageHandle depth;
     Vulkan::ImageHandle depth_before; // the depth before a decal draw (the RDP's two-sided decal test)
+    Vulkan::ImageHandle msaa_color;   // the multisampled picture (opt.samples > 1), resolved into the picture
+    uint32_t target_w = 0, target_h = 0, target_samples = 0;
+    Vulkan::Program *program_ms = nullptr; // the same shaders, the decal reading a multisampled depth
     Vulkan::ImageHandle dump_picture;
+    DrawOptions dump_opt;             // the dumps' look (the N64's; ELTALE_DUMP_* for the modern options)
+    uint32_t dump_scale = 1;
     std::string dump_dir, dump_spec;
 };
 

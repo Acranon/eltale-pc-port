@@ -96,9 +96,12 @@ void graphics_page() {
     }
     {
         Row row(FEATURE_DRAW_DISTANCE);
-        const char *names[] = { "Original", "Far" };
+        const char *names[] = { "Original", "Far (2x)", "Farther (3x)" };
         ImGui::Combo("Draw distance", &g.draw_distance, names, IM_ARRAYSIZE(names));
     }
+    if (g.draw_distance != 0 && (renderer()->wires() & FEATURE_DRAW_DISTANCE))
+        help("The fog and the far plane pushed out, and the map's objects drawn that far (drawing only: the game "
+             "itself is unchanged).");
     {
         Row row(FEATURE_N64_FOG);
         ImGui::Checkbox("N64 fog", &g.n64_fog);

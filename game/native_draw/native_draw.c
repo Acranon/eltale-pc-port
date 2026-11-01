@@ -257,7 +257,16 @@ static void color(void (*fn)(const uint8_t *), int r, int g, int b, int a) {
     fn(c);
 }
 
-void nd_env_color(int r, int g, int b, int a) { if (nd_kinds) color(api->env_color, r, g, b, a); }
+/* (the last env colour sent: R7b's far translucent objects put it back after theirs) */
+static uint8_t env_last[4];
+
+void nd_env_color(int r, int g, int b, int a) {
+    if (!nd_kinds) return;
+    env_last[0] = (uint8_t)r, env_last[1] = (uint8_t)g, env_last[2] = (uint8_t)b, env_last[3] = (uint8_t)a;
+    color(api->env_color, r, g, b, a);
+}
+
+void nd_env_last(uint8_t rgba[4]) { memcpy(rgba, env_last, 4); }
 void nd_prim_color(int r, int g, int b, int a) { if (nd_kinds) color(api->prim_color, r, g, b, a); }
 void nd_fog_color(int r, int g, int b, int a) { if (nd_kinds) color(api->fog_color, r, g, b, a); }
 

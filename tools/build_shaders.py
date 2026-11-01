@@ -22,7 +22,7 @@ OUT = os.path.join(ROOT, "port", "render", "nd_shaders.h")
 KNOWN = r"C:/code/kf4-tools/glslang-build/StandAlone/glslangValidator.exe"
 
 # Shaders built a second time with defines, under a name of their own: (source, name, defines)
-VARIANTS = []
+VARIANTS = [("nd.frag", "nd_ms.frag", ["-DND_MSAA"])]
 
 
 def find_glslang(given):

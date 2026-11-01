@@ -17,6 +17,13 @@
 // for a reason) and per retrace ("V wall vi"), for tools/pace_test.py; ELTALE_PRESENT_SIM=1: the pacing
 // alone (nothing drawn or presented). F8: the flash recorder (the last pictures shown, to a folder).
 //
+// R7 (modern options, docs/renderer/NATIVE_DRAW.md "Modern options"): the picture is 320x240 times the resolution
+// scale (Original 1x, a multiple, or Match the window: the window's height over 240, rounded up, so the presenter
+// only ever scales down), drawn with MSAA when asked (resolved into the picture), the fog and far plane pushed out
+// by the draw distance, the N64 dither for Classic. A CPU-drawn screen has a 320x240 image of its own. The
+// pipelines are made ahead at the start (nd_pipeline_warm.cpp). ELTALE_RES_SCALE=n / ELTALE_MSAA=n (tests)
+// override the settings.
+//
 // ELTALE_PRESENT_DUMP=folder (a test): each new CPU screen presented is read back from the GPU and
 // written as folder/native_cpu_<n>.png, with P1_NATIVE_CPU_FRAME n hash (the hash Port_NoteCpuFrame
 // prints for the same pixels, worked out from what the GPU holds), and the window as shown (menu
@@ -29,6 +36,7 @@
 #include "host.h"
 #include "nd_renderer.h"
 #include "nd_interp.h"
+#include "nd_pipeline_warm.h"
 #include "present_vk.h"
 #include "png.h"
 
@@ -108,15 +116,19 @@ public:
         std::fprintf(stderr, "[render] Granite on %s (Vulkan %u.%u)\n", props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion),
                      VK_API_VERSION_MINOR(props.apiVersion));
 
+        // the CPU-drawn screens' picture (320x240 always), and the game's (the resolution scale: ensure_picture)
         ImageCreateInfo info = ImageCreateInfo::render_target(PICTURE_W, PICTURE_H, VK_FORMAT_R8G8B8A8_UNORM);
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         info.layout = ImageLayout::General;
         info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-        picture = device.create_image(info);
-        if (!picture) {
+        cpu_picture = device.create_image(info);
+        if (!cpu_picture) {
             std::fprintf(stderr, "[render] no picture image\n");
             return false;
         }
+        shown_image = cpu_picture.get();
+        // the pipeline cache and the pipelines made ahead (before the renderer makes any)
+        render::pipeline_warm_open(device, data_dir(), settings.graphics.shader_warmup);
         if (!render::native_draw().init(device)) {
             std::fprintf(stderr, "[render] the native renderer's resources could not be made\n");
             return false;
@@ -136,6 +148,9 @@ public:
         pd.lock_context = &device;
         if (!render::present_open(pd, window, vsync_now())) return false;
         render::present_set_scaling(settings.graphics.scaling);
+        apply_options();
+        if (!ensure_picture()) return false;
+        render::pipeline_warm_start(samples_now());
         const char *dir = std::getenv("ELTALE_PRESENT_DUMP");
         if (dir && *dir) dump_dir = dir;
         if (const char *l = std::getenv("ELTALE_PRESENT_LOG")) log = std::fopen(l, "w");
@@ -211,7 +226,7 @@ public:
         cpu_shown = true; // (no pictures between over it: wait() waits for the game's frames again)
         // the RGBA5551 screen into the picture, as RGBA8 (each 5 bits widened, so they come back exact)
         CommandBufferHandle cmd = begin();
-        uint32_t *out = static_cast<uint32_t *>(cmd->update_image(*picture));
+        uint32_t *out = static_cast<uint32_t *>(cmd->update_image(*cpu_picture));
         uint64_t hash = UINT64_C(0xCBF29CE484222325);
         for (uint32_t i = 0; i < PICTURE_W * PICTURE_H; i++) {
             const uint16_t p = pixels[i];
@@ -220,6 +235,7 @@ public:
             out[i] = (r << 3 | r >> 2) | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2) << 16 | (p & 1 ? 0xFF000000u : 0);
         }
         finish(cmd);
+        shown_image = cpu_picture.get();
         cleared = false;
         const bool fresh = hash != cpu_hash;
         cpu_hash = hash;
@@ -239,12 +255,23 @@ public:
     }
 
     uint32_t wires() const override {
-        return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE;
+        return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE |
+               FEATURE_RESOLUTION | FEATURE_MSAA | FEATURE_DRAW_DISTANCE | FEATURE_N64_DITHER | FEATURE_SHADER_WARMUP;
+    }
+
+    // the MSAA counts the GPU can draw (colour and depth) as bits 2, 4, 8
+    uint32_t msaa_supported() const override {
+        if (headless || !picture) return 0;
+        const VkPhysicalDeviceLimits &l = context.get_gpu_props().limits;
+        return uint32_t(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts) & (2u | 4u | 8u);
     }
 
     void graphics_changed() override {
         render::present_set_vsync(vsync_now());
         render::present_set_scaling(settings.graphics.scaling);
+        apply_options();
+        // (other samples: their pipelines made ahead too, on the warm-up's threads)
+        render::pipeline_warm_start(samples_now());
         next_due = 0;
     }
 
@@ -265,6 +292,9 @@ public:
                                 st.plans ? st.plan_us / double(st.plans) : 0.0, st.pictures ? st.build_us / double(st.pictures) : 0.0,
                                 st.plan_max_us, st.build_max_us, (unsigned long long)st.snapped, (unsigned long long)st.unmatched);
         }
+        ImGui::TextDisabled("Picture %ux%u, MSAA %ux; draw distance %.1fx", picture ? picture->get_width() : 0,
+                            picture ? picture->get_height() : 0, samples_now(), render::native_draw().draw_distance());
+        render::pipeline_warm_page();
         ImGui::TextDisabled("F8: the flash recorder (the last %d pictures shown, into the data folder)", FLASH_PICTURES);
     }
 
@@ -275,14 +305,77 @@ public:
             render::native_draw().shutdown();
             return;
         }
-        if (!picture) return;
+        if (!cpu_picture) return;
         device.wait_idle();
+        render::pipeline_warm_close();
         render::native_draw().shutdown();
         render::present_close();
+        flash.clear();
         picture.reset();
+        cpu_picture.reset();
     }
 
 private:
+    // ---- R7: the picture's size and the options ----
+    // the resolution scale: Original 1, a multiple, or the window's height over 240 rounded up (at most 9: 4K);
+    // ELTALE_RES_SCALE=n overrides (tests)
+    static uint32_t scale_now() {
+        if (const char *e = std::getenv("ELTALE_RES_SCALE")) return uint32_t(std::min(std::max(std::atoi(e), 1), 9));
+        const Graphics &g = settings.graphics;
+        if (g.resolution == 0) return 1;
+        if (g.resolution == 2) return uint32_t(std::min(std::max(g.resolution_scale, 1), 8));
+        int w = 0, h = 0;
+        window_pixels(&w, &h);
+        return uint32_t(std::min(std::max(int(std::ceil(double(h) / PICTURE_H - 0.001)), 1), 9));
+    }
+    // MSAA samples (ELTALE_MSAA=n overrides), as the GPU can
+    uint32_t samples_now() const {
+        int n = settings.graphics.msaa;
+        if (const char *e = std::getenv("ELTALE_MSAA")) n = std::atoi(e);
+        uint32_t s = n >= 8 ? 8 : n >= 4 ? 4 : n >= 2 ? 2 : 1;
+        const uint32_t ok = msaa_supported();
+        while (s > 1 && ok && !(ok & s)) s /= 2;
+        return s;
+    }
+    // the draw distance: Original 1x, Far 2x, Farther 3x (ELTALE_DRAW_DISTANCE overrides, nd_renderer.cpp)
+    static float distance_now() {
+        static const float k[] = { 1.0f, 2.0f, 3.0f };
+        return k[std::min(std::max(settings.graphics.draw_distance, 0), 2)];
+    }
+    void apply_options() {
+        render::native_draw().set_draw_distance(distance_now());
+    }
+    render::DrawOptions options() const {
+        render::DrawOptions opt;
+        opt.border = settings.graphics.border;
+        opt.three_point = settings.graphics.three_point;
+        opt.n64_fog = settings.graphics.n64_fog;
+        opt.samples = samples_now();
+        opt.draw_distance = render::native_draw().draw_distance();
+        opt.n64_dither = settings.graphics.n64_dither;
+        return opt;
+    }
+    // the game's picture at this size (made again when the scale or the window changes)
+    bool ensure_picture() {
+        const uint32_t s = scale_now(), w = PICTURE_W * s, h = PICTURE_H * s;
+        if (picture && picture->get_width() == w && picture->get_height() == h) return true;
+        device.wait_idle();
+        flash.clear();
+        flash_count = 0;
+        if (shown_image == picture.get()) shown_image = cpu_picture.get();
+        ImageCreateInfo info = ImageCreateInfo::render_target(w, h, VK_FORMAT_R8G8B8A8_UNORM);
+        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        info.layout = ImageLayout::General;
+        info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+        picture = device.create_image(info);
+        if (!picture) {
+            std::fprintf(stderr, "[render] no %ux%u picture image\n", w, h);
+            return false;
+        }
+        std::fprintf(stderr, "[render] picture %ux%u (%ux)\n", w, h, s);
+        return true;
+    }
+
     // a hidden window (the tests) never waits for the display; pictures between ticks never wait for it
     // either (mailbox: the newest at each refresh, no tearing), else vsync is FIFO
     static int vsync_now() {
@@ -328,13 +421,10 @@ private:
         if (log) std::fprintf(log, "P %.6f %.4f %c\n", now, v, kind);
         count_rate(now);
         if (sim) return;
+        if (!ensure_picture()) return;
         CommandBufferHandle cmd = begin();
         if (rec) {
-            render::DrawOptions opt;
-            opt.border = settings.graphics.border;
-            opt.three_point = settings.graphics.three_point;
-            opt.n64_fog = settings.graphics.n64_fog;
-            render::native_draw().render(*cmd, *picture, rec, opt);
+            render::native_draw().render(*cmd, *picture, rec, options());
         } else {
             RenderPassInfo rp;
             rp.num_color_attachments = 1;
@@ -347,6 +437,8 @@ private:
         }
         flash_keep(*cmd, v);
         finish(cmd);
+        shown_image = picture.get();
+        render::pipeline_warm_tick();
         const bool first = !cleared;
         cleared = true;
         show(overlay, first && !dump_dir.empty() ? "native_clear" : nullptr);
@@ -365,9 +457,12 @@ private:
     }
 
     // ---- F8: the flash recorder (KF4's): the last pictures shown, kept on the GPU ----
+    // (kept at most at twice the N64's size: a bigger picture is scaled down into it)
+    uint32_t flash_div() const { return std::max(1u, picture->get_height() / (2 * PICTURE_H)); }
     void flash_keep(CommandBuffer &cmd, double v) {
+        const uint32_t fw = picture->get_width() / flash_div(), fh = picture->get_height() / flash_div();
         if (flash.empty()) {
-            ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(PICTURE_W, PICTURE_H, VK_FORMAT_R8G8B8A8_UNORM);
+            ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(fw, fh, VK_FORMAT_R8G8B8A8_UNORM);
             info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             info.layout = ImageLayout::General;
             info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -378,7 +473,12 @@ private:
         if (!flash[slot]) return;
         cmd.barrier(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                     VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
-        cmd.copy_image(*flash[slot], *picture);
+        if (flash_div() == 1) {
+            cmd.copy_image(*flash[slot], *picture);
+        } else {
+            cmd.blit_image(*flash[slot], *picture, {}, { int32_t(fw), int32_t(fh), 1 }, {},
+                           { int32_t(picture->get_width()), int32_t(picture->get_height()), 1 }, 0, 0, 0, 0, 1, VK_FILTER_LINEAR);
+        }
         flash_v[slot] = v;
         flash_count++;
     }
@@ -395,15 +495,16 @@ private:
         device.wait_idle();
         FILE *list = std::fopen((folder + "/pictures.txt").c_str(), "w");
         if (list) std::fprintf(list, "# picture retrace phase (the picture's time in retraces; phase 0 is a retrace's own)\n");
+        const uint32_t fw = flash[0]->get_width(), fh = flash[0]->get_height();
         for (uint64_t k = 0; k < n; k++) {
             const size_t slot = size_t((flash_count - n + k) % FLASH_PICTURES);
             BufferCreateInfo bi = {};
-            bi.size = PICTURE_W * PICTURE_H * 4;
+            bi.size = fw * fh * 4;
             bi.domain = BufferDomain::CachedHost;
             bi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             BufferHandle buffer = device.create_buffer(bi);
             CommandBufferHandle cmd = begin();
-            cmd->copy_image_to_buffer(*buffer, *flash[slot], 0, {0, 0, 0}, {PICTURE_W, PICTURE_H, 1}, 0, 0,
+            cmd->copy_image_to_buffer(*buffer, *flash[slot], 0, {0, 0, 0}, {fw, fh, 1}, 0, 0,
                                       {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
             cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_HOST_BIT,
                          VK_ACCESS_2_HOST_READ_BIT);
@@ -411,12 +512,12 @@ private:
             device.submit(cmd, &fence);
             fence->wait();
             const uint32_t *px = static_cast<const uint32_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
-            std::vector<uint32_t> rgba(px, px + PICTURE_W * PICTURE_H);
+            std::vector<uint32_t> rgba(px, px + fw * fh);
             device.unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
             for (uint32_t &p : rgba) p |= 0xFF000000u;
             char name[32];
             std::snprintf(name, sizeof name, "%04llu.png", (unsigned long long)k);
-            render_png_write((folder + "/" + name).c_str(), rgba.data(), PICTURE_W, PICTURE_H);
+            render_png_write((folder + "/" + name).c_str(), rgba.data(), fw, fh);
             const double v = flash_v[slot];
             if (list) std::fprintf(list, "%s %lld %.4f\n", name, (long long)std::floor(v), v - std::floor(v));
         }
@@ -446,7 +547,8 @@ private:
     void show(ImDrawData *overlay, const char *dump_name) {
         std::vector<uint32_t> rgba;
         uint32_t w = 0, h = 0;
-        render::present_frame(picture->get_image(), PICTURE_W, PICTURE_H, overlay, dump_name ? &rgba : nullptr, &w, &h);
+        const Image &img = *shown_image;
+        render::present_frame(img.get_image(), img.get_width(), img.get_height(), overlay, dump_name ? &rgba : nullptr, &w, &h);
         if (dump_name && !rgba.empty()) {
             const std::string path = dump_dir + "/" + dump_name + ".png";
             if (render_png_write(path.c_str(), rgba.data(), w, h)) std::fprintf(stderr, "[render] wrote %s\n", path.c_str());
@@ -462,7 +564,7 @@ private:
         info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         BufferHandle buffer = device.create_buffer(info);
         CommandBufferHandle cmd = begin();
-        cmd->copy_image_to_buffer(*buffer, *picture, 0, {0, 0, 0}, {PICTURE_W, PICTURE_H, 1}, 0, 0,
+        cmd->copy_image_to_buffer(*buffer, *cpu_picture, 0, {0, 0, 0}, {PICTURE_W, PICTURE_H, 1}, 0, 0,
                                   {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
         cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_HOST_BIT,
                      VK_ACCESS_2_HOST_READ_BIT);
@@ -486,7 +588,9 @@ private:
 
     Context context;
     Device device;
-    ImageHandle picture;
+    ImageHandle picture;          // the game's (320x240 times the resolution scale)
+    ImageHandle cpu_picture;      // a CPU-drawn screen's (320x240)
+    const Image *shown_image = nullptr; // the one shown last (present_again shows it again)
     bool cleared = false;
     uint64_t cpu_hash = 0;
     unsigned cpu_count = 0;

@@ -117,7 +117,7 @@ static void read_choice(const cJSON *x, int &v, std::initializer_list<const char
 static const std::initializer_list<const char *> resolution_keys = { "original", "window", "multiple" };
 static const std::initializer_list<const char *> frame_rate_keys = { "original", "display", "fixed" };
 static const std::initializer_list<const char *> scaling_keys = { "sharp", "smooth", "smooth_pixel_edges" };
-static const std::initializer_list<const char *> distance_keys = { "original", "far" };
+static const std::initializer_list<const char *> distance_keys = { "original", "far", "farther" };
 
 static void read_graphics(const cJSON *j, Graphics &g) {
     read_choice(item(j, "resolution"), g.resolution, resolution_keys);

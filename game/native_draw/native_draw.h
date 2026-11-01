@@ -68,6 +68,13 @@ void nd_fog_position(int near_, int far_);                         /* gSPFogPosi
 enum { ND_MAP_OPAQUE = 0, ND_MAP_XLU = 1, ND_MAP_SCROLL = 2 /* + 0..4: the scrolling texture */ };
 void nd_map_draw(const struct MapObj *obj, int pass, const void *mtx, uint32_t dl, int xform, float x, float y,
                  float z, float rx, float ry, float rz, float tile_t);
+/* R7b, the draw distance (nd_map.c): the map objects past the game's grid search, drawing only. At the end of the
+ * game's opaque objects, after its billboards, and at the start of its translucent ones (whether the game set the
+ * translucent env colour). The last env colour sent (nd_env_color). */
+void nd_map_far_opaque(void);
+void nd_map_far_billboards(void);
+void nd_map_far_translucent(int game_set_env);
+void nd_env_last(uint8_t rgba[4]);
 
 #else
 
@@ -85,6 +92,9 @@ void nd_map_draw(const struct MapObj *obj, int pass, const void *mtx, uint32_t d
 #define nd_fog_color(r, g, b, a) ((void)0)
 #define nd_fog_position(n, f) ((void)0)
 #define nd_map_draw(...) ((void)0)
+#define nd_map_far_opaque() ((void)0)
+#define nd_map_far_billboards() ((void)0)
+#define nd_map_far_translucent(set) ((void)0)
 
 #endif
 

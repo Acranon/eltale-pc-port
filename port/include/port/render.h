@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 5
+#define EL_RENDER_API_VERSION 6
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -271,6 +271,11 @@ typedef struct ElRenderApi {
     /* R6: where in its retrace the next frame_end comes (0..1, the game's virtual clock): the recording's
      * time, from which pictures between ticks are timed */
     void (*frame_phase)(float phase);
+
+    /* R7b (modern options): the draw distance, 1 = the game's (the Graphics page's Draw distance; the fog and
+     * the far plane go this many times as far, and nd_map.c draws the map objects of the grid cells that far
+     * too, drawing only) */
+    float (*draw_distance)(void);
 } ElRenderApi;
 
 #ifdef __cplusplus

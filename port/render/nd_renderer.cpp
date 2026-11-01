@@ -32,7 +32,7 @@ constexpr size_t MATERIAL_CAP = size_t(1) << 16;
 constexpr size_t TEXEL_CAP = size_t(1) << 24;    // 64 MiB of texels
 constexpr size_t PALETTE_CAP = 4096 * 256;
 
-enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4, OPT_DECAL = 8, OPT_SKIP = 1u << 31 };
+enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4, OPT_DECAL = 8, OPT_DITHER = 16, OPT_RECT = 32, OPT_SKIP = 1u << 31 };
 
 struct GpuTile {
     uint32_t texels, wh, fmt, mode;
@@ -103,8 +103,14 @@ bool is_decal(const ElRdMaterial &m) {
 
 bool writes_depth(const ElRdMaterial &m) { return (m.geometry & 1) && (m.othermode_l & 0x20); }
 
-// The GPU pipeline state a material's othermode and geometry bits ask for
-void apply_state(CommandBuffer &cmd, const ElRdMaterial &m) {
+// A cut-out: CVG x alpha or the alpha compare (the pixel stage discards by the texture's alpha). With MSAA
+// such a draw is shaded at every sample (the discard per sample: smooth edges, as KF4's cut-out AA)
+bool is_cutout(const ElRdMaterial &m) { return (m.othermode_l & 0x1000) || (m.othermode_l & 3) == 1; }
+
+// The GPU pipeline state a material's othermode and geometry bits ask for (sample_shading: a 3D cut-out
+// drawn multisampled)
+void apply_state(CommandBuffer &cmd, const ElRdMaterial &m, bool sample_shading = false) {
+    cmd.set_multisample_state(false, false, sample_shading);
     const uint32_t ol = m.othermode_l, geom = m.geometry;
     const bool zbuf = geom & 1; // G_ZBUFFER
     const bool decal = is_decal(m);
@@ -148,11 +154,12 @@ void api_frame_end(uint32_t f) { instance.frame_end(f); }
 uint32_t api_material_2d(const ElRdMaterial *m) { return instance.material_2d(m); }
 void api_draw_2d(const ElRd2D *d) { instance.draw_2d(d); }
 void api_frame_phase(float p) { instance.frame_phase(p); }
+float api_draw_distance() { return instance.draw_distance(); }
 
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
-    api_material_2d, api_draw_2d, api_frame_phase,
+    api_material_2d, api_draw_2d, api_frame_phase, api_draw_distance,
 };
 
 } // namespace
@@ -221,27 +228,78 @@ bool NativeDraw::init(Device &dev) {
     Shader *fs = dev.request_shader(nd_spv_nd_frag, sizeof(nd_spv_nd_frag), &frag);
     program = dev.request_program(vs, fs);
     if (!program) return false;
+    // (MSAA: the decal's depth copy is multisampled, read as such)
+    Shader *fs_ms = dev.request_shader(nd_spv_nd_ms_frag, sizeof(nd_spv_nd_ms_frag), &frag);
+    program_ms = dev.request_program(vs, fs_ms);
+    // the headless dumps' look: the N64's (border, three-point, its fog) at 1x, unless ELTALE_DUMP_* ask for the
+    // modern options (contact sheets): ELTALE_DUMP_SCALE=n, ELTALE_DUMP_MSAA=n, ELTALE_DUMP_LOOK=modern (no
+    // border, fog per pixel), ELTALE_DRAW_DISTANCE=k (the fog and far plane k times as far)
+    dump_opt.border = dump_opt.three_point = dump_opt.n64_fog = true;
+    if (const char *e = std::getenv("ELTALE_DUMP_LOOK"))
+        if (!std::strcmp(e, "modern")) dump_opt.border = dump_opt.n64_fog = false;
+    if (const char *e = std::getenv("ELTALE_DUMP_SCALE")) dump_scale = uint32_t(std::min(std::max(std::atoi(e), 1), 8));
+    if (const char *e = std::getenv("ELTALE_DUMP_MSAA")) {
+        const int n = std::atoi(e);
+        dump_opt.samples = n >= 8 ? 8 : n >= 4 ? 4 : n >= 2 ? 2 : 1;
+    }
+    if (const char *e = std::getenv("ELTALE_DRAW_DISTANCE")) {
+        dump_opt.draw_distance = float(std::max(std::atof(e), 1.0));
+        distance = dump_opt.draw_distance;
+        distance_forced = true;
+    }
     if (!vertices.create(dev, VERTEX_CAP * sizeof(ElRdVertex)) || !materials.create(dev, MATERIAL_CAP * sizeof(GpuMaterial)) ||
         !texels.create(dev, TEXEL_CAP * 4) || !palettes.create(dev, PALETTE_CAP * 4))
         return false;
     palettes.write(0, std::vector<uint32_t>(PALETTE_CAP).data(), PALETTE_CAP * 4);
     palettes.used = PALETTE_CAP * 4;
-    // the depth buffer, and its copy for decals (both GENERAL: a render pass, a copy and sampling all
-    // use them without layout changes)
-    ImageCreateInfo zi = ImageCreateInfo::render_target(W, H, VK_FORMAT_D32_SFLOAT);
-    zi.layout = ImageLayout::General;
-    zi.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-    depth = dev.create_image(zi);
-    ImageCreateInfo ci = zi;
-    ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    depth_before = dev.create_image(ci);
-    return bool(depth) && bool(depth_before);
+    return ensure_targets(W, H, 1);
+}
+
+// The depth buffer and its copy for decals, and with MSAA the multisampled colour: all GENERAL (a render pass,
+// a copy and sampling use them without layout changes), made again when the picture's size or samples change.
+// A sample count the GPU can't do falls back to fewer.
+bool NativeDraw::ensure_targets(uint32_t width, uint32_t height, uint32_t samples) {
+    if (depth && target_w == width && target_h == height && target_samples == samples) return true;
+    // (no wait here: a command buffer is being recorded; Granite frees the old images once the GPU is done)
+    depth.reset();
+    depth_before.reset();
+    msaa_color.reset();
+    for (uint32_t n = samples; n >= 1; n /= 2) {
+        ImageCreateInfo zi = ImageCreateInfo::render_target(width, height, VK_FORMAT_D32_SFLOAT);
+        zi.layout = ImageLayout::General;
+        zi.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+        zi.samples = VkSampleCountFlagBits(n);
+        depth = device->create_image(zi);
+        ImageCreateInfo ci = zi;
+        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        depth_before = device->create_image(ci);
+        if (n > 1) {
+            ImageCreateInfo mi = ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_UNORM);
+            mi.layout = ImageLayout::General;
+            mi.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+            mi.samples = VkSampleCountFlagBits(n);
+            msaa_color = device->create_image(mi);
+        }
+        if (depth && depth_before && (n == 1 || msaa_color)) {
+            if (n != samples) std::fprintf(stderr, "[nd] MSAA %ux could not be made: %ux\n", samples, n);
+            target_w = width;
+            target_h = height;
+            target_samples = samples; // (asked for: not tried again each picture)
+            return true;
+        }
+        depth.reset();
+        depth_before.reset();
+        msaa_color.reset();
+    }
+    return false;
 }
 
 void NativeDraw::shutdown() {
     if (interp && (interp->stats.plans || pstats.newest || pstats.between)) print_stats();
     depth.reset();
     depth_before.reset();
+    msaa_color.reset();
+    target_w = target_h = target_samples = 0;
     dump_picture.reset();
     vertices.buffer.reset();
     materials.buffer.reset();
@@ -529,6 +587,11 @@ void NativeDraw::print_stats() const {
 
 void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec, const DrawOptions &opt) {
     if (rec) palettes_of(rec->serial); // (an older recording: its own palettes, as they were)
+    // R7: the picture's size (320x240 times the resolution scale) and MSAA
+    const uint32_t pw = picture.get_width(), ph = picture.get_height();
+    const float scale = float(ph) / float(H);
+    if (!ensure_targets(pw, ph, opt.samples ? opt.samples : 1)) return;
+    const uint32_t samples = msaa_color ? uint32_t(msaa_color->get_create_info().samples) : 1u;
     vertices.upload(cmd);
     materials.upload(cmd);
     texels.upload(cmd);
@@ -583,7 +646,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 g.colors[3] = pack(d.blend);
                 g.fog[2] = 0.0f; // the depth written (no depth test for 2D)
                 g.fog[3] = 1.0f;
-                options[i] = opt.three_point ? OPT_THREE_POINT : 0;
+                options[i] = (opt.three_point ? OPT_THREE_POINT : 0) | (d.mesh == EL_RD2D_RECT ? OPT_RECT : 0);
                 continue;
             }
             if (!camera_ok && !(it.draw.flags & EL_RDD_SCREEN)) {
@@ -613,13 +676,21 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             if (it.draw.flags & EL_RDD_SCREEN) g.fog[2] = 0.0f;
             g.tile_offset[0] = it.draw.tile_offset[0];
             g.tile_offset[1] = it.draw.tile_offset[1];
+            // R7 draw distance k: the fog and the far plane as if everything were k times nearer. The
+            // perspective's z/w is A - C/w (A = -m[2][2]): z/w at w/k is A + k (z/w - A), so the vertex stage
+            // takes z' = A w + k (z - A w) for the fog and the far plane (tile_offset[2] = A, [3] = k)
+            const float k_far = (it.draw.flags & EL_RDD_SCREEN) ? 1.0f : std::max(opt.draw_distance, 1.0f);
+            const float a_far = -cam.perspective[10];
+            g.tile_offset[2] = a_far;
+            g.tile_offset[3] = k_far;
             // does the mesh's box reach past the far plane? (then the pixel stage cuts there)
             uint32_t o = (opt.three_point ? OPT_THREE_POINT : 0) | (opt.n64_fog ? OPT_N64_FOG : 0);
             const Mesh &mesh = meshes[it.draw.mesh];
             for (int k = 0; k < 8 && !(o & OPT_FAR_CLIP); k++) {
                 const float p[3] = { mesh.bounds[(k & 1) ? 3 : 0], mesh.bounds[(k & 2) ? 4 : 1], mesh.bounds[(k & 4) ? 5 : 2] };
-                const float z = p[0] * g.mvp[2] + p[1] * g.mvp[6] + p[2] * g.mvp[10] + g.mvp[14];
+                float z = p[0] * g.mvp[2] + p[1] * g.mvp[6] + p[2] * g.mvp[10] + g.mvp[14];
                 const float w = p[0] * g.mvp[3] + p[1] * g.mvp[7] + p[2] * g.mvp[11] + g.mvp[15];
+                if (k_far != 1.0f) z = a_far * w + k_far * (z - a_far * w);
                 if (z > w) o |= OPT_FAR_CLIP;
             }
             options[i] = o;
@@ -670,8 +741,28 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
     rp.clear_depth_stencil.depth = 0.0f; // reversed Z
     rp.clear_color[0] = opt.border ? VkClearColorValue{ { 0, 0, 0, 1 } } : clear_colour;
+    // MSAA: drawn into the multisampled colour, resolved into the picture at the end of each pass (kept: a
+    // decal's depth copy ends the pass, and a new one goes on drawing into it)
+    RenderPassInfo::Subpass subpass = {};
+    Image &target = msaa_color ? *msaa_color : picture;
+    if (msaa_color) {
+        rp.num_color_attachments = 2;
+        rp.color_attachments[0] = &msaa_color->get_view();
+        rp.color_attachments[1] = &picture.get_view();
+        rp.store_attachments = 3;
+        subpass.num_color_attachments = 1;
+        subpass.color_attachments[0] = 0;
+        subpass.num_resolve_attachments = 1;
+        subpass.resolve_attachments[0] = 1;
+        subpass.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadWrite;
+        rp.subpasses = &subpass;
+        rp.num_subpasses = 1;
+    }
+    Program *prog = msaa_color ? program_ms : program;
     cmd.begin_render_pass(rp);
-    VkRect2D inner = { { 8, 8 }, { W - 16, H - 16 } };
+    // the border: 8 N64 pixels, at the picture's scale
+    const int32_t b8 = int32_t(std::lround(8 * scale));
+    VkRect2D inner = { { b8, b8 }, { pw - 2 * uint32_t(b8), ph - 2 * uint32_t(b8) } };
     if (opt.border) {
         VkClearValue v = {};
         v.color = clear_colour;
@@ -680,7 +771,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     // the state a render pass starts with (again after a decal's depth copy)
     auto setup = [&]() {
         cmd.set_opaque_state();
-        cmd.set_program(program);
+        cmd.set_program(prog);
         cmd.set_storage_buffer(0, 0, *vertices.buffer);
         cmd.set_storage_buffer(0, 1, *draw_buffer);
         cmd.set_storage_buffer(0, 2, *materials.buffer);
@@ -689,8 +780,9 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         cmd.set_front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE);
         // the RDP samples a pixel at its top-left corner, the GPU at its centre: the picture moves half a pixel
-        cmd.set_viewport({ 0.5f, 0.5f, float(W), float(H), 0, 1 });
-        cmd.set_scissor(opt.border ? inner : VkRect2D{ { 0, 0 }, { W, H } });
+        // (of the picture's: at a scale each pixel is sampled at its own corner, so 2D stays on whole pixels)
+        cmd.set_viewport({ 0.5f, 0.5f, float(pw), float(ph), 0, 1 });
+        cmd.set_scissor(opt.border ? inner : VkRect2D{ { 0, 0 }, { pw, ph } });
         cmd.set_texture(0, 5, depth_before->get_view(), StockSampler::NearestClamp);
     };
     // A decal reads the depth as it was before it (the RDP's test is two-sided: depth_before): copied
@@ -705,7 +797,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
                           VK_ACCESS_2_TRANSFER_WRITE_BIT);
         cmd.copy_image(*depth_before, *depth);
-        cmd.image_barrier(picture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+        cmd.image_barrier(target, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                           VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
@@ -715,6 +807,10 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         cmd.image_barrier(*depth_before, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COPY_BIT,
                           VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                           VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        if (msaa_color)
+            cmd.image_barrier(picture, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
         RenderPassInfo again = rp;
         again.clear_attachments = 0;
         again.load_attachments = 1;
@@ -722,6 +818,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         cmd.begin_render_pass(again);
         setup();
     };
+    const uint32_t dither = opt.n64_dither ? OPT_DITHER : 0u;
     if (!gd.empty()) {
         setup();
         bool copied = false, written = false;
@@ -735,7 +832,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 rect_bound = true;
                 const ElRdMaterial &mat = material_cpu[d2->material];
                 apply_state(cmd, mat);
-                Push push = { uint32_t(i), d2->material, options[i], view };
+                Push push = { uint32_t(i), d2->material, options[i] | dither, view };
                 cmd.push_constants(&push, 0, sizeof push);
                 cmd.draw(6, 1, rect_first[i], 0);
                 continue;
@@ -754,8 +851,8 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                     written = false;
                 }
                 if (writes_depth(mat)) written = true;
-                apply_state(cmd, mat);
-                Push push = { uint32_t(i), grp.material, options[i] | (decal ? OPT_DECAL : 0u), view };
+                apply_state(cmd, mat, samples > 1 && !d2 && is_cutout(mat));
+                Push push = { uint32_t(i), grp.material, options[i] | dither | (decal ? OPT_DECAL : 0u), view };
                 cmd.push_constants(&push, 0, sizeof push);
                 cmd.draw(grp.count, 1, grp.first, 0);
             }
@@ -766,39 +863,38 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
 
 void NativeDraw::dump_frame(const Recording &rec, const std::string &name) {
     if (!device) return;
+    const uint32_t dw = W * dump_scale, dh = H * dump_scale;
     if (!dump_picture) {
-        ImageCreateInfo info = ImageCreateInfo::render_target(W, H, VK_FORMAT_R8G8B8A8_UNORM);
+        ImageCreateInfo info = ImageCreateInfo::render_target(dw, dh, VK_FORMAT_R8G8B8A8_UNORM);
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         info.layout = ImageLayout::General;
         info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
         dump_picture = device->create_image(info);
     }
-    DrawOptions opt;
-    opt.border = true;      // the N64 look: the border, three-point filtering, the N64's fog
-    opt.three_point = true;
-    opt.n64_fog = true;
+    // the N64 look (the border, three-point filtering, the N64's fog) at 1x, unless ELTALE_DUMP_* say otherwise
+    const DrawOptions &opt = dump_opt;
     CommandBufferHandle cmd = device->request_command_buffer();
     cmd->full_barrier();
     render(*cmd, *dump_picture, &rec, opt);
     BufferCreateInfo bi = {};
-    bi.size = W * H * 4;
+    bi.size = dw * dh * 4;
     bi.domain = BufferDomain::CachedHost;
     bi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     BufferHandle buffer = device->create_buffer(bi);
     cmd->barrier(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                  VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
-    cmd->copy_image_to_buffer(*buffer, *dump_picture, 0, { 0, 0, 0 }, { W, H, 1 }, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
+    cmd->copy_image_to_buffer(*buffer, *dump_picture, 0, { 0, 0, 0 }, { dw, dh, 1 }, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
     cmd->barrier(VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_HOST_BIT,
                  VK_ACCESS_2_HOST_READ_BIT);
     Fence fence;
     device->submit(cmd, &fence);
     fence->wait();
     const uint32_t *px = static_cast<const uint32_t *>(device->map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT));
-    std::vector<uint32_t> rgba(px, px + W * H);
+    std::vector<uint32_t> rgba(px, px + dw * dh);
     device->unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
     for (uint32_t &p : rgba) p |= 0xFF000000u;
     const std::string path = dump_dir + "/" + name + ".png";
-    if (!render_png_write(path.c_str(), rgba.data(), W, H)) std::fprintf(stderr, "[render] cannot write %s\n", path.c_str());
+    if (!render_png_write(path.c_str(), rgba.data(), dw, dh)) std::fprintf(stderr, "[render] cannot write %s\n", path.c_str());
     if (name.compare(0, 6, "frame_") == 0 && name.find('_', 6) == std::string::npos)
         std::printf("P1_NATIVE_FRAME frame=%u items=%zu\n", rec.frame, rec.items.size());
     std::fflush(stdout);

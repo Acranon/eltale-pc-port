@@ -2032,7 +2032,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..3c96b76 100644
+index ebb5c68..2cdb6ef 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -2157,7 +2157,7 @@ index ebb5c68..3c96b76 100644
      D_8007C2A0 = 0;
      mapobj_opaque_cursor = (MapObj **) mapobj_opaque_list;
      for (n = mapobj_opaque_count; n != 0; n--) {
-@@ -440,21 +466,32 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
+@@ -440,21 +466,35 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
              }
          }
          guPosition(&arg0->mtx[gfx_mtx_index], 0.0f, rot, 0.0f, s->scale, x, y, z);
@@ -2185,15 +2185,20 @@ index ebb5c68..3c96b76 100644
 +                        EL_RDX_POSITION, s->x, s->y, s->z, 0.0f, s->angle, 0.0f, 0.0f);
          D_8007C2A0++;
      }
++    /* Port (R7b): the draw distance's map objects past the game's search, drawing only (nd_map.c) */
++    if (ND_ON(EL_KIND_MAP))
++        nd_map_far_opaque();
      MapObj_DrawSpinners(arg0);
 +    nd_mark = gfx_dl_head;
      if (*pCB8 != 0) {
          gDPPipeSync(gfx_dl_head++);
          gDPSetRenderMode(gfx_dl_head++, 0xC8113078, 0);
-@@ -464,8 +501,11 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
+@@ -464,8 +504,13 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
          MapObj_DrawBillboards(arg0, *pCB8, 2, *pCD0);
          MapObj_DrawBillboards(arg0, *pCB8, 3, *pCD0);
      }
++    if (ND_ON(EL_KIND_BILLBOARD))
++        nd_map_far_billboards();
 +    ND_DL_END(EL_KIND_BILLBOARD, nd_mark);
 +    nd_mark = gfx_dl_head;
      gDPSetTextureFilter(gfx_dl_head++, G_TF_BILERP);
@@ -2202,7 +2207,7 @@ index ebb5c68..3c96b76 100644
      /* mapobj_wave_phase_step is read as four u16 pairs */
      a = mapobj_wave_phase;
      b = (MapObjWavePhase *) mapobj_wave_phase_step;
-@@ -519,26 +559,37 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -519,26 +564,39 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
  
      mapobj_translucent_cursor = mapobj_translucent_list;
      n = mapobj_translucent_count;
@@ -2215,6 +2220,8 @@ index ebb5c68..3c96b76 100644
 +        nd_env_color(0, 0, 0, mapobj_translucent_alpha[map_id]);
      }
 +    ND_DL_END(EL_KIND_MAP, nd_mark);
++    if (ND_ON(EL_KIND_MAP))
++        nd_map_far_translucent(n != 0);
      for (; n != 0; n--) {
          s = *mapobj_translucent_cursor++;
          idx = s->model;
@@ -2240,7 +2247,7 @@ index ebb5c68..3c96b76 100644
      mapobj_scrolltex_cursor = mapobj_scrolltex_list;
      n = mapobj_scrolltex_count;
      for (; n != 0; n--) {
-@@ -547,6 +598,7 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -547,6 +605,7 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
          k = (s->kind & 0xFF) - 0x40;
          idx = s->model;
          guPosition(&arg0->mtx[gfx_mtx_index], 0.0f, rot, 0.0f, s->scale, s->x, s->y, s->z);
@@ -2248,7 +2255,7 @@ index ebb5c68..3c96b76 100644
          gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
          gfx_mtx_index++;
          gDPLoadTextureTile(gfx_dl_head++, mapobj_scrolltex_tex[k], G_IM_FMT_RGBA, G_IM_SIZ_16b, 32, mapobj_scrolltex_height[k], 0, 0, 31,
-@@ -554,8 +606,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -554,8 +613,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
                             G_TX_NOLOD);
          gDPSetTileSize(gfx_dl_head++, G_TX_RENDERTILE, 0, (t = mapobj_scrolltex_offset % 256) << 2, 32 << 2, (mapobj_scrolltex_height[k] + t) << 2);
          gSPDisplayList(gfx_dl_head++, map_obj_models[idx].dl);
@@ -2262,7 +2269,7 @@ index ebb5c68..3c96b76 100644
      if (mapobj_animtex_count != 0) {
          gDPPipeSync(gfx_dl_head++);
          gDPSetRenderMode(gfx_dl_head++, 0x0C1849D8, 0);
-@@ -564,10 +621,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -564,10 +628,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
          MapObj_DrawAnimTexBillboards(arg0, mapobj_animtex_count, 0x11, mapobj_animtex_cursor);
          MapObj_DrawAnimTexBillboards(arg0, mapobj_animtex_count, 0x12, mapobj_animtex_cursor);
      }
@@ -2276,7 +2283,7 @@ index ebb5c68..3c96b76 100644
      mapobj_scrolltex_offset += 2;
  }
  
-@@ -645,7 +705,17 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +712,17 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
@@ -2295,7 +2302,7 @@ index ebb5c68..3c96b76 100644
  }
  
  void MapObjAnim_ClearAll(void) {
-@@ -801,6 +871,9 @@ void MapObj_DrawBillboards(GfxFrameData *arg0, s32 count, s32 type, MapObj **lis
+@@ -801,6 +878,9 @@ void MapObj_DrawBillboards(GfxFrameData *arg0, s32 count, s32 type, MapObj **lis
                      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
                      gfx_mtx_index++;
                      gSPDisplayList(gfx_dl_head++, dl2);
@@ -2305,7 +2312,7 @@ index ebb5c68..3c96b76 100644
                      c = &mapobj_billboard_normals[(s32)s->angle];
                      Shadow_Queue(s->x, s->y, s->z, c->x, c->y, c->z, 8.0f);
                      D_8007C2A0++;
-@@ -842,6 +915,9 @@ void MapObj_StepArcSprite(EffectSprite *arg0) {
+@@ -842,6 +922,9 @@ void MapObj_StepArcSprite(EffectSprite *arg0) {
      arg0->z += arg0->vecZ;
      arg0->vecY -= 0.9;
      gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, (mapobj_arc_flicker_tick & 1) ? 0xDC : 0x78);
@@ -2315,7 +2322,7 @@ index ebb5c68..3c96b76 100644
  }
  
  void MapObj_EmitDropSprite(MapObj *arg0) {
-@@ -869,6 +945,9 @@ void MapObj_StepDropSprite(EffectSprite *arg0) {
+@@ -869,6 +952,9 @@ void MapObj_StepDropSprite(EffectSprite *arg0) {
      arg0->y = arg0->y + arg0->vecY / 2;
      arg0->vecY -= 0.2;
      gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, arg0->life * 5);
@@ -2325,7 +2332,7 @@ index ebb5c68..3c96b76 100644
  }
  
  void MapObj_ClearSpinners(void) {
-@@ -932,9 +1011,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
+@@ -932,9 +1018,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
              s = p->obj;
              p->spinAngle -= 0.015707963267948967;
              Math_MtxRotScaleTrans(&arg0->mtx[gfx_mtx_index], 0.0f, p->yawDegrees * 0.017453292519943295, p->spinAngle, s->scale, s->x, s->y, s->z);
@@ -2341,7 +2348,7 @@ index ebb5c68..3c96b76 100644
              D_8007C2A0++;
          }
          p++;
-@@ -951,8 +1036,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -951,8 +1043,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
      MapObj *s;
  
      idx = type - 0x11;
@@ -2356,7 +2363,7 @@ index ebb5c68..3c96b76 100644
      first = 0;
      for (; count != 0; count--) {
          s = *list++;
-@@ -967,6 +1058,10 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -967,6 +1065,10 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
              gfx_mtx_index++;
              gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, mapobj_animtex_alpha[s->model & 3]);
              gSPDisplayList(gfx_dl_head++, dl);
@@ -2367,7 +2374,7 @@ index ebb5c68..3c96b76 100644
              s->model++;
              D_8007C2A0++;
          }
-@@ -1040,6 +1135,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -1040,6 +1142,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;
