@@ -706,7 +706,96 @@ retrace longer for a tick (as Original shows it too).
 - Every kind draws natively under `--renderer native`; the display-list census is 0 (R5's gate). RT64 and
   the frame image are only the fallback and the reference (R8 removes them from play).
 - Pictures between ticks: R6, above.
-- Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
-  move and the 8-pixel border scale with it.
-- The pipeline list / warm-up (R7): one program, few pipeline states.
-- Near-plane clipping as the RSP does it, the RDP dither (N64 dither switch): the residual differences.
+- Resolution scale, MSAA, draw distance, warm-up, N64 dither: R7b, "Modern options" below. Widescreen: R7a.
+- Near-plane clipping as the RSP does it: the residual differences.
+
+## Modern options (R7b, 2026-11-01)
+
+Every option is its own Graphics-page switch, live; the presets only set them (HOST_LAYER.md, the table).
+At the original settings nothing changes: the headless dumps are the N64 look at 1x as before (the native
+frame test's 113 pictures are the same bytes as before R7b; `p1_checks`, `host_checks` and the game's audio
+and frame counts are unchanged).
+
+### Resolution scale (render_native.cpp, nd_renderer.cpp)
+
+- The game's picture is 320x240 times the scale: Original 1x, a multiple 1-8, or *Match the window*: the
+  window's height over 240 rounded up (at most 9), so the presenter only scales down. Depth, the decal's depth
+  copy and the MSAA colour follow the picture's size and samples (`ensure_targets`). CPU-drawn screens (the
+  Controller Pak manager) keep a 320x240 image of their own. The flash recorder keeps its pictures at most at
+  2x (scaled down).
+- **Placement.** The viewport moves half a pixel of the picture (not of the N64): each picture pixel is
+  sampled at its own top-left corner, so 3D and 2D keep their N64 places relative to each other, and a
+  full-screen picture covers the whole image. At 1x this is the old half-pixel move exactly.
+- **2D stays crisp** (`OPT_RECT`): a 2D rectangle in a bigger picture has its edges on the N64 pixels the
+  1x picture covers (a fractional edge rounds up), and each pixel samples its N64 pixel's corner, so text,
+  HUD and pictures are the 1x texels, each a whole block of pixels, without the filter blending in a keyed-out
+  neighbour (the magenta fringes the first try showed). 2D meshes (the compass) are drawn at full resolution.
+- The decal test's tolerance and the dither are in N64 pixels (`picture_scale()`: the depth's height / 240).
+- `ELTALE_RES_SCALE=n` overrides (tests); headless `ELTALE_DUMP_SCALE=n`.
+
+### MSAA
+
+- 2x, 4x, 8x (as the GPU can: `msaa_supported`): drawn into a multisampled colour and depth, resolved into the
+  picture by the render pass (the resolve attachment; a decal's depth copy ends the pass and the next one
+  loads and resolves again).
+- **Cut-outs** (CVG x alpha, the alpha compare) are shaded at every sample (Granite's sample shading, 3D
+  only): the discard per sample gives the trees, fences and grass smooth edges, as KF4's cut-out AA.
+- **Decals** read the multisampled depth copy (its first sample: `nd_ms.frag`, the same shader built with
+  `ND_MSAA`); the shadows and map decals look as at 1x.
+- Granite's render pass hash left out the sample counts (2x, 4x and 8x were one pass, the first made): the
+  Granite patch (`cmake/granite_pipeline_warm.cmake`) now hashes them.
+- `ELTALE_MSAA=n` overrides; headless `ELTALE_DUMP_MSAA=n`.
+
+### Draw distance (nd_map.c, nd.vert)
+
+The game's view ends where its grid search ends (SURVEY.md 6: a disc of 7 or 5 cells of 100 units on the fields,
+2 of 600 on map 9; pattern 0 maps draw the whole sub-area), with its fog nearly opaque there (fog 750-1000 per
+mille of the depth range: at the disc's edge 82-95% fog) and the far plane at 1000-2400. Far (2x) and Farther
+(3x) move all three by k:
+
+- **Fog and far plane** (the renderer): the perspective's z/w is A - C/w (A = -m[2][2]), so the fog and the far
+  plane as if every vertex were k times nearer use z' = A w + k (z - A w) (nd.vert; `tile_offset.zw` = A, k).
+  The fog keeps its colour and shape, k times as far; the backdrop is untouched.
+- **More objects, drawing only** (`nd_map_far_*`, nd_map.c; calls in map.c): the cells of a disc k times as
+  wide that the game's search left out, read as they are: static objects (spline-animated ones at their
+  current frame), translucent and scrolling-texture objects (first, they are the farthest), and billboards past
+  the game's 1,500 units out to 1,500k (no shadow, no cone: the GPU clips). The game's own collection updates
+  what it collects (waves, spline steps, emitters with `Math_Rand`, ambient sounds, spinners), so the game's
+  search, lists (256 each) and matrix pool are not widened: wave objects, emitters, spinners and flames keep the
+  game's distance. Ids are the game's, so an object passing into the game's disc stays one item for the
+  pictures between. The map tour at 2x keeps its 30,374 frames and audio a2d2e81245d538d4; it adds 30-100
+  items a tick on the fields (map 27: 104 -> 207).
+- render.h v6 `draw_distance()`: the game side reads k each tick. `ELTALE_DRAW_DISTANCE=k` fixes it (tests and
+  the headless dumps).
+
+### Pipelines made ahead (nd_pipeline_warm.cpp, from KF4's gsn_pipeline_warm.inc)
+
+- The pipeline cache (`native_pipelines.bin`) and every pipeline Granite makes are kept in the data folder
+  (`native_pipeline_list.txt`, KF4's line format: shaders by SPIR-V hash and layout, the compatible render pass,
+  the state); the shipped list is `port/render/nd_pipeline_list.h` (46 pipelines: MSAA 1x 10, 2x/4x/8x 12 each),
+  made by `tools/pipeline_list.py` from `tools/warm_test.py --collect` runs (New Game and a walk, a battle with
+  every element's spells, the item menu and pages, the ending). Make it again after a shader or Granite change
+  (stale lines are skipped by their hash).
+- At the start the lines for the MSAA count in use are made on threads; a change of MSAA in the menu starts that
+  count's. The first picture that draws waits for them (~70 ms, at the start: the boot logos), so no draw makes
+  one twice. `ELTALE_WARM=0` makes nothing ahead; `P1_PIPELINES` at exit.
+- **The hitch**, measured with the driver's own disk cache off and empty (`tools/warm_test.py`, MSAA 4x, hidden
+  window): without the list each case made 9-12 pipelines in play, 330-360 ms in all, the worst 91-105 ms
+  each (6 frames at 60) when a map, a spell or a menu was first drawn; with the shipped list from a fresh data
+  folder: 0 made in play, 12 made ahead in 0.11 s on the threads, 64-75 ms waited once at the start. MSAA 1x:
+  7-10 pipelines, 250 ms, worst 93 ms -> 0.
+
+### N64 dither (Classic)
+
+`OPT_DITHER`: the RDP's 5 bits a channel with its magic square at each N64 pixel, for draws the GPU does not
+blend with the picture (the RDP dithers after its blend; blended draws stay smooth).
+
+### Tests and tools
+
+| | |
+|---|---|
+| `ELTALE_DUMP_SCALE=n`, `ELTALE_DUMP_MSAA=n`, `ELTALE_DUMP_LOOK=modern` (no border, fog per pixel), `ELTALE_DRAW_DISTANCE=k` | headless dumps with the options (contact sheets) |
+| `ELTALE_OPTIONS_CYCLE=N` | every N pictures the next MSAA, resolution and draw distance, as the menu changes them (targets and pipelines made again in play) |
+| `tools/warm_test.py` | the hitch with and without the list (cold, warm, shipped), `--collect` for pipeline_list.py |
+| `tools/pace_test.py --scale N --msaa N --distance far` | pacing at the options |
+

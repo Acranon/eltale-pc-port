@@ -79,20 +79,20 @@ never initialised.
 - **Presets** (owner decision 3) only set the switches; changing a switch makes the preset
   whichever one matches, else Custom.
 
-| Switch | Classic | Classic + visuals | Everything on (default) | RT64 | native (R0) |
+| Switch | Classic | Classic + visuals | Everything on (default) | RT64 | native |
 |---|---|---|---|---|---|
-| Resolution | original 320x240 | match window | match window | wired | later |
-| MSAA | off | 4x | 4x | wired | later |
+| Resolution | original 320x240 | match window | match window | wired | wired (R7b) |
+| MSAA | off | 4x | 4x | wired | wired (R7b) |
 | Scaling to the window | sharp | smooth pixel edges | smooth pixel edges | wired | wired (sharp/linear) |
-| N64 three-point filtering | on | on | on | wired | later |
+| N64 three-point filtering | on | on | on | wired | wired (R2) |
 | Frame rate | original 30 | original 30 | fixed 240 | wired (RT64's interpolation) | wired (R6: pictures between ticks) |
 | Vsync | on | on | on | — | wired |
-| Widescreen | off | off | on | later | later (R7) |
-| N64 border (8 px) | on | off | off | later | later |
-| Draw distance | original | far | far | later | later (R7) |
-| N64 fog | on | on | off | later | later |
-| N64 dither | on | off | off | later | later |
-| Shader warm-up | on | on | on | later | later (R7) |
+| Widescreen | off | off | on | later | R7a (nr/wide): the presets already set `widescreen` |
+| N64 border (8 px) | on | off | off | later | wired (R2) |
+| Draw distance | original (1x) | far (2x) | far (2x) | later | wired (R7b; also farther, 3x) |
+| N64 fog | on | on | off | later | wired (R2) |
+| N64 dither | on | off | off | later | wired (R7b) |
+| Shader warm-up | on | on | on | later | wired (R7b) |
 
 "later" switches are kept and shown greyed with "(later)" in the Graphics page.
 

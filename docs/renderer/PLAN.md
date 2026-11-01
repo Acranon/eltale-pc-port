@@ -127,6 +127,9 @@ the map tour and the ending: 0 flagged; pacing at 240 even, the game at 60 retra
   fallback (no hidden safety nets).
 
 ### R7: Modern options
+**R7b done 2026-11-01** (branch nr/options): resolution scale, MSAA, draw distance, shader warm-up, the N64
+dither and the presets wired; see [NATIVE_DRAW.md](NATIVE_DRAW.md), "Modern options". R7a (widescreen) is
+nr/wide.
 - Resolution scale and MSAA.
 - **Widescreen:**
   - aspect in the perspective call and in `Camera_WorldToScreen` x;

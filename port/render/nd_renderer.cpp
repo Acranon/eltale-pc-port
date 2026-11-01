@@ -635,8 +635,12 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                     };
                     rect_first.resize(i + 1, 0);
                     rect_first[i] = uint32_t(rect_vertices.size());
-                    vert(x0, y0); vert(x1, y0); vert(x1, y1);
-                    vert(x0, y0); vert(x1, y1); vert(x0, y1);
+                    // (in a bigger picture the edges go to the N64 pixels the 1x picture covers: a pixel is in when
+                    // its corner is, so a fractional edge rounds up, and no part-row of a texel shows)
+                    float ex0 = x0, ey0 = y0, ex1 = x1, ey1 = y1;
+                    if (ph != H) ex0 = std::ceil(x0), ey0 = std::ceil(y0), ex1 = std::ceil(x1), ey1 = std::ceil(y1);
+                    vert(ex0, ey0); vert(ex1, ey0); vert(ex1, ey1);
+                    vert(ex0, ey0); vert(ex1, ey1); vert(ex0, ey1);
                 } else {
                     std::memcpy(g.mvp, d.matrix, sizeof g.mvp);
                 }
