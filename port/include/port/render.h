@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 3
+#define EL_RENDER_API_VERSION 4
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -202,6 +202,44 @@ typedef struct ElRdFrameInfo {
     uint8_t mode;           /* core_game_mode */
 } ElRdFrameInfo;
 
+/* ---- 2D (R5): texture and fill rectangles, and triangles under the 2D projection --------------------
+ *
+ * A 2D item is drawn in the recording's order with the 3D items (the game's frame-list order). Its
+ * place is in the game's 320x240 screen units. Colours are the item's own (the RDP's colour registers
+ * when the game queued it); the material (material_2d) holds the rest of the RDP state: combiner,
+ * othermodes, the texture tiles. No depth.
+ *
+ * A rectangle is the RDP's: it covers the pixels whose top-left corner is in [x0, x1) x [y0, y1) (fill
+ * rectangles in FILL mode are made half-open by the game side), and its texel at pixel (x, y) is
+ * s = s0 + (x - x0) * dsdx, t = t0 + (y - y0) * dtdy, sampled by the material's tile as the RDP does.
+ *
+ * For R7 (widescreen) each item says where it belongs (EL_RD2D_ANCHOR_*) and gives its screen
+ * rectangle; R6 matches items between ticks by id. */
+typedef struct ElRd2D {
+    uint64_t id;            /* stable over ticks: (kind << 56) | (element << 40) | the item's number in it */
+    uint32_t mesh;          /* EL_RD2D_RECT: a rectangle; else a mesh (mesh_upload: 2D triangles) */
+    uint32_t material;      /* a rectangle's material (material_2d) */
+    uint32_t flags;         /* EL_RD2D_ANCHOR_* | EL_RD2D_* */
+    float rect[4];          /* the screen rectangle x0, y0, x1, y1 (320x240 units); a mesh's extent */
+    float st[4];            /* a rectangle's s0, t0 (texels) and ds/dx, dt/dy (texels per pixel) */
+    float matrix[16];       /* a mesh's object-to-clip matrix (N64 layout): its model matrix times the 2D
+                             * projection (the game's ortho times its translate) */
+    float model[16];        /* a mesh's model matrix alone (R6, R7) */
+    uint8_t env[4], prim[4], blend[4], fog[4]; /* the colour registers */
+} ElRd2D;
+
+enum { EL_RD2D_RECT = 0xFFFFFFFFu };
+
+enum {
+    EL_RD2D_ANCHOR_CENTRE = 0,  /* keeps its place in a 320-wide centre (menus, text, pictures) */
+    EL_RD2D_ANCHOR_LEFT = 1,    /* moves with the left edge */
+    EL_RD2D_ANCHOR_RIGHT = 2,   /* moves with the right edge */
+    EL_RD2D_ANCHOR_STRETCH = 3, /* covers the whole width (fades, letterbox, full-screen fills) */
+    EL_RD2D_ANCHOR_WORLD = 4,   /* placed from a 3D position (Camera_WorldToScreen: markers, numbers) */
+    EL_RD2D_ANCHOR_MASK = 7,
+    EL_RD2D_FILL = 1 << 3,      /* a fill rectangle (FILL mode or an untextured rectangle) */
+};
+
 /* ---- The function table ---------------------------------------------------------------------------- */
 
 typedef struct ElRenderApi {
@@ -224,6 +262,11 @@ typedef struct ElRenderApi {
     void (*fog_position)(int16_t multiplier, int16_t offset); /* gSPFogPosition's fm and fo */
     void (*draw)(const ElRdDraw *draw);
     void (*frame_end)(uint32_t frame);
+
+    /* 2D (R5). material_2d: a material for 2D rectangles (its colours are the items'), loaded once
+     * (~0u when full: then resources_reset). draw_2d: a rectangle or a 2D mesh, in order with draw. */
+    uint32_t (*material_2d)(const ElRdMaterial *material);
+    void (*draw_2d)(const ElRd2D *item);
 } ElRenderApi;
 
 #ifdef __cplusplus

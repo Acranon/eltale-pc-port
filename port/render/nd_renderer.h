@@ -29,12 +29,14 @@ struct Recording {
     struct Item {
         ElRdDraw draw;
         uint32_t state;
+        int32_t item2d = -1; // a 2D item (items2d): the draw is unused
     };
     ElRdFrameInfo info = {};
     ElRdCamera camera = {};
     bool has_camera = false;
     std::vector<State> states;
     std::vector<Item> items;
+    std::vector<ElRd2D> items2d;
     uint32_t frame = 0;
 };
 
@@ -69,6 +71,8 @@ public:
     void fog_position(int16_t mul, int16_t off);
     void draw(const ElRdDraw *draw);
     void frame_end(uint32_t frame);
+    uint32_t material_2d(const ElRdMaterial *material);
+    void draw_2d(const ElRd2D *item);
 
 private:
     struct Mesh {
@@ -90,6 +94,7 @@ private:
     };
 
     void dump_frame(const Recording &rec);
+    uint32_t upload_material(const ElRdMaterial &m);
     bool want_dump(uint32_t frame) const;
 
     Vulkan::Device *device = nullptr;

@@ -18,6 +18,7 @@
  *       they are queued: the game runs the same). For the reference of one kind alone. */
 #include "game/native_draw/native_draw.h"
 #include "game/native_draw/nd_internal.h"
+#include "game/native_draw/nd_2d.h"
 
 #include "game/core/main.h"
 #include "game/camera/camera.h"
@@ -104,7 +105,51 @@ void nd_after_reset(void) {
 }
 
 void nd_forget(uintptr_t host, uint32_t bytes) {
-    if (api) nd_model_forget(host, bytes);
+    if (api) nd_model_forget(host, bytes), nd_2d_forget(host, bytes);
+}
+
+/* ---- the frame list: what is left of it (ELTALE_DL_CENSUS) ---------------------------------------- */
+
+static long kept_frame[EL_KIND_COUNT];
+static int census = -1;
+static unsigned long long census_frames, census_frames_left, census_kind[EL_KIND_COUNT], census_state;
+
+static void census_print(void) {
+    printf("P1_DL_CENSUS frames=%llu frames_with_commands=%llu", census_frames, census_frames_left);
+    unsigned long long total = census_state;
+    for (int k = 0; k < EL_KIND_COUNT; k++) total += census_kind[k];
+    printf(" commands=%llu", total);
+    for (int k = 0; k < EL_KIND_COUNT; k++)
+        if (census_kind[k]) printf(" %s=%llu", kind_names[k], census_kind[k]);
+    printf(" state=%llu\n", census_state);
+    fflush(stdout);
+}
+
+void nd_dl_kept(int kind, long count) {
+    if (kind >= 0 && kind < EL_KIND_COUNT && count > 0) kept_frame[kind] += count;
+}
+
+void nd_frame_list_end(void *list_start, void **head) {
+    if (!nd_kinds) return;
+    long kept = 0;
+    for (int k = 0; k < EL_KIND_COUNT; k++) kept += kept_frame[k];
+    /* every command the kinds queued went to the native renderer: the frame's set-up (segments, the
+     * viewport, the clears: the native renderer clears by itself) and the state the kinds sent from where
+     * it was queued (camera, lights, fog) are not needed either */
+    if (!kept && !compare) *head = list_start;
+    if (census < 0) {
+        census = getenv("ELTALE_DL_CENSUS") != NULL;
+        if (census) atexit(census_print);
+    }
+    if (census) {
+        long left = (long)(((uint8_t *)*head - (uint8_t *)list_start) / 8);
+        census_frames++;
+        if (left) census_frames_left++;
+        long state = left;
+        for (int k = 0; k < EL_KIND_COUNT; k++) census_kind[k] += (unsigned long long)kept_frame[k], state -= kept_frame[k];
+        census_state += (unsigned long long)(state > 0 ? state : 0);
+    }
+    memset(kept_frame, 0, sizeof kept_frame);
 }
 
 /* ---- the tick ---------------------------------------------------------------------------------- */
@@ -123,6 +168,7 @@ void nd_frame_begin(void) {
     info.mode = (u8)core_game_mode;
     api->frame_begin(&info);
     in_frame = 1;
+    nd_2d_frame_begin();
 }
 
 void nd_frame_end(unsigned frame) {

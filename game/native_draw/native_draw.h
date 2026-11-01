@@ -28,10 +28,19 @@ extern unsigned nd_dl_kinds; /* kinds whose display-list commands stay in the fr
 #define ND_ANY() (nd_kinds != 0)
 /* the commands a section queued are dropped when its kind's list is off */
 #define ND_DL_BEGIN(mark) Gfx *mark = gfx_dl_head
-#define ND_DL_END(kind, mark) do { if (!ND_DL(kind)) gfx_dl_head = (mark); } while (0)
+#define ND_DL_END(kind, mark)     do { if (!ND_DL(kind)) gfx_dl_head = (mark); else if (nd_kinds) nd_dl_kept((kind), gfx_dl_head - (mark)); } while (0)
 
 struct GfxFrameData;
 struct MapObj;
+
+/* A kind's section kept `count` commands in the frame list (the census, and whether the frame's own
+ * commands are still needed: nd_frame_list_end) */
+void nd_dl_kept(int kind, long count);
+/* The end of the frame list (before its FullSync): with the native renderer drawing everything that
+ * was kept (no kind kept a command, no compare) the frame's own set-up and state commands go too, so
+ * nothing is left for a display-list renderer. ELTALE_DL_CENSUS=1 counts what is left, per kind, and
+ * prints P1_DL_CENSUS at exit. */
+void nd_frame_list_end(void *list_start, void **head);
 
 /* Start-up: the switches from the command line and the environment (call once, before the game). */
 void nd_config(int argc, char **argv);
@@ -67,6 +76,7 @@ void nd_map_draw(const struct MapObj *obj, int pass, const void *mtx, uint32_t d
 #define ND_ANY() 0
 #define ND_DL_BEGIN(mark) Gfx *mark = gfx_dl_head
 #define ND_DL_END(kind, mark) (void)(mark)
+#define nd_frame_list_end(s, h) ((void)0)
 #define nd_frame_begin() ((void)0)
 #define nd_camera(f, s) ((void)0)
 #define nd_lights(l) ((void)0)

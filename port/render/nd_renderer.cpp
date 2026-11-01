@@ -31,7 +31,7 @@ constexpr size_t MATERIAL_CAP = size_t(1) << 16;
 constexpr size_t TEXEL_CAP = size_t(1) << 24;    // 64 MiB of texels
 constexpr size_t PALETTE_CAP = 4096 * 256;
 
-enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4, OPT_DECAL = 8 };
+enum : uint32_t { OPT_THREE_POINT = 1, OPT_FAR_CLIP = 2, OPT_N64_FOG = 4, OPT_DECAL = 8, OPT_SKIP = 1u << 31 };
 
 struct GpuTile {
     uint32_t texels, wh, fmt, mode;
@@ -144,10 +144,13 @@ void api_fog(const uint8_t *c) { instance.fog_color(c); }
 void api_fog_position(int16_t m, int16_t o) { instance.fog_position(m, o); }
 void api_draw(const ElRdDraw *d) { instance.draw(d); }
 void api_frame_end(uint32_t f) { instance.frame_end(f); }
+uint32_t api_material_2d(const ElRdMaterial *m) { return instance.material_2d(m); }
+void api_draw_2d(const ElRd2D *d) { instance.draw_2d(d); }
 
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
+    api_material_2d, api_draw_2d,
 };
 
 } // namespace
@@ -274,26 +277,7 @@ uint32_t NativeDraw::mesh_upload(const ElRdMeshDesc *d) {
     Mesh m = {};
     m.first = uint32_t(vertices.append(d->vertices, size_t(d->vertex_count) * sizeof(ElRdVertex)) / sizeof(ElRdVertex));
     const uint32_t mat0 = uint32_t(material_cpu.size());
-    for (uint32_t i = 0; i < d->material_count; i++) {
-        const ElRdMaterial &s = d->materials[i];
-        GpuMaterial g = {};
-        g.combine0 = s.combine[0];
-        g.combine1 = s.combine[1];
-        g.othermode_h = s.othermode_h;
-        g.othermode_l = s.othermode_l;
-        g.geometry = s.geometry;
-        g.own = s.own;
-        g.prim = pack(s.prim);
-        g.env = pack(s.env);
-        g.blend = pack(s.blend);
-        g.fog = pack(s.fog);
-        g.misc = uint32_t(s.prim_lod_frac) | uint32_t(s.k4) << 8 | uint32_t(s.k5) << 16;
-        g.flags = s.flags;
-        g.tile[0] = gpu_tile(s.tile[0]);
-        g.tile[1] = gpu_tile(s.tile[1]);
-        materials.append(&g, sizeof g);
-        material_cpu.push_back(s);
-    }
+    for (uint32_t i = 0; i < d->material_count; i++) upload_material(d->materials[i]);
     m.group_first = uint32_t(groups.size());
     m.group_count = d->group_count;
     for (uint32_t i = 0; i < d->group_count; i++)
@@ -301,6 +285,33 @@ uint32_t NativeDraw::mesh_upload(const ElRdMeshDesc *d) {
     std::memcpy(m.bounds, d->bounds, sizeof m.bounds);
     meshes.push_back(m);
     return uint32_t(meshes.size() - 1);
+}
+
+// one material into the materials buffer (the caller checked the room) -> its index
+uint32_t NativeDraw::upload_material(const ElRdMaterial &s) {
+    GpuMaterial g = {};
+    g.combine0 = s.combine[0];
+    g.combine1 = s.combine[1];
+    g.othermode_h = s.othermode_h;
+    g.othermode_l = s.othermode_l;
+    g.geometry = s.geometry;
+    g.own = s.own;
+    g.prim = pack(s.prim);
+    g.env = pack(s.env);
+    g.blend = pack(s.blend);
+    g.fog = pack(s.fog);
+    g.misc = uint32_t(s.prim_lod_frac) | uint32_t(s.k4) << 8 | uint32_t(s.k5) << 16;
+    g.flags = s.flags;
+    g.tile[0] = gpu_tile(s.tile[0]);
+    g.tile[1] = gpu_tile(s.tile[1]);
+    materials.append(&g, sizeof g);
+    material_cpu.push_back(s);
+    return uint32_t(material_cpu.size() - 1);
+}
+
+uint32_t NativeDraw::material_2d(const ElRdMaterial *m) {
+    if (materials.used + sizeof(GpuMaterial) > materials.capacity) return ~0u;
+    return upload_material(*m);
 }
 
 void NativeDraw::palette(uint32_t id, const uint16_t *e, uint32_t count) {
@@ -323,6 +334,7 @@ void NativeDraw::resources_reset() {
 void NativeDraw::frame_begin(const ElRdFrameInfo *info) {
     building.info = *info;
     building.items.clear();
+    building.items2d.clear();
     building.states.clear();
     building.has_camera = false;
     state_dirty = true;
@@ -349,6 +361,20 @@ void NativeDraw::draw(const ElRdDraw *d) {
     building.items.push_back({ *d, uint32_t(building.states.size() - 1) });
 }
 
+void NativeDraw::draw_2d(const ElRd2D *d) {
+    if (!in_frame) return;
+    if (d->mesh == EL_RD2D_RECT ? d->material >= material_cpu.size() : d->mesh >= meshes.size()) return;
+    if (state_dirty || building.states.empty()) {
+        building.states.push_back(state);
+        state_dirty = false;
+    }
+    Recording::Item it = {};
+    it.state = uint32_t(building.states.size() - 1);
+    it.item2d = int32_t(building.items2d.size());
+    building.items2d.push_back(*d);
+    building.items.push_back(it);
+}
+
 void NativeDraw::frame_end(uint32_t frame) {
     if (!in_frame) return;
     in_frame = false;
@@ -373,7 +399,10 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     std::vector<GpuDraw> gd;
     std::vector<uint32_t> options;
     const bool camera_ok = rec && rec->has_camera;
-    if (camera_ok) {
+    // 2D rectangles: 6 vertices each, in screen units (a buffer of this picture's own)
+    std::vector<ElRdVertex> rect_vertices;
+    std::vector<uint32_t> rect_first;
+    if (rec && !rec->items.empty()) {
         gd.resize(rec->items.size());
         options.resize(rec->items.size());
         const ElRdCamera &cam = rec->camera;
@@ -382,6 +411,43 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             const Recording::State &s = rec->states[it.state];
             GpuDraw &g = gd[i];
             std::memset(&g, 0, sizeof g);
+            if (it.item2d >= 0) {
+                const ElRd2D &d = rec->items2d[size_t(it.item2d)];
+                if (d.mesh == EL_RD2D_RECT) {
+                    // pixels to clip space (x right, y down; the vertex stage flips y back)
+                    static const float screen[16] = { 1.0f / 160, 0, 0, 0, 0, -1.0f / 120, 0, 0, 0, 0, 0, 0, -1, 1, 0, 1 };
+                    std::memcpy(g.mvp, screen, sizeof screen);
+                    // the RDP's texel at pixel (x, y): s0 + (x - x0) * dsdx; a little over, so a texel
+                    // boundary the interpolation lands just under still floors to the right texel
+                    const float eps = 1.0f / 256, x0 = d.rect[0], y0 = d.rect[1], x1 = d.rect[2], y1 = d.rect[3];
+                    auto vert = [&](float x, float y) {
+                        ElRdVertex v = {};
+                        v.x = x;
+                        v.y = y;
+                        v.s = d.st[0] + (x - x0) * d.st[2] + eps;
+                        v.t = d.st[1] + (y - y0) * d.st[3] + eps;
+                        rect_vertices.push_back(v);
+                    };
+                    rect_first.resize(i + 1, 0);
+                    rect_first[i] = uint32_t(rect_vertices.size());
+                    vert(x0, y0); vert(x1, y0); vert(x1, y1);
+                    vert(x0, y0); vert(x1, y1); vert(x0, y1);
+                } else {
+                    std::memcpy(g.mvp, d.matrix, sizeof g.mvp);
+                }
+                g.colors[0] = pack(d.env);
+                g.colors[1] = pack(d.prim);
+                g.colors[2] = pack(d.fog);
+                g.colors[3] = pack(d.blend);
+                g.fog[2] = 0.0f; // the depth written (no depth test for 2D)
+                g.fog[3] = 1.0f;
+                options[i] = opt.three_point ? OPT_THREE_POINT : 0;
+                continue;
+            }
+            if (!camera_ok && !(it.draw.flags & EL_RDD_SCREEN)) {
+                options[i] = OPT_SKIP;
+                continue;
+            }
             if (it.draw.flags & EL_RDD_SCREEN) std::memcpy(g.mvp, it.draw.matrix, sizeof g.mvp);
             else mul(it.draw.matrix, cam.projection, g.mvp);
             for (int l = 0; l < 3; l++) {
@@ -417,12 +483,20 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             options[i] = o;
         }
     }
+    BufferHandle rect_buffer;
+    if (!rect_vertices.empty()) {
+        BufferCreateInfo info = {};
+        info.size = rect_vertices.size() * sizeof(ElRdVertex);
+        info.domain = BufferDomain::Device;
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        rect_buffer = device->create_buffer(info, rect_vertices.data());
+    }
     // ELTALE_ND_VIEW=n (a test): 1 the shade, 2 TEXEL0, 3 the shade alpha, 4 the combiner's output
     static const uint32_t view = (std::getenv("ELTALE_ND_VIEW") ? uint32_t(std::atoi(std::getenv("ELTALE_ND_VIEW"))) : 0);
     if (std::getenv("ELTALE_ND_DEBUG") && rec) {
         std::fprintf(stderr, "[nd] frame %u: camera %d items %zu states %zu\n", rec->frame, rec->has_camera, rec->items.size(),
                      rec->states.size());
-        if (!gd.empty()) {
+        if (!gd.empty() && rec->items[0].item2d < 0 && !(options[0] & OPT_SKIP)) {
             const float *m = gd[0].mvp;
             const Mesh &mesh = meshes[rec->items[0].draw.mesh];
             const ElRdVertex *v = reinterpret_cast<const ElRdVertex *>(vertices.shadow.data()) + mesh.first;
@@ -509,14 +583,31 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     if (!gd.empty()) {
         setup();
         bool copied = false, written = false;
+        bool rect_bound = false;
         for (size_t i = 0; i < rec->items.size(); i++) {
-            const Mesh &mesh = meshes[rec->items[i].draw.mesh];
+            if (options[i] & OPT_SKIP) continue;
+            const Recording::Item &item = rec->items[i];
+            const ElRd2D *d2 = item.item2d >= 0 ? &rec->items2d[size_t(item.item2d)] : nullptr;
+            if (d2 && d2->mesh == EL_RD2D_RECT) {
+                if (!rect_bound) cmd.set_storage_buffer(0, 0, *rect_buffer);
+                rect_bound = true;
+                const ElRdMaterial &mat = material_cpu[d2->material];
+                apply_state(cmd, mat);
+                Push push = { uint32_t(i), d2->material, options[i], view };
+                cmd.push_constants(&push, 0, sizeof push);
+                cmd.draw(6, 1, rect_first[i], 0);
+                continue;
+            }
+            if (rect_bound) cmd.set_storage_buffer(0, 0, *vertices.buffer);
+            rect_bound = false;
+            const Mesh &mesh = meshes[d2 ? d2->mesh : item.draw.mesh];
             for (uint32_t k = 0; k < mesh.group_count; k++) {
                 const Group &grp = groups[mesh.group_first + k];
                 const ElRdMaterial &mat = material_cpu[grp.material];
                 const bool decal = is_decal(mat);
                 if (decal && (!copied || written)) {
                     copy_depth();
+                    rect_bound = false;
                     copied = true;
                     written = false;
                 }

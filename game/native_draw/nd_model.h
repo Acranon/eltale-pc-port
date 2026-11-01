@@ -40,4 +40,14 @@ void nd_model_forget(uintptr_t host, uint32_t bytes);
 /* Drop everything (the menu's reset, or the renderer's buffers are full). */
 void nd_model_reset(void);
 
+/* For other loaders (the 2D core, nd_2d.c), sharing the renderer's texel buffer and palette ids:
+ * - texels (RGBA8 or palette indices, as ElRdTile) by content -> their offset; ~0u when the buffers
+ *   are full (call nd_model_reset, then load again);
+ * - a palette of fixed values (raw 16-bit entries) by content -> its id, sent at the frame's end;
+ * ~0u when the palette ids are used up. Either palette is marked used this frame. */
+uint32_t nd_model_texture(const uint32_t *texels, uint32_t count);
+uint32_t nd_model_palette_values(const uint16_t *entries, int count);
+/* a palette read from memory each frame (count 16-bit entries at src; native: host order) -> its id */
+uint32_t nd_model_palette_source(const uint8_t *src, int native, int count);
+
 #endif

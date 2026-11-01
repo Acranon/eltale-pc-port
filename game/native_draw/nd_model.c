@@ -20,6 +20,7 @@
 #include <string.h>
 
 uintptr_t Port_N64ToNative(uint32_t n64);
+void nd_2d_reset(void);
 
 enum { RDRAM = 0x80000000u, RDRAM_BYTES = 8 << 20, MAX_DEPTH = 18, MAX_COMMANDS = 1 << 16 };
 
@@ -672,6 +673,7 @@ void nd_model_reset(void) {
     }
     palette_count = 0;
     mesh_count = 0;
+    nd_2d_reset(); /* the 2D core's textures, materials and palettes go too (nd_2d.c) */
     if (api) api->resources_reset();
 }
 
@@ -784,4 +786,48 @@ void nd_model_forget(uintptr_t host, uint32_t bytes) {
             else pm = &m->next;
         }
     }
+}
+
+/* ---- for other loaders (nd_model.h) ---------------------------------------------------------------- */
+
+uint32_t nd_model_texture(const uint32_t *texels, uint32_t count) {
+    resources_full = 0;
+    uint32_t off = texture_offset(texels, count);
+    return resources_full ? ~0u : off;
+}
+
+static uint32_t palette_intern(Palette *pp) {
+    Palette p = *pp;
+    p.key = fnv(&p.count, sizeof p.count, UINT64_C(0xCBF29CE484222325));
+    p.key = fnv(&p.runs, 1, p.key);
+    for (int r = 0; r < p.runs; r++) p.key = fnv(&p.run[r], sizeof p.run[r], p.key);
+    p.key = fnv(p.fixed, sizeof p.fixed, p.key);
+    for (uint32_t i = 0; i < palette_count; i++)
+        if (palettes[i].key == p.key) { palette_used[i] = 1; return i; }
+    if (palette_count >= 4096) return ~0u;
+    palettes = grow(palettes, &palette_cap, palette_count + 1, sizeof(Palette));
+    palette_used = realloc(palette_used, palette_cap);
+    palettes[palette_count] = p;
+    palette_used[palette_count] = 1;
+    return palette_count++;
+}
+
+uint32_t nd_model_palette_values(const uint16_t *entries, int count) {
+    Palette p;
+    memset(&p, 0, sizeof p);
+    p.count = (uint16_t)count;
+    memcpy(p.fixed, entries, (size_t)count * 2);
+    return palette_intern(&p);
+}
+
+uint32_t nd_model_palette_source(const uint8_t *src, int native, int count) {
+    Palette p;
+    memset(&p, 0, sizeof p);
+    p.count = (uint16_t)count;
+    p.runs = 1;
+    p.run[0].first = 0;
+    p.run[0].len = (uint16_t)count;
+    p.run[0].src = src;
+    p.run[0].native = (uint8_t)native;
+    return palette_intern(&p);
 }
