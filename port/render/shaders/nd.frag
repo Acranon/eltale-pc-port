@@ -14,6 +14,32 @@ layout(location = 3) in float v_far;
 layout(location = 4) in vec2 v_zw;
 layout(location = 0) out vec4 o_color;
 
+// The depth buffer as it was before this decal draw (nd_renderer.cpp copies it when a decal comes after
+// a depth write): the RDP's decal test is two-sided, so it is done here (OPT_DECAL).
+layout(set = 0, binding = 5) uniform sampler2D depth_before;
+
+// The RDP's Z_MODE decal: pass where |z - z in memory| <= dz max, dz = |dz/dx| + |dz/dy| of the pixel
+// (the new one's, and the one stored with the memory's z) rounded up to a power of two, in the RDP's
+// screen-z units. Depth here is near/w and the N64's screen z is affine in 1/w, so the test is the same
+// in either after one scale: d.fog.w = N64 screen-z units per unit of depth (nd_renderer.cpp). The
+// tolerance is in N64 pixels (a bigger picture keeps the N64's window).
+bool decal_pass(Draw d, float dz_new) {
+    ivec2 p = ivec2(gl_FragCoord.xy), size = textureSize(depth_before, 0);
+    float px = float(size.x) / 320.0;
+    float z = gl_FragCoord.z, zm = texelFetch(depth_before, p, 0).r;
+    float dzn = dz_new * px;
+    // the memory's dz: its surface's slope from the neighbours (the smaller side, so an edge counts less)
+    ivec2 hi = size - 1;
+    float zl = texelFetch(depth_before, clamp(p - ivec2(1, 0), ivec2(0), hi), 0).r;
+    float zr = texelFetch(depth_before, clamp(p + ivec2(1, 0), ivec2(0), hi), 0).r;
+    float zu = texelFetch(depth_before, clamp(p - ivec2(0, 1), ivec2(0), hi), 0).r;
+    float zd = texelFetch(depth_before, clamp(p + ivec2(0, 1), ivec2(0), hi), 0).r;
+    float dzm = (min(abs(zm - zl), abs(zr - zm)) + min(abs(zm - zu), abs(zd - zm))) * px;
+    float dz = max(dzn, dzm) * d.fog.w;
+    dz = exp2(ceil(log2(max(dz, 1.0))));
+    return abs(z - zm) * d.fog.w <= dz;
+}
+
 ivec4 rgba8(uint c) {
     return ivec4(int(c & 255u), int(c >> 8 & 255u), int(c >> 16 & 255u), int(c >> 24));
 }
@@ -202,7 +228,9 @@ ivec3 blend_cycle(uint p, uint ma, uint m, uint mb, ivec3 pixel, int pixel_a, iv
 void main() {
     Material m = materials[pc.material];
     Draw d = draws[pc.draw];
+    float dz_new = abs(dFdx(gl_FragCoord.z)) + abs(dFdy(gl_FragCoord.z)); // before any discard
     if ((pc.options & OPT_FAR_CLIP) != 0u && v_far < 0.0) discard;
+    if ((pc.options & OPT_DECAL) != 0u && !decal_pass(d, dz_new)) discard;
 
     uint oh = m.othermode_h, ol = m.othermode_l;
     bool two = (oh >> 20 & 3u) == 1u;
