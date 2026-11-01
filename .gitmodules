@@ -4,3 +4,6 @@
 [submodule "third_party/rt64"]
 	path = third_party/rt64
 	url = https://github.com/rt64/rt64
+[submodule "third_party/parallel-rdp"]
+	path = third_party/parallel-rdp
+	url = https://github.com/Themaister/parallel-rdp-standalone
