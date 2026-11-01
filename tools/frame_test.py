@@ -31,6 +31,20 @@ the 4:3 native pictures of the same frames from a --native run (--wide-ref, defa
 the same 3D (the vertical field of view is kept, so the middle of a wide picture is the 4:3 one), while the
 HUD's LEFT and RIGHT items have moved out to the edges. Baselines tests/render_baselines/wide/<run>.txt.
 --twice compares the native pictures of the two dumps. Work folder default out/frame_test_wide.
+
+--look classic (with --native): the dumps in the Classic preset's look (ELTALE_DUMP_LOOK=classic: the N64 dither on
+top of the border, three-point filtering and the N64 fog), against the same reference; baselines <set>-classic
+(e.g. tests/render_baselines/all-classic). The RDP dithers too, so this is the look nearest to the reference.
+
+--hires [SxM] (with --native; default 4x4): the dumps at resolution scale S with MSAA M (ELTALE_DUMP_SCALE,
+ELTALE_DUMP_MSAA: 1280x960 at 4), shrunk to 1x by a box filter and compared with the 1x reference with a looser
+rule (render_compare.py --shrink --level 2: two 5-bit steps a channel); baselines <set>-s<S>m<M> (e.g.
+tests/render_baselines/all-s4m4). It catches what breaks only in the high-resolution path (placement, decals and
+dither at a scale, the MSAA resolve). (2D drawn crisp at a scale, block for block, is a separate check.)
+
+The game's environment is scrubbed of every ELTALE_* variable (ELTALE_DUMP_SCALE/_MSAA/_LOOK, ELTALE_WIDESCREEN,
+ELTALE_DRAW_DISTANCE, ELTALE_RES_SCALE, ELTALE_MSAA... left over in a shell would change the pictures): each run
+gets only what its list line and the mode set.
 """
 
 import argparse
@@ -89,7 +103,9 @@ def dump(run, work: Path, args) -> Path:
         if not src.is_dir():
             raise SystemExit(f"frame_test: run {run['name']} needs the quick save {src} (see --saves)")
         shutil.copytree(src, d / "data", dirs_exist_ok=True)
-    env = dict(os.environ)
+    # nothing from the caller's ELTALE_* (a stray ELTALE_DUMP_SCALE or ELTALE_WIDESCREEN changes the pictures): the
+    # list line and the mode set what the run needs
+    env = {k: v for k, v in os.environ.items() if not k.startswith("ELTALE_")}
     env.update(run["env"])
     env["ELTALE_DATA_DIR"] = str(d / "data")
     cmd = [str(args.exe), "--headless", "--fast", *run["argv"], "--rom", str(args.rom)]
@@ -106,6 +122,10 @@ def dump(run, work: Path, args) -> Path:
         env["ELTALE_ND_COMPARE"] = "1"
         env["ELTALE_DL_KINDS"] = args.native
         env["ELTALE_NATIVE_KINDS"] = args.native
+        if args.look:
+            env["ELTALE_DUMP_LOOK"] = args.look
+        if args.hires:
+            env["ELTALE_DUMP_SCALE"], env["ELTALE_DUMP_MSAA"] = (str(n) for n in args.hires)
         cmd += ["--dump-frames", str(d / "native")]
     with open(d / "log.txt", "wb") as log, open(d / "err.txt", "wb") as err:
         p = subprocess.run(cmd, cwd=d, env=env, stdout=subprocess.PIPE, stderr=err)
@@ -173,6 +193,11 @@ def sheet(results, work: Path, path: Path, sub: str = "png", w: int = 320):
     print(f"frame_test: contact sheet {path}")
 
 
+def extra_set(args) -> str:
+    """the baseline set's (and work folder's) suffix for --look and --hires"""
+    return (f"-{args.look}" if args.look else "") + (f"-s{args.hires[0]}m{args.hires[1]}" if args.hires else "")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rom", type=Path, required=True)
@@ -180,7 +205,8 @@ def main() -> int:
     ap.add_argument("--rdpref", type=Path, default=ROOT / f"out/rdpref/eltale-rdpref{EXE}")
     ap.add_argument("--list", type=Path, action="append",
                     help="run list (repeatable; default tests/render_frames.txt, with --native also "
-                         "tests/render_frames_actor.txt, then tests/render_frames_effects.txt and tests/render_frames_2d.txt)")
+                         "tests/render_frames_actor.txt, then tests/render_frames_effects.txt, tests/render_frames_2d.txt and "
+                         "tests/render_frames_panels.txt)")
     ap.add_argument("--baseline", type=Path, default=ROOT / "tests/render_ref.txt")
     ap.add_argument("--work", type=Path, default=ROOT / "out/frame_test")
     ap.add_argument("--saves", type=Path, default=ROOT / "out/bugsaves",
@@ -201,7 +227,17 @@ def main() -> int:
                     help="widescreen: every kind native at ASPECT (default 16:9), compared with --wide-ref's 4:3 pictures")
     ap.add_argument("--wide-ref", type=Path, default=ROOT / "out/frame_test_native",
                     help="the work folder of a 4:3 --native run of the same lists (its <run>/native pictures)")
+    ap.add_argument("--look", choices=["classic"], help="with --native: the dumps in this look (ELTALE_DUMP_LOOK)")
+    ap.add_argument("--hires", nargs="?", const="4x4", default=None, metavar="SxM",
+                    help="with --native: dumps at scale S with MSAA M (default 4x4), shrunk to 1x and compared")
     args = ap.parse_args()
+    if (args.look or args.hires) and (not args.native or args.wide):
+        raise SystemExit("frame_test: --look and --hires go with --native")
+    if args.hires:
+        m = re.match(r"^(\d)x(\d)$", args.hires)
+        if not m:
+            raise SystemExit("frame_test: --hires SxM, e.g. 4x4")
+        args.hires = (int(m.group(1)), int(m.group(2)))
     if args.wide:
         args.native = args.native or "all"
         if args.baselines is None:
@@ -216,15 +252,16 @@ def main() -> int:
         args.native = ",".join(kinds)
         if args.baselines is None:
             s = "all" if sorted(kinds) == sorted(NATIVE_KINDS) else "+".join(kinds)
-            args.baselines = ROOT / "tests/render_baselines" / s
+            args.baselines = ROOT / "tests/render_baselines" / (s + extra_set(args))
     if not args.list:
         args.list = [ROOT / "tests/render_frames.txt"]
         if args.native:
             args.list.append(ROOT / "tests/render_frames_actor.txt")
         args.list.append(ROOT / "tests/render_frames_effects.txt")
         args.list.append(ROOT / "tests/render_frames_2d.txt")
+        args.list.append(ROOT / "tests/render_frames_panels.txt")
     if args.native and args.work == ROOT / "out/frame_test":
-        args.work = ROOT / "out/frame_test_native"
+        args.work = ROOT / ("out/frame_test_native" + extra_set(args).replace("-", "_"))
     args.exe, args.rdpref, args.work = args.exe.resolve(), args.rdpref.resolve(), args.work.resolve()
     args.saves = args.saves.resolve()
 
@@ -276,6 +313,8 @@ def main() -> int:
                    "--out", str(d / "diff"), "--name", r["name"], "--baseline", str(base)]
             if args.wide:
                 cmd.insert(-2, "--centre")
+            if args.hires:
+                cmd[-2:-2] = ["--shrink", "--level", "2"]
             if args.write_baseline:
                 args.baselines.mkdir(parents=True, exist_ok=True)
                 cmd.append("--write-baseline")

@@ -1,0 +1,9 @@
+# render_compare baseline: battle: solid differing pixels per frame (3x3 rule, 5-bit, 2 steps, shrunk to 1x), and their sum. Numbers only.
+frame_100 101
+frame_1420 309
+frame_260 3
+frame_300 313
+frame_460 22
+frame_500 194
+frame_820 306
+sum 1248

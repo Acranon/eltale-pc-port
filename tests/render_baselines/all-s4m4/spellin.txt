@@ -1,0 +1,10 @@
+# render_compare baseline: spellin: solid differing pixels per frame (3x3 rule, 5-bit, 2 steps, shrunk to 1x), and their sum. Numbers only.
+frame_1050 330
+frame_1310 334
+frame_1320 337
+frame_1566 307
+frame_1570 299
+frame_1580 304
+frame_530 342
+frame_790 312
+sum 2565

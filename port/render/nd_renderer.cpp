@@ -234,10 +234,13 @@ bool NativeDraw::init(Device &dev) {
     program_ms = dev.request_program(vs, fs_ms);
     // the headless dumps' look: the N64's (border, three-point, its fog) at 1x, unless ELTALE_DUMP_* ask for the
     // modern options (contact sheets): ELTALE_DUMP_SCALE=n, ELTALE_DUMP_MSAA=n, ELTALE_DUMP_LOOK=modern (no
-    // border, fog per pixel), ELTALE_DRAW_DISTANCE=k (the fog and far plane k times as far)
+    // border, fog per pixel), ELTALE_DUMP_LOOK=classic (the Classic preset's look: the N64 dither too),
+    // ELTALE_DRAW_DISTANCE=k (the fog and far plane k times as far)
     dump_opt.border = dump_opt.three_point = dump_opt.n64_fog = true;
-    if (const char *e = std::getenv("ELTALE_DUMP_LOOK"))
+    if (const char *e = std::getenv("ELTALE_DUMP_LOOK")) {
         if (!std::strcmp(e, "modern")) dump_opt.border = dump_opt.n64_fog = false;
+        if (!std::strcmp(e, "classic")) dump_opt.n64_dither = true;
+    }
     if (const char *e = std::getenv("ELTALE_DUMP_SCALE")) dump_scale = uint32_t(std::min(std::max(std::atoi(e), 1), 8));
     if (const char *e = std::getenv("ELTALE_DUMP_MSAA")) {
         const int n = std::atoi(e);
