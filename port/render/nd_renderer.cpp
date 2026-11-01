@@ -329,9 +329,43 @@ uint32_t NativeDraw::material_2d(const ElRdMaterial *m) {
 
 void NativeDraw::palette(uint32_t id, const uint16_t *e, uint32_t count) {
     if (size_t(id + 1) * 256 > PALETTE_CAP || count > 256) return;
+    palettes_of(0); // (changes go on top of the newest)
     uint32_t v[256];
     for (uint32_t i = 0; i < count; i++) v[i] = e[i];
-    palettes.write(size_t(id) * 256 * 4, v, count * 4);
+    const size_t at = size_t(id) * 256 * 4;
+    // (outside a tick: a change to the newest recording's palettes)
+    Recording *owner = in_frame ? &building : hist.empty() ? nullptr : &hist.back();
+    if (owner) {
+        Recording::PaletteChange c;
+        c.id = id;
+        c.count = count;
+        std::memcpy(c.before, palettes.shadow.data() + at, count * 4);
+        std::memcpy(c.after, v, count * 4);
+        owner->palettes.push_back(c);
+    }
+    palettes.write(at, v, count * 4);
+}
+
+// Puts the palette buffer back to how it was at the end of recording `serial` (0: the newest): the
+// changes of the recordings after it undone, newest first, or redone
+void NativeDraw::palettes_of(uint64_t want) {
+    if (!hist.empty() && want == hist.back().serial) want = 0;
+    if (want == palette_serial) return;
+    // redo up to the newest
+    if (palette_serial != 0) {
+        for (const Recording &r : hist)
+            if (r.serial > palette_serial)
+                for (const Recording::PaletteChange &c : r.palettes) palettes.write(size_t(c.id) * 256 * 4, c.after, c.count * 4);
+        palette_serial = 0;
+    }
+    if (want == 0) return;
+    bool known = false;
+    for (const Recording &r : hist) known |= r.serial == want;
+    if (!known) return; // (gone: the newest's)
+    for (auto r = hist.rbegin(); r != hist.rend() && r->serial > want; ++r)
+        for (auto c = r->palettes.rbegin(); c != r->palettes.rend(); ++c)
+            palettes.write(size_t(c->id) * 256 * 4, c->before, c->count * 4);
+    palette_serial = want;
 }
 
 void NativeDraw::resources_reset() {
@@ -491,6 +525,7 @@ void NativeDraw::print_stats() const {
 // ---- drawing --------------------------------------------------------------------------------------
 
 void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec, const DrawOptions &opt) {
+    if (rec) palettes_of(rec->serial); // (an older recording: its own palettes, as they were)
     vertices.upload(cmd);
     materials.upload(cmd);
     texels.upload(cmd);

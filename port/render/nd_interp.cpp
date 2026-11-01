@@ -367,10 +367,21 @@ void Interp::camera_at(float t, ElRdCamera &c) const {
     // interpolated field of view; the shake snaps (a's until b's own picture)
     float eye[3], at[3], v[16], p[16], q[16], s[16];
     for (int k = 0; k < 3; k++) { eye[k] = lerp(eye_a[k], eye_b[k], t); at[k] = lerp(at_a[k], at_b[k], t); }
-    look_at(eye, at, v, c.lookat_x, c.lookat_y);
+    look_at(eye, at, v, nullptr, nullptr);
     perspective(lerp(a->camera.fovy, b->camera.fovy, t), a->camera.aspect, lerp(a->camera.near_plane, b->camera.near_plane, t),
                 lerp(a->camera.far_plane, b->camera.far_plane, t), p);
     correct(va, vb, v, cv0, cv1, t, c.view);
+    // the LookAt (texgen): the recorded directions with the rebuild's change (its right and up axes, x 128),
+    // the same correction form (t = 0 and 1: the recorded ones)
+    for (int k = 0; k < 3; k++)
+        for (int axis = 0; axis < 2; axis++) {
+            const int8_t la = axis ? a->camera.lookat_y[k] : a->camera.lookat_x[k];
+            const int8_t lb = axis ? b->camera.lookat_y[k] : b->camera.lookat_x[k];
+            const int e = k * 4 + axis;
+            const float f = (float(la) * (1 - t) + float(lb) * t) + 128.0f * (v[e] - (cv0[e] * (1 - t) + cv1[e] * t));
+            const int8_t out = int8_t(std::lround(std::fmax(-128.0f, std::fmin(127.0f, f))));
+            if (axis) c.lookat_y[k] = out; else c.lookat_x[k] = out;
+        }
     correct(pa, pb, p, cp0, cp1, t, c.perspective);
     interp_mul(v, p, q);
     ident(s);
@@ -677,14 +688,16 @@ const Recording &Interp::build(float t) {
 void Interp::check_ends(int *at0, int *at1) {
     *at0 = *at1 = 0;
     const Recording &p0 = build(0.0f);
-    if (a->has_camera && (!same(p0.camera.projection, a->camera.projection, 16) || !same(p0.camera.view, a->camera.view, 16)))
+    if (a->has_camera && (!same(p0.camera.projection, a->camera.projection, 16) || !same(p0.camera.view, a->camera.view, 16) ||
+                          std::memcmp(p0.camera.lookat_x, a->camera.lookat_x, 3) || std::memcmp(p0.camera.lookat_y, a->camera.lookat_y, 3)))
         (*at0)++;
     for (size_t i = 0; i < p0.items.size(); i++)
         if (p0.items[i].item2d < 0 && !same(p0.items[i].draw.matrix, a->items[i].draw.matrix, 16)) (*at0)++;
     for (size_t i = 0; i < p0.items2d.size(); i++)
         if (!same(p0.items2d[i].rect, a->items2d[i].rect, 4) || !same(p0.items2d[i].matrix, a->items2d[i].matrix, 16)) (*at0)++;
     const Recording &p1 = build(1.0f);
-    if (a->has_camera && (!same(p1.camera.projection, b->camera.projection, 16) || !same(p1.camera.view, b->camera.view, 16)))
+    if (a->has_camera && (!same(p1.camera.projection, b->camera.projection, 16) || !same(p1.camera.view, b->camera.view, 16) ||
+                          std::memcmp(p1.camera.lookat_x, b->camera.lookat_x, 3) || std::memcmp(p1.camera.lookat_y, b->camera.lookat_y, 3)))
         (*at1)++;
     for (const Move &m : moves)
         if (!same(p1.items[m.item].draw.matrix, b->items[m.b].draw.matrix, 16)) (*at1)++;

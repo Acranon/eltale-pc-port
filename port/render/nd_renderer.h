@@ -28,6 +28,11 @@ struct Recording {
         uint8_t env[4], prim[4], fog[4], blend[4];
         int16_t fog_mul, fog_off;
     };
+    // a run-time palette the tick changed (R6: a picture of an older recording puts its palettes back)
+    struct PaletteChange {
+        uint32_t id, count;
+        uint32_t before[256], after[256];
+    };
     struct Item {
         ElRdDraw draw;
         uint32_t state;
@@ -41,6 +46,7 @@ struct Recording {
     std::vector<State> states;
     std::vector<Item> items;
     std::vector<ElRd2D> items2d;
+    std::vector<PaletteChange> palettes; // in the order they were made
     uint32_t frame = 0;
 };
 
@@ -117,6 +123,8 @@ private:
     };
 
     void dump_frame(const Recording &rec, const std::string &name);
+    // the palettes as they were at the end of the recording `serial` (one of hist's, or the newest)
+    void palettes_of(uint64_t serial);
     uint32_t upload_material(const ElRdMaterial &m);
     bool want_dump(uint32_t frame) const;
 
@@ -132,6 +140,7 @@ private:
     std::deque<Recording> pending; // built, waiting for their graphics task's number
     bool state_dirty = true, in_frame = false;
     uint64_t vi_now = 0, serial = 0;
+    uint64_t palette_serial = 0; // whose palettes the palette buffer holds (0: the newest)
     std::unique_ptr<Interp> interp;
     uint64_t planned_a = 0, planned_b = 0; // the pair the interpolator has planned (serials)
     bool planned_ok = false;
