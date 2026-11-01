@@ -22,5 +22,6 @@ extern const NdKind nd_kinds_table[];
 
 /* ---- each kind's file ---- */
 void nd_map_attach(void); /* nd_map.c */
+void nd_billboard_attach(void); /* nd_billboard.c */
 
 #endif

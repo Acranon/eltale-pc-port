@@ -178,12 +178,56 @@ Kinds and the files they touch (to run them in parallel with few conflicts):
 | backdrop | map.c `Map_DrawBackdrop` | 1-cycle, no Z, texture perspective off, TEX0xENV; its palette `map_backdrop_tlut` (native .bss) is read per frame already |
 | actor | actor/anim.c (`Anim_DrawModel`, `Anim_DrawNode`), player.c, npc.c, chest.c, enemy.c, boss.c | node trees, billboard nodes, dlSeq flipbooks (a mesh per list), PRIM tints, texgen |
 | shadow | gfx/shadow.c | decal Z, alpha-only combiner, reversed fog range (its own fog position) |
-| billboard | map.c `MapObj_DrawBillboards`, `MapObj_DrawAnimTexBillboards` | cut-outs (c8113078); animtex frames load a texture per frame: put the frame in the entry list or the draw |
+| billboard | map.c `MapObj_DrawBillboards`, `MapObj_DrawAnimTexBillboards` | done (R3): see "Billboards" below |
 | effect (R4) | gfx/sprite_effect.c, gfx/effect.c | many small draws: a texture per template |
 
 map.c is shared by backdrop and billboard (different functions: merges are clean if each keeps to
 its own). The loader has no 2D yet: texture rectangles and fill rectangles (R5) need native quads,
 not lists.
+
+## Billboards (R3, EL_KIND_BILLBOARD)
+
+`game/native_draw/nd_billboard.c` (+ `nd_billboard.h`, which map.c includes). Draw sites: map.c
+`MapObj_DrawBillboards` and `MapObj_DrawAnimTexBillboards`, one call each after the game's own quad
+call. Their commands were already wrapped in `ND_DL_BEGIN/END(EL_KIND_BILLBOARD)` by R2, around the
+callers' sections. The game still does the culling (1,500 units, the ±fovy cone), the matrices,
+`Shadow_Queue` and `model++`. The renderer draws what the game drew.
+
+- **Billboards (kind 0x10: trees, bushes).** The mesh is (`animTexDls[type].b`, an entry list made the
+  first time each setup list `animTexDls[type].a` is seen: 2-cycle, `D_10000E8`, render mode c8113078,
+  the setup list, bilinear). The entry list names only the setup list's address. A DMA over the area
+  block drops the meshes, and the next draw reads the new list. There are 64 entry slots (a map area
+  has 4 types).
+- **Animated-texture billboards (kinds 0x11/0x12: the candle flames).** There are 16 entry lists,
+  made at attach: [kind][flipbook frame] = 2-cycle, `D_10000E8`, render mode 0c1849d8, bilinear,
+  `mapobj_animtex_dls[k].a` (setup + TLUT), and the frame's CI8 16x32 `gDPLoadTextureBlock`. The frame
+  is `(model >> 1) & 7`, as the game loads it. The flicker is `mapobj_animtex_alpha[model & 3]` in the env
+  alpha. The site sends it with `nd_env_color` right where it queues `gDPSetEnvColor`, whether or not
+  the kind is native, because it is the frame list's state. So each draw records that tick's own alpha.
+- **For R6.** The id is `EL_KIND_BILLBOARD << 56 | pass << 48 | MapObj address` (pass 0 = billboard,
+  1 = animated), which is stable over ticks. The xform is `EL_RDX_ROT_RAD` with rot = (0, camera yaw, 0),
+  pos and scale. Between ticks, rebuild the matrix with the **interpolated camera yaw**, so the item
+  keeps facing the camera. The flipbook frame (a different mesh) and the flicker alpha (the env state)
+  **snap**: keep each tick's value, never blend them. The owner checks the flicker by eye.
+- **Not here: the map emitters.** `Effect_QueueMapObjEmitter`, `MapObj_EmitArcSprite` and
+  `MapObj_EmitDropSprite` only allocate sprites. The sprite pool draws them (`Effect_UpdateAndDrawSprites`,
+  whose step callbacks set the env colour), so they are R4's effect kind.
+
+Compare: `frame_test.py --native billboard --baselines tests/render_baselines/billboard` (the kind
+alone against a reference of the kind alone; a directory of its own so the parallel R3 branches don't
+collide on the files):
+
+| run | solid sum | worst |
+|---|---|---|
+| ng | 0 | 0 (the throne-room flames, frames 225-700) |
+| tour | 2 | 2 (634) |
+| ending | 101 | 101 (8200: small bushes, far away; minified texture sampling) |
+| battle | 2 | 1 |
+| menu | 0 | 0 |
+
+With `--native map,billboard` against R2's map baselines: ng 762 (+2), tour 7,497 (-7), ending 2,111 (-8),
+battle 1,290 (+2), menu 288. Ticks 693-700 of the throne room (map,billboard) each count 190-195,
+the same as the map alone, and the flames' brightness follows the reference's flicker tick for tick.
 
 ## What is left after R2
 

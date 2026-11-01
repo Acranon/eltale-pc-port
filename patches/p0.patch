@@ -1600,7 +1600,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..e44b631 100644
+index ebb5c68..8fc6bb4 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -1609,7 +1609,7 @@ index ebb5c68..e44b631 100644
  #include "game/audio/sound.h"
  #include "game/core/main.h"
  #include "game/env/env.h"
-@@ -25,9 +26,13 @@
+@@ -25,9 +26,14 @@
   * here from the top (2 more) to keep the margin centred. Above map.h about 96 more
   * declarations still work. */
  #include "game/map/map.h"
@@ -1620,10 +1620,11 @@ index ebb5c68..e44b631 100644
  #include "game/camera/camera.h"
  #include "game/core/dma.h"
 +#include "game/native_draw/native_draw.h"
++#include "game/native_draw/nd_billboard.h"
  
  /* Not defined by a module: overlay data, ROM addresses and fixed RAM addresses. */
  extern u16 D_80124E00[];
-@@ -50,6 +55,11 @@ extern struct MapDlPair D_8005E51C[];
+@@ -50,6 +56,11 @@ extern struct MapDlPair D_8005E51C[];
  /* Labels inside this file's D_80081AB0 (undefined_syms.txt); Map_LoadArea needs them as symbols. */
  extern u16 D_80081B78[];
  extern u16 D_80081B7A[];
@@ -1635,7 +1636,7 @@ index ebb5c68..e44b631 100644
  
  /* This file's .bss starts here: 8007C280..80082030 in address order, then
   * D_80082030.. below. mapobj_billboard_list is a pointer table other files use.
-@@ -104,8 +114,10 @@ MapObjSplineOut mapobj_spline_out;
+@@ -104,8 +115,10 @@ MapObjSplineOut mapobj_spline_out;
   * (splat's D_80082030 is Map_LoadArea's loop end), so it is a placeholder. */
  u8 D_80082030[0x18];
  MapObjWavePhase mapobj_wave_phase[4];
@@ -1648,7 +1649,7 @@ index ebb5c68..e44b631 100644
  
  /* The last part of this file's .bss, 80082860..800842F0. */
  MapObj *mapobj_translucent_list[0x100];
-@@ -157,9 +169,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
+@@ -157,9 +170,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
  f32 mapobj_wave_z_div[4] = { 0.0f, 1000.0f, 5000.0f, 3000.0f };
  
  void Map_LoadArea(void) {
@@ -1659,7 +1660,7 @@ index ebb5c68..e44b631 100644
      u16 *src;
      u16 *dst;
      s32 i;
-@@ -201,6 +211,11 @@ void Map_LoadArea(void) {
+@@ -201,6 +212,11 @@ void Map_LoadArea(void) {
          Dma_ReadRom(D_753F0, D_80100000, D_851F0_end - D_753F0);
          Dma_ReadRom(D_D86170, map_clock_tlut_srcs, 0x600);
          Dma_ReadRom(D_D86770, D_80081AB0, 0x200);
@@ -1671,7 +1672,7 @@ index ebb5c68..e44b631 100644
      }
      if (map_id != map_next_id) {
          D_800842CC = map_id;
-@@ -210,10 +225,8 @@ void Map_LoadArea(void) {
+@@ -210,10 +226,8 @@ void Map_LoadArea(void) {
              if (map_flags & 2) {
                  Dma_ReadRom(D_851F0, D_8010FE00, D_C8DE0 - D_851F0);
              }
@@ -1684,7 +1685,7 @@ index ebb5c68..e44b631 100644
          }
          Dma_ReadRom(map_area_def->romStart, map_area_def->dst, map_area_def->romEnd - map_area_def->romStart);
          switch (map_id) {
-@@ -224,7 +237,13 @@ void Map_LoadArea(void) {
+@@ -224,7 +238,13 @@ void Map_LoadArea(void) {
                  Dma_ReadRom(D_3E1090, D_801E0000, D_3F1BA0 - D_3E1090);
                  break;
          }
@@ -1698,7 +1699,7 @@ index ebb5c68..e44b631 100644
      n = 0x65;
      src = D_80081B78;
      dst = D_80081B7A;
-@@ -244,8 +263,11 @@ void Map_LoadArea(void) {
+@@ -244,8 +264,11 @@ void Map_LoadArea(void) {
      map_env_flags = env_area_settings->mapFlags;
      if (map_backdrop_id != env_area_settings->backdropId) {
          map_backdrop_id = env_area_settings->backdropId;
@@ -1712,7 +1713,7 @@ index ebb5c68..e44b631 100644
      }
      if (exit_destination.entry != -1) {
          sp = &map_subarea_def->entries[exit_destination.entry];
-@@ -404,8 +426,11 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
+@@ -404,8 +427,11 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
          t = map_subarea_grid->alwaysCount;
          MapObj_CollectCell(t, map_subarea_grid->alwaysList);
      }
@@ -1724,7 +1725,7 @@ index ebb5c68..e44b631 100644
      D_8007C2A0 = 0;
      mapobj_opaque_cursor = (MapObj **) mapobj_opaque_list;
      for (n = mapobj_opaque_count; n != 0; n--) {
-@@ -440,21 +465,32 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
+@@ -440,21 +466,32 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
              }
          }
          guPosition(&arg0->mtx[gfx_mtx_index], 0.0f, rot, 0.0f, s->scale, x, y, z);
@@ -1757,7 +1758,7 @@ index ebb5c68..e44b631 100644
      if (*pCB8 != 0) {
          gDPPipeSync(gfx_dl_head++);
          gDPSetRenderMode(gfx_dl_head++, 0xC8113078, 0);
-@@ -464,8 +500,11 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
+@@ -464,8 +501,11 @@ void MapObj_UpdateAndDrawNearby(GfxFrameData *arg0) {
          MapObj_DrawBillboards(arg0, *pCB8, 2, *pCD0);
          MapObj_DrawBillboards(arg0, *pCB8, 3, *pCD0);
      }
@@ -1769,7 +1770,7 @@ index ebb5c68..e44b631 100644
      /* mapobj_wave_phase_step is read as four u16 pairs */
      a = mapobj_wave_phase;
      b = (MapObjWavePhase *) mapobj_wave_phase_step;
-@@ -519,26 +558,37 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -519,26 +559,37 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
  
      mapobj_translucent_cursor = mapobj_translucent_list;
      n = mapobj_translucent_count;
@@ -1807,7 +1808,7 @@ index ebb5c68..e44b631 100644
      mapobj_scrolltex_cursor = mapobj_scrolltex_list;
      n = mapobj_scrolltex_count;
      for (; n != 0; n--) {
-@@ -547,6 +597,7 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -547,6 +598,7 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
          k = (s->kind & 0xFF) - 0x40;
          idx = s->model;
          guPosition(&arg0->mtx[gfx_mtx_index], 0.0f, rot, 0.0f, s->scale, s->x, s->y, s->z);
@@ -1815,7 +1816,7 @@ index ebb5c68..e44b631 100644
          gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
          gfx_mtx_index++;
          gDPLoadTextureTile(gfx_dl_head++, mapobj_scrolltex_tex[k], G_IM_FMT_RGBA, G_IM_SIZ_16b, 32, mapobj_scrolltex_height[k], 0, 0, 31,
-@@ -554,8 +605,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -554,8 +606,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
                             G_TX_NOLOD);
          gDPSetTileSize(gfx_dl_head++, G_TX_RENDERTILE, 0, (t = mapobj_scrolltex_offset % 256) << 2, 32 << 2, (mapobj_scrolltex_height[k] + t) << 2);
          gSPDisplayList(gfx_dl_head++, map_obj_models[idx].dl);
@@ -1829,7 +1830,7 @@ index ebb5c68..e44b631 100644
      if (mapobj_animtex_count != 0) {
          gDPPipeSync(gfx_dl_head++);
          gDPSetRenderMode(gfx_dl_head++, 0x0C1849D8, 0);
-@@ -564,10 +620,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
+@@ -564,10 +621,13 @@ void MapObj_DrawTranslucent(GfxFrameData *arg0) {
          MapObj_DrawAnimTexBillboards(arg0, mapobj_animtex_count, 0x11, mapobj_animtex_cursor);
          MapObj_DrawAnimTexBillboards(arg0, mapobj_animtex_count, 0x12, mapobj_animtex_cursor);
      }
@@ -1843,7 +1844,7 @@ index ebb5c68..e44b631 100644
      mapobj_scrolltex_offset += 2;
  }
  
-@@ -645,7 +704,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
+@@ -645,7 +705,7 @@ void Map_DrawBackdrop(GfxFrameData *arg0) {
      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
@@ -1852,7 +1853,17 @@ index ebb5c68..e44b631 100644
  }
  
  void MapObjAnim_ClearAll(void) {
-@@ -932,9 +991,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
+@@ -801,6 +861,9 @@ void MapObj_DrawBillboards(GfxFrameData *arg0, s32 count, s32 type, MapObj **lis
+                     gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_LOAD);
+                     gfx_mtx_index++;
+                     gSPDisplayList(gfx_dl_head++, dl2);
++                    if (ND_ON(EL_KIND_BILLBOARD))
++                        nd_billboard_draw(s, (u32)(uptr)dl1, (u32)(uptr)dl2, &arg0->mtx[gfx_mtx_index - 1], s->x, s->y, s->z,
++                                          camera_state.yaw, s->scale);
+                     c = &mapobj_billboard_normals[(s32)s->angle];
+                     Shadow_Queue(s->x, s->y, s->z, c->x, c->y, c->z, 8.0f);
+                     D_8007C2A0++;
+@@ -932,9 +995,15 @@ void MapObj_DrawSpinners(GfxFrameData *arg0) {
              s = p->obj;
              p->spinAngle -= 0.015707963267948967;
              Math_MtxRotScaleTrans(&arg0->mtx[gfx_mtx_index], 0.0f, p->yawDegrees * 0.017453292519943295, p->spinAngle, s->scale, s->x, s->y, s->z);
@@ -1868,7 +1879,7 @@ index ebb5c68..e44b631 100644
              D_8007C2A0++;
          }
          p++;
-@@ -951,8 +1016,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+@@ -951,8 +1020,14 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
      MapObj *s;
  
      idx = type - 0x11;
@@ -1883,7 +1894,18 @@ index ebb5c68..e44b631 100644
      first = 0;
      for (; count != 0; count--) {
          s = *list++;
-@@ -1040,6 +1111,11 @@ s32 map_halfword_rotation_counter = 0;
+@@ -967,6 +1042,10 @@ void MapObj_DrawAnimTexBillboards(GfxFrameData *arg0, s32 count, s32 type, MapOb
+             gfx_mtx_index++;
+             gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, mapobj_animtex_alpha[s->model & 3]);
+             gSPDisplayList(gfx_dl_head++, dl);
++            nd_env_color(0, 0, 0, mapobj_animtex_alpha[s->model & 3]);
++            if (ND_ON(EL_KIND_BILLBOARD))
++                nd_animtex_draw(s, idx, (s->model >> 1) & 7, &arg0->mtx[gfx_mtx_index - 1], s->x, s->y, s->z,
++                                camera_state.yaw, s->scale);
+             s->model++;
+             D_8007C2A0++;
+         }
+@@ -1040,6 +1119,11 @@ s32 map_halfword_rotation_counter = 0;
  
  extern u16 D_80081C40;
  extern u16 D_80081C42;
