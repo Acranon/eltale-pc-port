@@ -185,6 +185,13 @@ an emulator (mupen64plus/ares with paraLLEl) shows for this game:
   bit-exact by its own test suite; what could still be wrong is the RSP interpreter, and its vector
   ops were checked against ares' source as listed above.
 
+## The native pass (R2)
+
+`frame_test.py --native [KINDS]` runs the same list with the native renderer: the reference is drawn
+from a frame image holding only those kinds' commands (`ELTALE_DL_KINDS`), the native pictures come from
+`--dump-frames`, and `render_compare.py` checks them against `tests/render_baselines/<run>.txt`. See
+[NATIVE_DRAW.md](NATIVE_DRAW.md).
+
 ## What R2 needs from this
 
 - A headless `--dump-frames` (or `ELTALE_DUMP_FRAMES`) in the native renderer that writes

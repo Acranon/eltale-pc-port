@@ -1,24 +1,26 @@
 /* native_draw.c: the adapter between the game's draw code and the native renderer (native_draw.h,
- * port/render.h, docs/renderer/NATIVE_DRAW.md). PC-only.
+ * port/render.h, docs/renderer/NATIVE_DRAW.md). PC-only. This is the core: the switches, the tick and
+ * the state the game queues (camera, lights, colours, fog). Each kind's draws are in a file of its own
+ * (nd_map.c, ...), listed in nd_kinds_table.
  *
- * It knows the game's structs (GfxFrameData, MapObj, Lights3, the camera's globals) and turns what a
- * draw site draws into the renderer's calls: a mesh (nd_model.c makes it from the static display list
- * once), a matrix (the very Mtx the RSP would load, decoded), and the state of the moment.
+ * It knows the game's structs (GfxFrameData, Lights3, the camera's globals) and turns what the game
+ * queues into the renderer's calls; a kind's file turns a draw site's draw into a mesh (nd_model.c
+ * makes it from the static display list once), a matrix (the very Mtx the RSP would load, decoded) and
+ * the state of the moment.
  *
  * Switches (nd_config):
  *   --native-kinds LIST / ELTALE_NATIVE_KINDS=LIST   which kinds the native renderer draws: "all"
  *       (the default), "none", or names (map,billboard,backdrop,actor,shadow,effect,screen,hud,text,
- *       menu,picture). Only kinds that are done draw natively (R2: map).
+ *       menu,picture). Only kinds that are done draw natively (nd_kinds_table; R2: map).
  *   ELTALE_ND_COMPARE=1    native kinds keep their display-list commands too (one run gives both the
  *       frame image for the reference and the native picture)
  *   ELTALE_DL_KINDS=LIST   the frame list keeps only these kinds' commands (the rest are dropped after
  *       they are queued: the game runs the same). For the reference of one kind alone. */
 #include "game/native_draw/native_draw.h"
-#include "game/native_draw/nd_model.h"
+#include "game/native_draw/nd_internal.h"
 
 #include "game/core/main.h"
 #include "game/camera/camera.h"
-#include "game/map/map.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,10 +29,15 @@
 unsigned nd_kinds;
 unsigned nd_dl_kinds = ~0u;
 
-/* the kinds the native renderer can draw so far */
-#define ND_DONE (1u << EL_KIND_MAP)
-
 static const ElRenderApi *api;
+
+const ElRenderApi *nd_api(void) { return api; }
+
+/* The kinds done so far (nd_internal.h: each kind's file adds one row) */
+const NdKind nd_kinds_table[] = {
+    { EL_KIND_MAP, nd_map_attach },
+    { -1, NULL },
+};
 static unsigned requested = ~0u;
 static int compare;
 static int in_frame;
@@ -56,7 +63,9 @@ static unsigned parse_kinds(const char *s) {
 }
 
 static void update_switches(void) {
-    nd_kinds = api ? requested & ND_DONE : 0;
+    unsigned done = 0;
+    for (const NdKind *k = nd_kinds_table; k->kind >= 0; k++) done |= 1u << k->kind;
+    nd_kinds = api ? requested & done : 0;
     nd_dl_kinds = parse_kinds(getenv("ELTALE_DL_KINDS"));
     if (!compare) nd_dl_kinds &= ~nd_kinds;
 }
@@ -70,40 +79,6 @@ void nd_config(int argc, char **argv) {
     update_switches();
 }
 
-/* Map object entry states (built in nd_attach): what the frame list has set when it calls a model */
-static Gfx entry_map[8], entry_xlu[8], entry_scroll[5][24];
-
-extern Gfx D_10000E8[];
-extern u8 *mapobj_scrolltex_tex[5];
-extern u16 mapobj_scrolltex_height[6];
-
-static void build_entries(void) {
-    Gfx *g = entry_map;
-    /* Gfx_BuildFrameDisplayList: 2-cycle; MapObj_UpdateAndDrawNearby: the map's setup list */
-    gDPSetCycleType(g++, G_CYC_2CYCLE);
-    gSPDisplayList(g++, D_10000E8);
-    gSPEndDisplayList(g++);
-    /* MapObj_DrawTranslucent (after MapObj_UpdateAndDrawNearby set bilinear filtering and no TLUT) */
-    g = entry_xlu;
-    gSPDisplayList(g++, entry_map);
-    gDPSetTextureLUT(g++, G_TT_NONE);
-    gDPSetRenderMode(g++, 0x0C1849D8, 0);
-    gDPSetTextureFilter(g++, G_TF_BILERP);
-    gSPEndDisplayList(g++);
-    for (int k = 0; k < 5; k++) {
-        u32 h = mapobj_scrolltex_height[k];
-        g = entry_scroll[k];
-        gSPDisplayList(g++, entry_xlu);
-        gDPSetRenderMode(g++, 0xC81049D8, 0);
-        gDPSetCombine(g++, 0x121A04, 0xFFFFFFF8);
-        gDPLoadTextureTile(g++, mapobj_scrolltex_tex[k], G_IM_FMT_RGBA, G_IM_SIZ_16b, 32, h, 0, 0, 31, h - 1, 0, G_TX_WRAP,
-                           G_TX_WRAP, 5, (h == 32) ? 5 : 6, G_TX_NOLOD, G_TX_NOLOD);
-        /* the scroll offset is the draw's (ElRdDraw.tile_offset) */
-        gDPSetTileSize(g++, G_TX_RENDERTILE, 0, 0, 32 << 2, h << 2);
-        gSPEndDisplayList(g++);
-    }
-}
-
 void nd_attach(const ElRenderApi *a) {
     if (!a || a->version != EL_RENDER_API_VERSION) {
         fprintf(stderr, "native draw: the renderer's interface is not this build's\n");
@@ -111,7 +86,8 @@ void nd_attach(const ElRenderApi *a) {
     }
     api = a;
     nd_model_init(api);
-    build_entries();
+    for (const NdKind *k = nd_kinds_table; k->kind >= 0; k++)
+        if (k->attach) k->attach();
     update_switches();
     fprintf(stderr, "native draw: kinds %x drawn natively, display lists kept for %x%s\n", nd_kinds, nd_dl_kinds,
             compare ? " (compare)" : "");
@@ -153,7 +129,7 @@ void nd_frame_end(unsigned frame) {
 /* ---- state -------------------------------------------------------------------------------------- */
 
 /* A libultra Mtx (s15.16: the integer halves then the fractions) as floats, m[row][col] */
-static void decode_mtx(const void *mtx, float *m) {
+void nd_decode_mtx(const void *mtx, float *m) {
     const u32 *w = (const u32 *)mtx;
     for (int i = 0; i < 16; i++) {
         u32 hi = (w[i / 2] >> (i % 2 ? 0 : 16)) & 0xFFFF, lo = (w[8 + i / 2] >> (i % 2 ? 0 : 16)) & 0xFFFF;
@@ -178,11 +154,11 @@ void nd_camera(struct GfxFrameData *f, const void *shake_mtx) {
     ElRdCamera c;
     memset(&c, 0, sizeof c);
     float view[16], persp[16], shake[16];
-    decode_mtx(&f->proj, persp);
-    decode_mtx(&f->view, view);
+    nd_decode_mtx(&f->proj, persp);
+    nd_decode_mtx(&f->view, view);
     mul(view, persp, c.projection);
     if (shake_mtx) {
-        decode_mtx(shake_mtx, shake);
+        nd_decode_mtx(shake_mtx, shake);
         mul(c.projection, shake, c.projection);
         c.shake[0] = shake[12];
         c.shake[1] = shake[13];
@@ -231,27 +207,4 @@ void nd_fog_position(int near_, int far_) {
     if (!nd_kinds) return;
     /* gSPFogPosition's arithmetic */
     api->fog_position((int16_t)(128000 / (far_ - near_)), (int16_t)((500 - near_) * 256 / (far_ - near_)));
-}
-
-/* ---- map objects ------------------------------------------------------------------------------ */
-
-void nd_map_draw(const struct MapObj *obj, int pass, const void *mtx, uint32_t dl, int xform, float x, float y,
-                 float z, float rx, float ry, float rz, float tile_t) {
-    const void *entry = pass == ND_MAP_OPAQUE ? (const void *)entry_map
-                      : pass == ND_MAP_XLU ? (const void *)entry_xlu
-                      : (const void *)entry_scroll[pass - ND_MAP_SCROLL];
-    const NdMesh *mesh = nd_model_get(dl, entry);
-    if (!mesh) return;
-    nd_model_use(mesh);
-    ElRdDraw d;
-    memset(&d, 0, sizeof d);
-    d.id = (uint64_t)EL_KIND_MAP << EL_RDD_KIND_SHIFT | (uint64_t)pass << 48 | ((uint64_t)(uintptr_t)obj & 0xFFFFFFFFFFFFull);
-    d.mesh = nd_model_id(mesh);
-    decode_mtx(mtx, d.matrix);
-    d.xform = (uint32_t)xform;
-    d.pos[0] = x; d.pos[1] = y; d.pos[2] = z;
-    d.rot[0] = rx; d.rot[1] = ry; d.rot[2] = rz;
-    d.scale = obj->scale;
-    d.tile_offset[1] = tile_t;
-    api->draw(&d);
 }

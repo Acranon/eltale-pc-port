@@ -188,7 +188,7 @@ public:
 
     void graphics_page_extra() override {
         ImGui::Spacing();
-        ImGui::TextDisabled("Drawn by the native renderer (--renderer native): map objects so far (R2).");
+        ImGui::TextDisabled("Drawn by the native renderer (--renderer native): map objects so far (R2); the rest comes in R3-R5.");
     }
 
     void shutdown() override {

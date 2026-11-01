@@ -132,6 +132,13 @@ tools\play.cmd <rom.z64> [--renderer native]                        # copies bot
 - New env: `ELTALE_PRESENT_DUMP` (native only). `ELTALE_HIDDEN_WINDOW` also turns the native
   presenter's vsync off, so a hidden window never waits for a display.
 
+## Since R2
+
+`eltale_host.h` also has `ElHost_InitHeadless` (the native renderer without a window or SDL: for
+`--dump-frames`), `ElHost_RenderApi` (the native renderer's function table, port/include/port/render.h)
+and `ElHost_SetDump`. `Renderer::init_headless` is the native renderer's. The native renderer wires the
+N64 border, N64 texture filtering and N64 fog switches. See [NATIVE_DRAW.md](NATIVE_DRAW.md).
+
 ## What R2 starts from
 
 - `Renderer` (port/host/host.h) is the seam. `NativeRenderer::present_game` clears the picture

@@ -69,6 +69,9 @@ layout, the build and the checks.
 - Baselines: the New Game, map tour, ending and battle frames.
 
 ### R2: Core
+**Done 2026-11-01** (branch nr/core): see [NATIVE_DRAW.md](NATIVE_DRAW.md) for the architecture, the API,
+how to add a kind, the material coverage and the compare numbers (`frame_test.py --native`).
+
 - `game/native_draw/` (the adapter called by game patches) and the `render.h` C API.
 - **Recording:** draw items keyed by stable ids (MapObj/Actor pointers, effect slot plus birth
   tick), the camera (with shake), 3 directional lights plus ambient, fog, and the run-time palettes
