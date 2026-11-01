@@ -1,0 +1,25 @@
+# The item menu and the pause menu, from the battle-stuck quick save (out/bugsaves/battle-stuck, map 2
+# sub-area 0, not committed; copy it first). Title (Start), the quick load at VI 100, R opens the item
+# menu (player.c: R toggles core_flags bit 1), the cursor moves down twice, B closes it; Start opens the
+# pause menu (status page), R turns to the map page, B twice closes it.
+#   ELTALE_DATA_DIR=<copy> ELTALE_QUICK_LOAD_AT=100 eltale-p1 --headless --fast --frames 650
+#       --input tests/item-menu.input --rom ...
+# Used by tests/render_frames.txt (run "menu").
+5 0x1000 0 0
+7 0 0 0
+300 0x0010 0 0
+302 0 0 0
+420 0x0400 0 0
+422 0 0 0
+480 0x0400 0 0
+482 0 0 0
+600 0x4000 0 0
+602 0 0 0
+700 0x1000 0 0
+702 0 0 0
+820 0x0010 0 0
+822 0 0 0
+1060 0x4000 0 0
+1062 0 0 0
+1120 0x4000 0 0
+1122 0 0 0

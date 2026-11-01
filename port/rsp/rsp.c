@@ -99,7 +99,7 @@ static int tables_ready;
 static void init_tables(void) {
     for (uint32_t i = 0; i < 512; i++) {
         uint64_t a = i + 512, b = ((uint64_t)1 << 34) / a;
-        rcp_table[i] = (uint16_t)((b + 1) >> 8);
+        rcp_table[i] = i ? (uint16_t)((b + 1) >> 8) : 0xFFFF;
         a = (uint64_t)(i + 512) >> (i & 1);
         b = (uint64_t)1 << 17;
         while (a * (b + 1) * (b + 1) < ((uint64_t)1 << 44)) b++;
@@ -241,7 +241,7 @@ static void vector_op(Rsp *rsp, uint32_t op) {
                 if (!ne) {
                     uint32_t sum = (uint32_t)a + b;
                     int zero = (sum & 0xFFFF) == 0, over = sum > 0xFFFF;
-                    le = ((rsp->vce >> i) & 1) ? (zero || over) : (zero && over);
+                    le = ((rsp->vce >> i) & 1) ? (zero || !over) : (zero && !over); /* 32-bit sum <= 0 (high half 0, or -1 with VCE), as ares */
                 }
                 d.e[i] = le ? (uint16_t)-b : a;
             } else {
@@ -366,7 +366,33 @@ static void lwc2(Rsp *rsp, uint32_t op) {
         for (int i = 0; i < 8; i++) v->e[i] = dm8(a + ((index + i * 2) & 15)) << 7;
         break;
     }
-    default: fatal(rsp, "RSP: LFV/LWV/LTV not implemented");
+    case 9: { /* LFV */
+        int index = (a & 7) - e;
+        a &= ~7u;
+        RspVreg tmp;
+        for (int i = 0; i < 4; i++) {
+            tmp.e[i] = dm8(a + ((index + i * 4) & 15)) << 7;
+            tmp.e[i + 4] = dm8(a + ((index + i * 4 + 8) & 15)) << 7;
+        }
+        for (int i = e; i < e + 8 && i < 16; i++) set_vbyte(v, i, vbyte(&tmp, i));
+        break;
+    }
+    case 10: /* LWV */
+        for (int i = 16 - e; i < e + 16; i++) { set_vbyte(v, i & 15, dm8(a)); a += 4; }
+        break;
+    case 11: { /* LTV */
+        uint32_t begin = a & ~7u;
+        a = begin + ((e + (a & 8)) & 15);
+        int base = vt & ~7, off = e >> 1;
+        for (int i = 0; i < 8; i++) {
+            set_vbyte(&rsp->vr[base + off], i * 2, dm8(a++));
+            if (a == begin + 16) a = begin;
+            set_vbyte(&rsp->vr[base + off], i * 2 + 1, dm8(a++));
+            if (a == begin + 16) a = begin;
+            off = (off + 1) & 7;
+        }
+        break;
+    }
     }
 }
 
@@ -409,7 +435,22 @@ static void swc2(Rsp *rsp, uint32_t op) {
         }
         break;
     }
-    default: fatal(rsp, "RSP: SFV/SWV/STV not implemented");
+    case 10: { /* SWV */
+        int base = a & 7;
+        a &= ~7u;
+        for (int i = e; i < e + 16; i++) dm8w(a + (base++ & 15), vbyte(v, i & 15));
+        break;
+    }
+    case 11: { /* STV */
+        int element = 16 - (e & ~1), base = (int)(a & 7) - (e & ~1);
+        a &= ~7u;
+        for (int reg = vt & ~7; reg < (vt & ~7) + 8; reg++) {
+            dm8w(a + (base++ & 15), vbyte(&rsp->vr[reg], element++ & 15));
+            dm8w(a + (base++ & 15), vbyte(&rsp->vr[reg], element++ & 15));
+        }
+        break;
+    }
+    default: fatal(rsp, "RSP: SFV not implemented");
     }
 }
 

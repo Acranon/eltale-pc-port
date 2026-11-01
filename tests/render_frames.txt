@@ -1,0 +1,23 @@
+# The reference frames for the native renderer (docs/renderer/REFERENCE.md), used by tools/frame_test.py.
+# One line per headless run:   name | run arguments | frames to dump
+# Run arguments: NAME=VALUE sets an environment variable, @save=<dir> copies <saves>/<dir> (a quick save,
+# not committed; default saves folder out/bugsaves) into the run's scratch ELTALE_DATA_DIR, the rest are
+# eltale-p1 arguments (--headless --fast and --rom are added). Frame numbers are graphics tasks, as
+# ELTALE_DUMP_IMAGE counts them.
+#
+# ng:     New Game (tests/title-new-game.input): title logo, title menu, the fade, the dialogue window
+#         opening, the opening dialogue (Spirit King, candle flames).
+# tour:   ELTALE_MAP_TOUR, 18 sub-areas, ~160 VIs after each arrival: maps 0/0 (throne room), 1/0, 2/0,
+#         3/0, 5/0, 9/0, 11/0, 13/5, 16/3, 20/0, 22/10, 25/0, the fields 26/0, 26/2, 29/0, 30/5, then 34/0
+#         and 35/0 (HUD, compass, fog, backdrops, billboards).
+# ending: ELTALE_START_MODE=5: the epilogue pages (text over the picture, the sepia fade), credits over
+#         the camera tour with the letterbox.
+# battle: the battle-stuck save (tests/battle-stuck.input, ELTALE_BATTLE_LOG=2): the field, spells, the
+#         enemy panel, terrain rings, a floating "Miss!".
+# menu:   the battle-stuck save (tests/item-menu.input): the item menu, the pause menu's status page,
+#         the page turn, the map page, the field with the compass.
+ng     | --frames 700 --input tests/title-new-game.input | 50 125 200 225 275 600 700
+tour   | ELTALE_MAP_TOUR=1 --frames 300000 | 634 1179 1288 1397 1942 2704 3031 4775 9790 14041 17856 22780 23869 24088 24633 25287 29145 30344
+ending | ELTALE_START_MODE=5 --frames 10000 | 450 2700 3450 3700 4450 6450 7200 8200 9950
+battle | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 --frames 1500 --input tests/battle-stuck.input | 100 260 300 460 500 820 1420
+menu   | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 --frames 650 --input tests/item-menu.input | 190 250 400 420 460 620
