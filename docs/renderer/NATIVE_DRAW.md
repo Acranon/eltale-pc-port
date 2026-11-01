@@ -187,10 +187,68 @@ map.c is shared by backdrop and billboard (different functions: merges are clean
 its own). The loader has no 2D yet: texture rectangles and fill rectangles (R5) need native quads,
 not lists.
 
+## Actors (R3, game/native_draw/nd_actor.c)
+
+The player, NPCs, chests, enemies and the field boss: everything `Anim_DrawModel` draws. The walker
+stays the game's (anim.c): the actor's `Math_MtxFRotScaleTrans`, the node chain at the TCB frame,
+pivots, billboard nodes aimed at the eye, the `dlSeq` flipbooks picked by `Actor.ticks`,
+`anim_node_world_positions` (the player's shadow and floor probe read them). Each node it queues
+comes to `nd_actor_node` with the Mtx it loaded and the list it called; a list is a mesh once
+(`nd_model_get`), so a flipbook is one mesh per list and a swap is just another mesh id.
+
+- **Hooks** (game/native_draw/nd_actor.h, included by anim.h on the PC): `nd_actor_begin`/`nd_actor_end`
+  around the node loop of `Anim_DrawModel`, `nd_actor_node` at the end of `Anim_DrawNode`, and
+  `nd_actor_filter` where the draw functions set the texture filter (Player_Draw: its setup list,
+  Npc_DrawAll: at its start and per NPC, Enemy_DrawAll, Boss_Draw). The model effects (effect.c) walk
+  their trees with `Anim_DrawNode` too, without a begin: those calls draw nothing here (R4's).
+- **Display lists**: the actor sections of `Gfx_BuildFrameDisplayList` (Player_Draw, Npc_DrawAll,
+  Chest_UpdateAll; Enemy_DrawAll, Boss_Draw) are already wrapped in `ND_DL_BEGIN/END(EL_KIND_ACTOR)`
+  in main.c (R2): that is where the commands are dropped. Not per node: `Anim_DrawNode` is shared with
+  the effects.
+- **Entry state, found from frame images** (all 47 reference frames, every top-level model call in the
+  actor sections, walked as the RSP would): actor lists set their own combiner, render mode, geometry
+  mode, `TEXTURE`, tiles, loads and PRIM (no triangle reads a PRIM, a texel or a combiner its list did
+  not set). They take othermode H from outside: 2-cycle, the player's setup list `D_10000A0` (the
+  same commands as the map's `D_10000E8`: texture perspective, bilinear, no TLUT, ...) and the filter:
+  `0x182C00` (bilinear) or `0x180C00` (an NPC beyond ~141 units of the player, point-sampled). So two
+  entry lists. Chests keep the last NPC's filter, as the frame list does. The ENV the second cycle adds
+  (`(1-0)*ENV+COMB`: the light slot's additive flash) and the lights are the draw's state:
+  `Env_ApplyLightSlot(player_light_slot)` in Player_Draw already calls `nd_env_color`/`nd_lights`.
+- **PRIM tints** (`(COMB-0)*PRIM+ENV`, `PRIM*SHADE`) are the lists' own `SETPRIMCOLOR`s
+  (`EL_RDM_OWN_PRIM`). **Texgen** (the player's two shiny parts, a boss's armour) is the loader's and
+  the shader's: it matches the reference (tour 22780).
+- **R6 inputs**: id = `EL_KIND_ACTOR << 56 | node index << 48 | the Actor's address`; `xform =
+  EL_RDX_ACTOR_NODE`, `pos`/`rot`/`scale` the actor's (x y z, rotX rot rotZ in radians, scale: a flying
+  enemy's raised y as drawn), and `ElRdDraw.inputs` (render.h `EL_RDI_*`): the AnimSet's address (an
+  animation change is a new set: snap), `frame | ticks << 16`, `node | AnimNode.flags << 8 (1 billboard)
+  | Anim_DrawModel's flags << 16`, and the list drawn (a dlSeq swap: snap).
+
+Compare (`--native actor`, a reference of the actor sections alone; baselines in
+`tests/render_baselines/actor/`, `--baselines` names the folder):
+
+```
+python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves --native actor --baselines tests/render_baselines/actor
+python tools/frame_test.py --rom ROM --list tests/render_frames_actor.txt --native actor --baselines tests/render_baselines/actor
+```
+
+| run | frames | solid sum | worst |
+|---|---|---|---|
+| ng | 7 | 13 | 4 |
+| tour | 18 | 137 | 23 (25287: the player close up) |
+| ending | 9 | 0 | 0 (no actors) |
+| battle | 7 | 72 | 16 |
+| menu | 6 | 17 | 9 |
+| chests (render_frames_actor.txt: chests, point-sampled NPCs) | 7 | 88 | 38 (13854) |
+
+What is left is edges and the RDP's dither (the yellow in the diff pictures). With map and actor both
+native (`--native map,actor`) the sums are the map's or a little under (ng 682, tour 6986, battle
+1298): actors hide map pixels, and the depth test between the two kinds agrees with the reference. The
+map tour with every kind native keeps its frame count and audio hash (30374, a2d2e81245d538d4).
+
 ## What is left after R2
 
-- The other kinds (R3-R5); under `--renderer native` only map objects draw (the rest of the frame is
-  the clear colour).
+- The other kinds (R3-R5); under `--renderer native` only map objects and actors draw (the rest of the
+  frame is the clear colour).
 - Pictures between ticks (R6): the recording keeps what it needs (ids, inputs); `render` draws one.
 - Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
   move and the 8-pixel border scale with it.

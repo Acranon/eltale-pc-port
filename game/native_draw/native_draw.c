@@ -36,6 +36,7 @@ const ElRenderApi *nd_api(void) { return api; }
 /* The kinds done so far (nd_internal.h: each kind's file adds one row) */
 const NdKind nd_kinds_table[] = {
     { EL_KIND_MAP, nd_map_attach },
+    { EL_KIND_ACTOR, nd_actor_attach },
     { -1, NULL },
 };
 static unsigned requested = ~0u;
