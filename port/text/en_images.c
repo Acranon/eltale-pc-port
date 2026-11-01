@@ -72,6 +72,14 @@ const uint8_t *Port_HudSpellName(int element, int index) {
     return hud_encode(text, cache[element & 15][index & 15], sizeof cache[0][0]);
 }
 
+const uint8_t *Port_HudMonsterName(const uint8_t *jp) {
+    static uint8_t buf[32];
+    const char *text = Port_TextMonster(jp);
+    if (!text) return NULL;
+    Port_ImagesUpdate();
+    return hud_encode(text, buf, sizeof buf);
+}
+
 const uint8_t *Port_HudSpellLocked(void) {
     static uint8_t buf[32];
     const char *text = Port_TextSpell(-1, -1);

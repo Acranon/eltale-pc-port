@@ -511,7 +511,8 @@ map 35. The tour drives its own pad:
 
 `tests/p1_checks.sh exe rom --tour` runs it. Windows and Linux both finish all
 258 sub-areas in 56367 frames, with last_hash 50bf22ee177096dd and audio
-d04b0bbcb16b02f5. On the way the tour:
+d04b0bbcb16b02f5. (Since 2026-10-31 the bosses attack at once: 30374 frames, 46b61f5a7d79c61c,
+audio a2d2e81245d538d4; see "Battles: enemies that never attacked".) On the way the tour:
 - fights the two map 30 bosses, with the player casting spells;
 - passes through the opening scene's dialogue.
 
@@ -725,3 +726,43 @@ haystack). Fixed on the way:
 - `tools/rdp2d.py` now also draws textured triangles under an orthographic projection (the compass
   disc; texel colours only, no combiner); `--no-hud-tris` turns that off.
 - The checks' hashes are unchanged (they hash the display lists, not the matrices they point at).
+
+## Battles: enemies that never attacked, and the name panel (2026-10-31)
+
+The user's bug (quick save on map 2 sub-area 0, out/bugsaves/battle-stuck): in a random battle the enemy's
+name panel showed garbage, then the enemy walked to the edge of its circle and kept walking for ever.
+- **Walking for ever: AnimSet lengths read before the set was swapped.** An enemy that starts to approach
+  sets its timer from its walk anim's length (`arg2[1].length`, Enemy_StateIdle) before any anim function has
+  used, and so swapped, that set: 220 frames read as -9216, -9216 / 10 = -921, and a timer counted down from
+  there never reaches 0. The same raw read set the hurt, attack-end and boss timers (a boss's 54-frame walk
+  became 13824 frames, its hurt pause 8960) and the wandering NPCs' walks (30 frames became 7680: they walked
+  off in one direction for minutes). It was the one AnimSet field game code reads itself. `ANIM_SET_LENGTH`
+  (game/actor/anim.h) is now every such read (enemy.c, npc.c, player.c): `Port_AnimSetLength` swaps the set
+  first, as its first use would, and reads through the bitmap.
+- **Garbage name: monster names were never English.** The panel draws the name in the battle HUD's own
+  font, in its kana codes; in English that font's kana are Latin letters (the spell names), so the Japanese
+  name came out as letters. Japanese was right. The 75 names (six area sets, eight bosses) are
+  `monster.<ROM offset>` rows in en.v2.tsv (runtime rows 0x3000000 + offset; translations/README.md),
+  matched by their bytes like the script (`Port_TextMonster`) and drawn like the spell names
+  (`Port_HudMonsterName`).
+- **Fixed on the way: a crash walking in the field.** `Sfx_StopChannel4` (the map's ambient loop leaving
+  earshot) used `D_800559E4`/`D_800559F8`, aliases of `sfx_channel_sound[4]`/`sfx_channel_timer[4]` in
+  undefined_syms.txt, which the host link gave their raw RDRAM addresses: it read garbage and indexed the
+  sound ids with it. audio.c maps them to the arrays; `gen_abs_symbols.py` now refuses any raw label that
+  undefined_syms.txt defines as an offset into a named object (these two were the only ones).
+- Checked on the way: EnemyDef and EnemyAttack swap shapes match the ROM records field by field (area 0's
+  attacks are all spells, so their hit reach is 0 by design); the name tables are read big-endian.
+- `ELTALE_BATTLE_LOG=1` prints `P1_BATTLE` lines: the start (centre, radius, each enemy's stats, walk length
+  and name bytes), every enemy state change and, every 20 frames, positions with the distances to the centre
+  and the player, and the player's HP. `=2` also starts an encounter after the next 50 units walked.
+  `tests/battle-stuck.input` with the user's quick save: before, `state=0->1 timer=-921` and walking to the
+  end of the run; now `state=0->1 timer=22`, `1->5` (a spell), `player hp 50 -> 49`, turn after turn.
+  Frame 225 (`ELTALE_DUMP_IMAGE`, tools/rdp2d.py) shows the panel: the kana name in Japanese, Were-Rabbit in
+  English.
+- **Checks:** New Game, ending, camera tour, save/load, Pak manager and quick saves unchanged. The map tour
+  changes: 30374 frames, last_hash 46b61f5a7d79c61c, audio a2d2e81245d538d4 (was 56367, 50bf22ee177096dd,
+  d04b0bbcb16b02f5). The tour's only battles are three boss fights (it arrives by teleport, so no random
+  ones); with the right lengths the map 30 boss (Guilty) walks in after 54 frames and hits the level-0 player
+  at once, where before it stood hurt for 8960 frames and walked for 13824 (VI 53599 to 100931). With only
+  `Port_AnimSetLength` reading raw again, the build gives the old three values exactly, so nothing else
+  changed them. Linux not rerun (its Makefile is stale).

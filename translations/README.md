@@ -42,6 +42,15 @@ the pause-menu headings). Status: all in the game, the logo included (art/en/tit
 (art/en, the artist's), the prologue pages, warning screens and epilogue page (art/en/pages.json),
 the world maps (art/en/maps.json) and the spell names (`spell.*` rows in en.v2.tsv, the HUD font).
 
+## Monster names
+
+`monster.<ROM offset>` rows (75, added 2026-10-31): every random-encounter monster of the six area
+sets and the eight bosses, as the battle HUD's enemy panel shows them (its own font; the Japanese is
+in that font's kana codes, not the text encoding, so `dump.py` does not list them). Most are English
+loanwords written back in English (Were-Rabbit, Hellhound, Unseelie Court, Pale Rider, Nidhogg); the
+bosses use the glossary's names. At most 17 characters (the panel is 110 pixels; the HUD font's Latin
+letters are 6 apart).
+
 ## Open questions for the owner
 
 Settled in v2: "bandit" (not "bannit"), "Sir Bart" in both of the king's lines, full item names,
@@ -52,6 +61,10 @@ out/text/review.html list the rest):
 - spot.0960: the Old Bridgeman portrait (likely Lloyd and Jeff's father, or a nickname).
 - spot.0628: "The Upright Spirit Mage" or "The Proper Spirit Mage".
 - Controller Pak terms: "note" (the N64 term) or "save file".
+- Monster names read from katakana with no clear source word: `monster.B614A4` Vandal Rose (or
+  "Wandering Rose"?), `C99E88` Vivarella, `C99E90` Temptee, `C99EA0` Grangach, `C2F84C` Sabatina,
+  `BBBED8` Cry Shell; and two choices: the ocean sunfish as "Sunfish" (Pink / Magma Sunfish, not
+  "Mambo"), and "Gel" (not "Jel").
 
 ## To check in game
 

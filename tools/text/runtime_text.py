@@ -4,7 +4,8 @@
 
 Each output row is "<ROM offset hex>\t<English>": the offset of the Japanese string the row replaces
 (from the id, as tools/text/dump.py made it; spell names, which have no Japanese string to
-match, get 0x2000000 + element * 16 + index, the "can't use" label 0x20000FF), the English in ASCII with \\n a line break, \\f a page
+match, get 0x2000000 + element * 16 + index, the "can't use" label 0x20000FF; monster names, in the HUD
+font's kana codes, 0x3000000 + their ROM offset), the English in ASCII with \\n a line break, \\f a page
 break and \\2 a Yes/No choice (port/text/en_text.c reads it).
 """
 import os
@@ -29,6 +30,10 @@ def main():
         elif kind == "spell":
             # spell names (the battle HUD's own font, not a ROM string): 0x2000000 + element * 16 + index
             at = 0x20000FF if rest == "locked" else 0x2000000 + int(rest.split(".")[0]) * 16 + int(rest.split(".")[1])
+        elif kind == "monster":
+            # monster names (the battle HUD's kana codes, read by port/text/en_text.c Port_TextMonster):
+            # 0x3000000 + the name's ROM offset
+            at = 0x3000000 + int(rest, 16)
         elif kind == "ui":
             asset, off = rest.rsplit(".", 1)
             at = assets[asset] + int(off, 16)

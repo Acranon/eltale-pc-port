@@ -117,7 +117,7 @@ index fe38701..11eb262 100644
  
      if (temp_v0 >= arg2->length) {
 diff --git a/src/game/actor/anim.h b/src/game/actor/anim.h
-index 66c2ccd..624c42f 100644
+index 66c2ccd..21d9346 100644
 --- a/src/game/actor/anim.h
 +++ b/src/game/actor/anim.h
 @@ -17,17 +17,20 @@ typedef struct AnimNode {
@@ -145,8 +145,24 @@ index 66c2ccd..624c42f 100644
  } AnimSet; /* 0xC bytes */
  
  /* .bss 8008BFC0..8008C040 */
+@@ -43,4 +46,15 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+ void Anim_AdvanceFrame(s32 arg0, struct Actor *arg1, AnimSet *arg2);
+ void Anim_ApplyPivotOffset(MtxF *arg0, AnimNode *arg1);
+ 
++/* An AnimSet's loop length, as game code reads it outside the anim functions (an enemy's walk and
++ * attack timers, an NPC's idle and walk timers). Port: a set is swapped on its first use by the anim
++ * functions, so a length read before that (the walk anim's, when an enemy starts to approach) was the
++ * big-endian halfword: 220 frames read as -9216. Port_AnimSetLength swaps the set first. */
++#ifdef ELTALE_P1_OS
++s16 Port_AnimSetLength(AnimSet *set);
++#define ANIM_SET_LENGTH(set) Port_AnimSetLength(set)
++#else
++#define ANIM_SET_LENGTH(set) ((set)->length)
++#endif
++
+ #endif
 diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
-index b78bc53..a1cae2a 100644
+index b78bc53..a366783 100644
 --- a/src/game/audio/audio.c
 +++ b/src/game/audio/audio.c
 @@ -1,3 +1,6 @@
@@ -156,7 +172,22 @@ index b78bc53..a1cae2a 100644
  #include "game/audio/audio.h"
  #include "game/core/sched.h"
  
-@@ -77,7 +80,14 @@ void Audio_DmaReadRom(u32 devAddr, void* vAddr, s32 nbytes) {
+@@ -64,8 +67,14 @@ ALSeqFile* audio_seq_file = NULL;
+ s32 audio_dma_count = 0;
+ u32 audio_frame_count = 0;
+ 
++#ifdef ELTALE_P1_OS
++/* aliases in undefined_syms.txt (sfx_channel_sound/timer + 0x10): channel 4, the map's ambient loop */
++#define D_800559E4 (sfx_channel_sound[4])
++#define D_800559F8 (sfx_channel_timer[4])
++#else
+ extern s32 D_800559E4;
+ extern s32 D_800559F8;
++#endif
+ 
+ void Audio_DmaReadRom(u32 devAddr, void* vAddr, s32 nbytes) {
+     OSIoMesg sp28;
+@@ -77,7 +86,14 @@ void Audio_DmaReadRom(u32 devAddr, void* vAddr, s32 nbytes) {
  
  
  void Audio_Init(void) {
@@ -171,7 +202,7 @@ index b78bc53..a1cae2a 100644
      audio_cmd_lists[0] = alHeapAlloc(&audio_heap, 1, 0x8000);
      audio_cmd_lists[1] = alHeapAlloc(&audio_heap, 1, 0x8000);
      D_8008F088[0] = alHeapAlloc(&audio_heap, 1, 0x40);
-@@ -259,7 +269,7 @@ void Audio_ThreadMain(void* arg) {
+@@ -259,7 +275,7 @@ void Audio_ThreadMain(void* arg) {
                  end = audio_cmd_lists[audio_task_index];
                  idx = audio_output_frame_index % 3;
                  Audio_FreeOldDmaBuffers();
@@ -180,7 +211,7 @@ index b78bc53..a1cae2a 100644
                  audio_output_sample_counts[idx] = (frameSize - samplesLeft + 0x60) & ~0xF;
                  if (audio_output_sample_counts[idx] < frameSize - 16) {
                      audio_output_sample_counts[idx] = frameSize - 16;
-@@ -268,12 +278,12 @@ void Audio_ThreadMain(void* arg) {
+@@ -268,12 +284,12 @@ void Audio_ThreadMain(void* arg) {
                  task->next = NULL;
                  task->msgQ = &rtnQ;
                  task->msg = NULL;
@@ -195,7 +226,7 @@ index b78bc53..a1cae2a 100644
                  task->list.t.ucode = (u64*) D_8004CE80;
                  task->list.t.ucode_data = (u64*) D_80070A60;
                  task->list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -400,7 +410,11 @@ void Audio_LoadSeqFileHeader(u32 devAddr) {
+@@ -400,7 +416,11 @@ void Audio_LoadSeqFileHeader(u32 devAddr) {
  
      audio_seq_file = alHeapAlloc(&audio_heap, 1, 4);
      Audio_DmaReadRom(devAddr, audio_seq_file, 4);
@@ -207,7 +238,7 @@ index b78bc53..a1cae2a 100644
      audio_seq_file = alHeapAlloc(&audio_heap, 1, size);
      Audio_DmaReadRom(devAddr, audio_seq_file, size);
  }
-@@ -434,12 +448,20 @@ void Audio_InitSeqPlayers(u8* bankStart, u8* bankEnd, u8* seqFile, u8* seqFileEn
+@@ -434,12 +454,20 @@ void Audio_InitSeqPlayers(u8* bankStart, u8* bankEnd, u8* seqFile, u8* seqFileEn
      audio_seq_slots[1].config.stopOsc = 0;
      audio_seq_slots[1].config.debugFlags = 0;
      alCSPNew(&audio_seq_slots[1].player, &audio_seq_slots[1].config);
@@ -230,7 +261,7 @@ index b78bc53..a1cae2a 100644
      bank = audio_seq_bank_file->bankArray[0];
      alSeqpSetBank((ALSeqPlayer*) &audio_seq_slots[0].player, bank);
      alSeqpSetBank((ALSeqPlayer*) &audio_seq_slots[1].player, bank);
-@@ -454,7 +476,7 @@ void Audio_LoadSeq(s32 slot, s32 seqNo) {
+@@ -454,7 +482,7 @@ void Audio_LoadSeq(s32 slot, s32 seqNo) {
      if (len & 1) {
          len++;
      }
@@ -239,7 +270,7 @@ index b78bc53..a1cae2a 100644
      audio_seq_slots[slot].seqNo = seqNo;
  }
  
-@@ -472,7 +494,7 @@ s32 Audio_PlaySeq(s32 slot) {
+@@ -472,7 +500,7 @@ s32 Audio_PlaySeq(s32 slot) {
      alCSPSetSeq(player, seq);
      alSeqpPlay((ALSeqPlayer*) player);
      for (i = 0; i < 16; i++) {
@@ -248,7 +279,7 @@ index b78bc53..a1cae2a 100644
      }
      return 1;
  }
-@@ -491,12 +513,16 @@ void Audio_InitSoundPlayer(u8* start, u8* end, u8* table) {
+@@ -491,12 +519,16 @@ void Audio_InitSoundPlayer(u8* start, u8* end, u8* table) {
  
      size = end - start;
      audio_sound_bank_file = alHeapAlloc(&audio_heap, 1, size);
@@ -617,7 +648,7 @@ index 8b0df2f..e72d3e6 100644
          for (i = 0x20; i != 0; i--) {
              *dst++ = *src++;
 diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
-index 481f713..a831513 100644
+index 481f713..af05b81 100644
 --- a/src/game/enemy/enemy.c
 +++ b/src/game/enemy/enemy.c
 @@ -1,3 +1,4 @@
@@ -653,6 +684,85 @@ index 481f713..a831513 100644
  }
  
  void Enemy_RemoveAll(void) {
+@@ -277,20 +281,20 @@ void Enemy_StateIdle(Actor *obj, Enemy *e, AnimSet *arg2) {
+             e->type = 1;
+             e->approach_cycles_left = 4;
+             if (battle_flags & 0x100) {
+-                e->state_timer = arg2[1].length;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]);
+                 Anim_SetCurrentAndNext(obj, 1, 1, 1, 1, 1);
+             } else {
+-                e->state_timer = arg2[1].length / 10;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]) / 10;
+                 Anim_SetCurrentAndNext(obj, 1, 10, 1, 10, 1);
+             }
+         } else {
+             e->type = 1;
+             e->approach_cycles_left = 4;
+             if (battle_flags & 0x100) {
+-                e->state_timer = arg2[1].length;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]);
+                 Anim_SetCurrentAndNext(obj, 1, 1, 1, 1, 1);
+             } else {
+-                e->state_timer = arg2[1].length / 10;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]) / 10;
+                 Anim_SetCurrentAndNext(obj, 1, 10, 1, 10, 1);
+             }
+         }
+@@ -328,9 +332,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
+                 return;
+             }
+             if (battle_flags & 0x100) {
+-                e->state_timer = arg2[1].length;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]);
+             } else {
+-                e->state_timer = arg2[1].length / 10;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]) / 10;
+             }
+         } else {
+             v = Enemy_ChooseAttack(e, obj);
+@@ -345,9 +349,9 @@ void Enemy_StateApproach(Actor *obj, Enemy *e, AnimSet *arg2) {
+                 return;
+             }
+             if (battle_flags & 0x100) {
+-                e->state_timer = arg2[1].length;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]);
+             } else {
+-                e->state_timer = arg2[1].length / 10;
++                e->state_timer = ANIM_SET_LENGTH(&arg2[1]) / 10;
+             }
+         }
+     }
+@@ -451,9 +455,9 @@ void Enemy_StateMeleeAttack(Actor *obj, Enemy *e, AnimSet *anims) {
+                 a = e->selected_attack;
+                 e->attack_phase++;
+                 if (a->next_anim_index == -1) {
+-                    e->state_timer = anims[a->anim_index].length - a->startup_frames;
++                    e->state_timer = ANIM_SET_LENGTH(&anims[a->anim_index]) - a->startup_frames;
+                 } else {
+-                    e->state_timer = anims[a->end_anim_index].length;
++                    e->state_timer = ANIM_SET_LENGTH(&anims[a->end_anim_index]);
+                     Anim_SetCurrentAndNext(obj, a->end_anim_index, 1, 0, 1, 1);
+                     Enemy_GetAnimStep(obj, &enemy_temp_vec);
+                 }
+@@ -490,7 +494,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
+                 a = e->selected_attack;
+                 e->attack_phase++;
+                 if (a->next_anim_index == -1) {
+-                    e->state_timer = anims[a->anim_index].length - a->startup_frames;
++                    e->state_timer = ANIM_SET_LENGTH(&anims[a->anim_index]) - a->startup_frames;
+                 } else {
+                     e->attack_phase++;
+                     e->state_timer = a->unk6;
+@@ -522,7 +526,7 @@ void Enemy_StateCastSpell(Actor *obj, Enemy *e, AnimSet *anims) {
+             if (e->state_timer == 0) {
+                 a = e->selected_attack;
+                 e->attack_phase--;
+-                e->state_timer = anims[a->end_anim_index].length;
++                e->state_timer = ANIM_SET_LENGTH(&anims[a->end_anim_index]);
+                 Anim_SetCurrentAndNext(obj, a->end_anim_index, 1, 0, 1, 1);
+             }
+             if (e->state_timer <= 0) {
 @@ -548,7 +552,7 @@ EnemyAttack *Enemy_ChooseAttack(Enemy *e, Actor *obj) {
  
      e->flags &= ~0x10;
@@ -698,6 +808,19 @@ index 481f713..a831513 100644
      if (enemy_slots[idx].hp) {
          if (dmg) {
              if (!(flags & 0x8000)) {
+@@ -891,10 +895,10 @@ u16 Enemy_TakeDamage(s32 idx, u16 dmg, u16 elem, u16 flags, Actor *src) {
+             obj->animFlags |= 2;
+         }
+         if (battle_flags & 0x100) {
+-            enemy_slots[idx].state_timer = anims[enemy_slots[idx].def->hurt_anim_index].length;
++            enemy_slots[idx].state_timer = ANIM_SET_LENGTH(&anims[enemy_slots[idx].def->hurt_anim_index]);
+             Anim_SetCurrentAndNext(obj, enemy_slots[idx].def->hurt_anim_index, 1, 0, 1, 1);
+         } else {
+-            enemy_slots[idx].state_timer = anims[enemy_slots[idx].def->hurt_anim_index].length / 10;
++            enemy_slots[idx].state_timer = ANIM_SET_LENGTH(&anims[enemy_slots[idx].def->hurt_anim_index]) / 10;
+             Anim_SetCurrentAndNext(obj, enemy_slots[idx].def->hurt_anim_index, 10, 0, 1, 1);
+         }
+     }
 @@ -943,11 +947,13 @@ void Enemy_ClearAttackScript(void) {
      enemy_script_cmd = 0;
  }
@@ -1568,9 +1691,45 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..ec9738c 100644
+index 89b373a..36ced82 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
+@@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
+                     if (--npc->timer == 0) {
+                         if (npc_walking_count < 3) {
+                             npc->state = 1;
+-                            npc->timer = (Math_Rand(2) + 1) * (npc->def->anim_sets + 1)->length;
++                            npc->timer = (Math_Rand(2) + 1) * ANIM_SET_LENGTH(npc->def->anim_sets + 1);
+                             Anim_SetCurrentAndNext(obj, 1, 1, 1, 1, 1);
+                             dx = npc->homeX - obj->x;
+                             dz = npc->homeZ - obj->z;
+@@ -102,7 +102,7 @@ void Npc_UpdateAll(void) {
+                             }
+                             npc_walking_count++;
+                         } else {
+-                            npc->timer = (Math_Rand(2) + 1) * npc->def->anim_sets->length;
++                            npc->timer = (Math_Rand(2) + 1) * ANIM_SET_LENGTH(npc->def->anim_sets);
+                         }
+                     }
+                 }
+@@ -114,7 +114,7 @@ void Npc_UpdateAll(void) {
+                 Npc_Move(npc_walk_step.x, npc_walk_step.y, obj);
+                 if (--npc->timer == 0) {
+                     npc->state = 0;
+-                    npc->timer = npc->def->anim_sets->length;
++                    npc->timer = ANIM_SET_LENGTH(npc->def->anim_sets);
+                     Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
+                     npc_walking_count--;
+                 }
+@@ -133,7 +133,7 @@ void Npc_UpdateAll(void) {
+                 obj->rot -= npc->turn_delta / 15.0f;
+                 if (npc->timer == 0) {
+                     npc->state = 0;
+-                    npc->timer = npc->def->anim_sets->length;
++                    npc->timer = ANIM_SET_LENGTH(npc->def->anim_sets);
+                     obj->rot = npc->homeAngle;
+                     Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
+                 }
 @@ -180,7 +180,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
@@ -1584,6 +1743,15 @@ index 89b373a..ec9738c 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
+@@ -392,7 +397,7 @@ void Npc_EndTalk(s32 idx) {
+         npc->timer = Math_Rand(30) + 30;
+     } else if (npc->def->flags & 2) {
+         npc->state = 0;
+-        npc->timer = npc->def->anim_sets->length;
++        npc->timer = ANIM_SET_LENGTH(npc->def->anim_sets);
+     } else {
+         npc->state = 3;
+         npc->timer = 15;
 diff --git a/src/game/npc/npc.h b/src/game/npc/npc.h
 index e16ca6a..cb2771f 100644
 --- a/src/game/npc/npc.h
@@ -1604,7 +1772,7 @@ index e16ca6a..cb2771f 100644
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..512f741 100644
+index c8c3fd5..9491f54 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
 @@ -1,3 +1,6 @@
@@ -1683,6 +1851,15 @@ index c8c3fd5..512f741 100644
      if (e->target_select_handler_index == 2) {
          p->flags |= 4;
          anim = 0x17;
+@@ -1852,7 +1861,7 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
+         anim = 3;
+         next = player_idle_anim;
+     }
+-    t = anims[anim].length;
++    t = ANIM_SET_LENGTH(&anims[anim]);
+     p->state = 0xE;
+     p->unk124 = 0x12;
+     p->spell_input_count = 0;
 diff --git a/src/game/player/player.h b/src/game/player/player.h
 index 8d67837..1f91b77 100644
 --- a/src/game/player/player.h
@@ -1986,7 +2163,7 @@ index 4f9f215..75eeeaa 100644
      { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
      ;
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..feb0102 100644
+index e6f79b4..c2c286d 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
 @@ -1,3 +1,7 @@
@@ -2033,13 +2210,19 @@ index e6f79b4..feb0102 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureFilter(gfx_dl_head++, G_TF_POINT);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
-@@ -895,7 +909,12 @@ void Hud_DrawEnemyInfoPanel(void) {
+@@ -895,7 +909,18 @@ void Hud_DrawEnemyInfoPanel(void) {
          Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
          Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
      }
 -    Hud_DrawGlyphString(4, 0x11, 0, ((u8 **)enemy_names)[enemy_turn_current->def->anim_set_index]); /* enemy_names stores a pointer table in one s32 slot */
 +#ifdef ELTALE_P1_OS
-+    Hud_DrawGlyphString(4, 0x11, 0, Port_N64Ptr(enemy_names, enemy_turn_current->def->anim_set_index));
++    {
++        /* English: the monster's name in the HUD font's Latin letters (port/text/en_images.c); the
++         * Japanese bytes are kana codes, which that font no longer has */
++        u8 *name = Port_N64Ptr(enemy_names, enemy_turn_current->def->anim_set_index);
++        const u8 *en = Port_HudMonsterName(name);
++        Hud_DrawGlyphString(4, 0x11, 0, en != NULL ? (u8 *)en : name);
++    }
 +#else
 +    Hud_DrawGlyphString(4, 0x11, 0, ((u8 **)enemy_names)[enemy_turn_current->def->anim_set_index]);
 +#endif
@@ -2047,7 +2230,7 @@ index e6f79b4..feb0102 100644
      Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
      if (enemy_turn_current->battle.status_bits & 0x80) {
-@@ -984,14 +1003,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -984,14 +1009,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -2076,7 +2259,7 @@ index e6f79b4..feb0102 100644
      w = Hud_MeasureGlyphString(str);
      arg0 = arg0 - w / 2 + 0x37;
      Hud_DrawGlyphString(arg0, arg1, hud_spell_label_palettes[flags], str);
-@@ -1001,9 +1033,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1001,9 +1039,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 cur = 8;
      s32 col;
      s32 row;
@@ -2093,7 +2276,7 @@ index e6f79b4..feb0102 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1013,6 +1052,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1013,6 +1058,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              x += 1;
          } else if (*str == 0x82) {
              x += 4;
@@ -2104,7 +2287,7 @@ index e6f79b4..feb0102 100644
          } else {
              col = (*str & 0xF) * 8;
              row = (*str & 0x70) >> 4;
-@@ -1022,7 +1065,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1022,7 +1071,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              }
              row *= 9;
              Hud_DrawClippedTextureRect(x, y, 8, 9, col, row, 0x400, 0x400);
@@ -2116,7 +2299,7 @@ index e6f79b4..feb0102 100644
          }
          str++;
      }
-@@ -1030,10 +1077,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1030,10 +1083,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
  
  s32 Hud_MeasureGlyphString(u8* str) {
      s32 w = 0;
@@ -2138,7 +2321,7 @@ index e6f79b4..feb0102 100644
          } else if (*str == 0x80 || *str == 0x81) {
              w += 1;
          } else if (*str == 0x82) {
-@@ -1065,6 +1123,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1129,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {

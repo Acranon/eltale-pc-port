@@ -63,6 +63,10 @@ static char pending[MAX_TEXT];
 static int has_pending;
 static int forced_lang = -1, forced_font = -1; /* ELTALE_LANG, ELTALE_FONT */
 static char *spell_text[16][16], *spell_locked; /* rows 0x2000000 + element * 16 + index, 0x20000FF */
+/* monster names in the battle HUD's kana codes (rows 0x3000000 + the name's ROM offset): a short list */
+enum { MAX_MONSTERS = 128 };
+static struct { uint64_t hash; char *text; } monsters[MAX_MONSTERS];
+static int monster_count;
 
 static uint64_t hash_bytes(const uint8_t *s) {
     uint64_t h = 1469598103934665603ull;
@@ -250,6 +254,13 @@ void Port_TextInit(void) {
         }
         if (at >= 0x2000000 && at < 0x2000100) {
             spell_text[(at >> 4) & 15][at & 15] = strdup(text);
+            continue;
+        }
+        if (at >= 0x3000000 && at < 0x4000000) {
+            if (monster_count < MAX_MONSTERS) {
+                monsters[monster_count].hash = hash_bytes(rom + (at - 0x3000000));
+                monsters[monster_count++].text = strdup(text);
+            }
             continue;
         }
         if (at >= 0x1000000) continue;
@@ -476,6 +487,15 @@ const char *Port_TextSpell(int element, int index) {
     if (!Port_TextEnglish()) return NULL;
     if (element < 0) return spell_locked;
     return element < 16 && index >= 0 && index < 16 ? spell_text[element][index] : NULL;
+}
+
+const char *Port_TextMonster(const uint8_t *jp) {
+    if (!Port_TextEnglish() || !jp || jp[0] == 0xFF) return NULL;
+    uint64_t h = hash_bytes(jp);
+    for (int i = 0; i < monster_count; i++)
+        if (monsters[i].hash == h) return monsters[i].text;
+    log_miss(jp);
+    return NULL;
 }
 
 int Port_TextLineWidth(const uint8_t *s) {

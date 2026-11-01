@@ -149,9 +149,77 @@ static void spirit_log(void) {
     }
 }
 
+/* ELTALE_BATTLE_LOG=1: random battles as they go (P1_BATTLE): the start (centre, arena radius, the
+ * enemies with their names' bytes), each enemy's state change and every 20 frames its position, distance
+ * to the centre and to the player, and the player's HP when it changes. =2 also makes the next 50 units
+ * walked start an encounter (the encounter roll's limit is set past Math_Rand(2000)), so a test needs
+ * only a short walk. */
+#include "game/enemy/enemy.h"
+#include "game/actor/anim.h"
+#include <math.h>
+static void battle_log(void) {
+    static int on = -1, in_battle, hp = -1;
+    static u16 types[6];
+    static uint64_t frame;
+    if (on < 0) on = getenv("ELTALE_BATTLE_LOG") ? atoi(getenv("ELTALE_BATTLE_LOG")) : 0;
+    if (!on) return;
+    uint64_t vi = Port_OsViCount();
+    if (on == 2 && !(battle_flags & 1) && core_game_mode == 1) battle_encounter_roll_limit = 2000;
+    if (!(battle_flags & 1)) {
+        if (in_battle) fprintf(stderr, "P1_BATTLE end hp=%d/%d vi=%llu\n", player_stats.hp, player_stats.max_hp,
+                               (unsigned long long)vi);
+        in_battle = 0;
+        return;
+    }
+    if (!in_battle) {
+        in_battle = 1;
+        frame = 0;
+        hp = player_stats.hp;
+        fprintf(stderr, "P1_BATTLE start map=%d sub=%d flags=%x centre=%.2f,%.2f radius=%.2f enemies=%d hp=%d/%d vi=%llu\n",
+                map_id, map_subarea, battle_flags, battle_center_x, battle_center_z, battle_arena_radius, enemy_count,
+                player_stats.hp, player_stats.max_hp, (unsigned long long)vi);
+        for (s32 i = 0; i < 6; i++) {
+            Enemy *e = &enemy_slots[i];
+            types[i] = 0xFFFF;
+            if (e->actor.animSetIndex == -1) continue;
+            const u8 *name = Port_N64Ptr(enemy_names, e->def->anim_set_index);
+            char hex[3 * 16 + 1] = "";
+            for (int k = 0; k < 16 && name; k++) {
+                snprintf(hex + 3 * k, 4, "%02x ", name[k]);
+                if (name[k] == 0xFF) break;
+            }
+            const EnemyAttack *atk = (const EnemyAttack *)(uintptr_t)e->def->attacks;
+            fprintf(stderr, "P1_BATTLE enemy %d set=%d hp=%d agility=%d scale=%.3f radius=%.2f engage=%.2f attacks=%d"
+                    " range0=%.2f reach0=%.2f walk_len=%d name@%08x=%s\n", i, e->def->anim_set_index, e->def->max_hp,
+                    e->def->agility, e->def->scale, e->def->body_radius, e->engagement_radius, e->def->attack_count,
+                    atk ? atk[0].range : 0.0f, atk ? atk[0].unk14 : 0.0f,
+                    ANIM_SET_LENGTH(&((AnimSet *)Port_N64Ptr(enemy_anim_tables, e->actor.animSetIndex))[1]),
+                    (unsigned)(uintptr_t)name, hex);
+        }
+    }
+    frame++;
+    for (s32 i = 0; i < 6; i++) {
+        Enemy *e = &enemy_slots[i];
+        if (e->actor.animSetIndex == -1) continue;
+        float dcx = e->actor.x - battle_center_x, dcz = e->actor.z - battle_center_z;
+        float dpx = e->actor.x - player_state.actor.x, dpz = e->actor.z - player_state.actor.z;
+        if (types[i] != e->type || frame % 20 == 0)
+            fprintf(stderr, "P1_BATTLE e%d state=%d->%d timer=%d cycles=%d atk=%s pos=%.2f,%.2f centre_d=%.2f player_d=%.2f vi=%llu\n",
+                    i, types[i] == 0xFFFF ? -1 : types[i], e->type, e->state_timer, e->approach_cycles_left,
+                    e->selected_attack ? "yes" : "none", e->actor.x, e->actor.z, sqrtf(dcx * dcx + dcz * dcz),
+                    sqrtf(dpx * dpx + dpz * dpz), (unsigned long long)vi);
+        types[i] = e->type;
+    }
+    if (hp != player_stats.hp) {
+        fprintf(stderr, "P1_BATTLE player hp %d -> %d vi=%llu\n", hp, player_stats.hp, (unsigned long long)vi);
+        hp = player_stats.hp;
+    }
+}
+
 void Port_MapTourStep(void) {
     static int load_test = -1;
     spirit_log();
+    battle_log();
     if (load_test < 0) load_test = getenv("ELTALE_LOAD_TEST") != NULL;
     if (load_test) {
         fprintf(stderr, "P1_LOAD map=%d sub=%d hp=%d/%d level=%d vi=%llu\n", map_id, map_subarea, player_stats.hp,

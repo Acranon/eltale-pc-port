@@ -1,0 +1,14 @@
+# A random battle from the user's quick save (out/bugsaves/battle-stuck, map 2 sub-area 0, not committed;
+# copy it first). Title (Start), the quick load at VI 100, stick up walks north (ELTALE_BATTLE_LOG=2 makes the
+# next 50 units start an encounter: two Were-Rabbits at VI 194), then A every 30 VIs.
+#   ELTALE_DATA_DIR=<copy> ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 eltale-p1 --headless --fast --frames 1500
+#       --input tests/battle-stuck.input --rom ...
+# prints P1_BATTLE e0 state=0->1 timer=22 (walk), 1->5 (cast), player hp 50 -> 49 (docs/P1_OS_STATUS.md).
+# Before the fix: state=0->1 timer=-921, then walking for ever. Frame 225 (ELTALE_DUMP_IMAGE) has the name panel.
+5 0x1000 0 0
+7 0 0 0
+120 0 0 80
+200 0 0 0
+230 0x8000 0 0
+232 0 0 0
+repeat 230 30

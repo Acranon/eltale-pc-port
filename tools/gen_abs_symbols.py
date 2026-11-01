@@ -33,6 +33,19 @@ symbols = sorted(s for s in undefined - defined if raw_address.fullmatch(s))
 NATIVE_ONLY = [(0x80301000, 0x8031C5A0, "the graphics frames (port_gfx_frames, port/boot_probe.h)")]
 bad = [(s, why) for s in symbols for lo, hi, why in NATIVE_ONLY
        if lo <= int(raw_address.fullmatch(s).group(1), 16) < hi]
+# Labels the decomp defines as an offset into a named object (undefined_syms.txt `D_x = name + off`):
+# that object is native on the host, so the raw address is RDRAM the game never wrote (Sfx_StopChannel4
+# once read sfx_channel_sound[4] from RDRAM 0x800559E4 and indexed the sound ids with garbage)
+alias = re.compile(r"(D_[0-9A-F]{5,8})\s*=\s*([A-Za-z_]\w*)\s*\+\s*(0x[0-9A-Fa-f]+|\d+)\s*;")
+syms_txt = Path(__file__).resolve().parent.parent / "decomp" / "undefined_syms.txt"
+aliases = {}
+if syms_txt.exists():
+    for line in syms_txt.read_text().splitlines():
+        m = alias.match(line.strip())
+        if m:
+            aliases[m.group(1)] = f"{m.group(2)} + {m.group(3)}"
+bad += [(s, f"an alias of the native {aliases[s]} (undefined_syms.txt): map it to that object")
+        for s in symbols if s in aliases]
 if bad:
     sys.exit("".join(f"gen_abs_symbols: {s} is {why}: declare it through the port's native object\n" for s, why in bad))
 if asm:

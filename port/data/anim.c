@@ -148,6 +148,16 @@ void Port_SwapAnimSet(u32 set) {
     if (valid_set(set)) swap_set(set);
 }
 
+/* An AnimSet's length for game code that reads it itself (ANIM_SET_LENGTH, game/actor/anim.h): the
+ * set swapped first, as the anim functions would on its first use; read through the bitmap, so a set
+ * that cannot be swapped yet still gives the right number. */
+s16 Port_AnimSetLength(AnimSet *set) {
+    u32 a = (u32)(uptr)set;
+    if (!in_ram(a, 0xC)) return set->length;
+    Port_SwapAnimSet(a);
+    return (s16)rd16(a + 2);
+}
+
 /* A table loaded just now, from the block [lo, hi): a set whose nodes are in that block is swapped
  * whole; of the others only the header (count, nodes, display lists). Their nodes are in a block
  * loaded later (the player's, at 0x80200000, comes with each map), so here they hold whatever the
