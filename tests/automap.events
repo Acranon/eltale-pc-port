@@ -2,7 +2,8 @@
 # window): TICK = pad reads. Enter skips the intro to the title, where ELTALE_QUICK_LOAD_AT=100 loads the user's quick
 # save compass-spirit (map 0 area 1). Then M opens the full map, the wheel zooms in two steps, a left drag moves it,
 # a right click fits it again, W walks with the map open (the game is not paused), Esc closes it, M opens it again
-# and M closes it. tests/automap-none.events is the same without the map's keys and mouse: the player walks the same.
+# and M closes it; ] ] [ zoom the minimap in twice and out once. tests/automap-none.events is the same without the
+# map's keys and mouse: the player walks the same.
 5 key_down Return
 7 key_up Return
 300 key_down M
@@ -22,3 +23,9 @@
 522 key_up M
 560 key_down M
 562 key_up M
+600 key_down ]
+602 key_up ]
+620 key_down ]
+622 key_up ]
+640 key_down [
+642 key_up [

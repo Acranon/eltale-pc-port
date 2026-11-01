@@ -2705,7 +2705,7 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..aab6088 100644
+index 89b373a..016226a 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
 @@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
@@ -2754,8 +2754,15 @@ index 89b373a..aab6088 100644
      i = npc_count;
      npc = npc_slots;
      list = npc_drawn_list;
-@@ -165,6 +168,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -162,9 +165,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+         obj = &npc->actor;
+         dz = npc->actor.z - player_state.actor.z;
+         dist = dx * dx + dz * dz;
++#ifdef ELTALE_P1_OS
++        if (dist < 90000.0f || nd_automap_truth()) { /* (the area map's truth view, a test: everyone) */
++#else
          if (dist < 90000.0f) {
++#endif
              filter = (dist < 20000.0f) ? G_TF_BILERP : G_TF_POINT;
              gDPSetTextureFilter(gfx_dl_head++, filter);
 +#ifdef ELTALE_P1_OS
@@ -2764,7 +2771,7 @@ index 89b373a..aab6088 100644
              anims = npc->def->anim_sets;
              Anim_DrawModel(0, obj, &anims[obj->animIndex], arg0);
              Anim_AdvanceFrame(obj->animStep, obj, &anims[obj->animIndex]);
-@@ -180,7 +186,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+@@ -180,7 +190,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
@@ -2777,7 +2784,7 @@ index 89b373a..aab6088 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
-@@ -392,7 +403,7 @@ void Npc_EndTalk(s32 idx) {
+@@ -392,7 +407,7 @@ void Npc_EndTalk(s32 idx) {
          npc->timer = Math_Rand(30) + 30;
      } else if (npc->def->flags & 2) {
          npc->state = 0;

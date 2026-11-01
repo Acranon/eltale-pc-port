@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-enum { EL_AM_VERSION = 1 };
+enum { EL_AM_VERSION = 2 };
 
 /* A floor triangle the player walks on: one of the sub-area's collision triangles (CollTri) with an actor flag
  * (0x200 or 0x800: the player's query is 0xA01), in world space. */
@@ -43,13 +43,36 @@ typedef struct ElAmExit {
     uint16_t pad;
 } ElAmExit;
 
-/* The object layer (marks, hints, chests, people...): empty in this first pass; the kinds come later. Each has a
- * stable id (kind << 24 | the game's own index) for hover. */
+/* The marks (v2): what the map draws over the floor, sent with the player every tick (people move, a chest opens).
+ * Each has a stable id (kind << 24 | the game's own index) for hover and for following a person between ticks. */
+enum {
+    EL_AM_MARK_DOOR = 1,   /* an exit through a door the game swings or slides open (MapExit kind 2-4, its door
+                            * object); x, z the middle of the doorway, angle the way through, half_w its half width */
+    EL_AM_MARK_EXIT = 2,   /* a way out with no door (an opening, a road's end, stairs): the exit's box */
+    EL_AM_MARK_PERSON = 3, /* someone to talk to (npc_slots) */
+    EL_AM_MARK_CHEST = 4,  /* a chest (chest_objects): item = what it holds (ChestDef.animSetIndex) */
+    EL_AM_MARK_SPIRIT = 5, /* a spirit (spirit_objects): an element point to raise */
+    EL_AM_MARK_BOSS = 6,   /* a boss standing on the field (boss_field_record); radius = how near starts the fight */
+};
+enum {
+    EL_AM_MARK_DONE = 1,      /* opened, taken (the game's chest_opened_flags / spirit_collected_flags) */
+    EL_AM_MARK_LOCKED = 2,    /* an exit that needs an item the player has not got (MapExit flags 0x10) */
+    EL_AM_MARK_SHUT = 4,      /* an exit shut because the player holds its item (MapExit flags 0x20) */
+    EL_AM_MARK_AWAY = 8,      /* an exit to another area: another map, with a field or a dungeon (an enemy area) on
+                               * one side or both (a town gate, a road, a cave mouth), not a house or room of the
+                               * same town or castle */
+};
+
 typedef struct ElAmMarker {
     uint32_t id;
-    uint16_t kind, flags;
-    float x, y, z, angle;
-    char label[64];
+    uint16_t kind, flags;     /* EL_AM_MARK_* */
+    float x, y, z, angle;     /* angle: the way through a door or exit (it faces (sin a, cos a) in (x, z)) */
+    float half_w, half_d;     /* an exit's box (half width across, half depth along the way through) */
+    float radius;             /* a boss's: how near starts the fight */
+    uint16_t item;            /* a chest's item, a locked exit's key item (the game's item ids) */
+    int16_t to_map, to_sub;   /* an exit's destination */
+    uint16_t pad;
+    char label[96];           /* what it is, in English (port text: text/en.tsv), for hover */
 } ElAmMarker;
 
 enum {
@@ -70,8 +93,6 @@ typedef struct ElAmArea {
     uint32_t wall_count;
     const ElAmExit *exits;
     uint32_t exit_count;
-    const ElAmMarker *markers;
-    uint32_t marker_count;
     /* water: the triangles of the sub-area's wave, translucent and scrolling-texture objects (what the renderer
      * draws for them), in world space; flags = the object's kind (1-3 waves, 0x7F/0x80 translucent, 0x40-0x44 a
      * scrolling texture), obj its index */
@@ -97,6 +118,8 @@ typedef struct ElAmPlayer {
     uint32_t area_serial;   /* the plan it is on */
     uint32_t flags;         /* EL_AM_PLAYER_* */
     float x, y, z, rot;
+    const ElAmMarker *markers; /* this tick's marks (v2) */
+    uint32_t marker_count;
 } ElAmPlayer;
 
 #ifdef __cplusplus

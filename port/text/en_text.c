@@ -489,6 +489,14 @@ const char *Port_TextSpell(int element, int index) {
     return element < 16 && index >= 0 && index < 16 ? spell_text[element][index] : NULL;
 }
 
+/* The English of a Japanese string as plain text (the area map's labels: a person's or an item's name), whatever
+ * language the game's own text is shown in; NULL when the script has no row for it. */
+const char *Port_TextPlain(const uint8_t *jp) {
+    Port_TextInit();
+    Entry *e = find(jp);
+    return e ? e->text : NULL;
+}
+
 const char *Port_TextMonster(const uint8_t *jp) {
     if (!Port_TextEnglish() || !jp || jp[0] == 0xFF) return NULL;
     uint64_t h = hash_bytes(jp);

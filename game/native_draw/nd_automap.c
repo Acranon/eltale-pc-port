@@ -22,6 +22,14 @@
 #include "game/battle/battle.h"
 #include "game/map/map.h"
 #include "game/player/player.h"
+#include "game/map/chest.h"
+#include "game/map/spirit.h"
+#include "game/map/textspot.h"
+#include "game/npc/npc.h"
+#include "game/enemy/boss.h"
+#include "game/item/item.h"
+#include "port/data.h"
+#include "port/text.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -244,6 +252,220 @@ static void build_plan(void) {
     }
 }
 
+/* ---- the marks, every tick ---------------------------------------------------------------------------- */
+
+/* the game's text tables at fixed RDRAM addresses (big-endian pointers): the item names, the bosses' names */
+extern void *D_803AB288[];
+extern u8 *D_803AC418[];
+extern f32 D_803AB48C[]; /* per boss + 1: how near starts the fight (swapped to native: port/data/common.c) */
+
+static ElAmMarker marks[160];
+static uint32_t mark_count;
+
+/* A Japanese string's English (text/en.tsv), its first line, after `prefix`; `fallback` when there is none */
+static void label_of(char *out, size_t size, const char *prefix, const u8 *jp, const char *fallback) {
+    const char *en = jp ? Port_TextPlain(jp) : NULL;
+    const char *name = en && *en ? en : fallback;
+    size_t at = (size_t)snprintf(out, size, "%s", prefix);
+    if (at >= size) at = size - 1;
+    for (const char *c = name; *c && *c != '\n' && *c != '\f' && at + 1 < size; c++)
+        if ((unsigned char)*c >= 0x20) out[at++] = *c;
+    out[at] = 0;
+}
+
+static const u8 *item_name(u32 item) { return item < 0x40 ? (const u8 *)Port_N64Ptr(D_803AB288, (int)item) : NULL; }
+
+static ElAmMarker *new_mark(u16 kind, u32 index) {
+    if (mark_count >= sizeof marks / sizeof marks[0]) return NULL;
+    ElAmMarker *m = &marks[mark_count++];
+    memset(m, 0, sizeof *m);
+    m->id = (u32)kind << 24 | (index & 0xFFFFFF);
+    m->kind = kind;
+    m->to_map = m->to_sub = -1;
+    return m;
+}
+
+/* An exit's destination, read from the ROM (that map is not loaded): its sub-area's flags (bit 0: an enemy area, a
+ * field or a dungeon with random battles; towns and their houses have people instead) and its sky (an outdoor
+ * area). The area's block is the ROM from MapAreaDef.romStart, loaded at dst (Map_LoadArea), so a pointer into it
+ * is romStart + (pointer - dst). -1 when not known. */
+extern MapAreaDef map_area_defs[36];
+const unsigned char *Port_HostRom(void);
+
+static int dest_info(s32 map, s32 sub) {
+    static s16 cache[36][64];
+    static int init;
+    if (!init) {
+        for (int i = 0; i < 36; i++)
+            for (int j = 0; j < 64; j++) cache[i][j] = -2;
+        init = 1;
+    }
+    if (map < 0 || map >= 36 || sub < 0 || sub >= 64) return -1;
+    if (cache[map][sub] != -2) return cache[map][sub];
+    cache[map][sub] = -1;
+    const MapAreaDef *d = &map_area_defs[map];
+    const u8 *rom = Port_HostRom();
+    const u32 rs = (u32)(uptr)d->romStart, re = (u32)(uptr)d->romEnd, dst = (u32)(uptr)d->dst;
+    if (!rom || re <= rs) return -1;
+#define AM_AT(a, n) ((a) >= dst && (a) - dst + (n) <= re - rs ? rom + rs + ((a) - dst) : NULL)
+    const u32 sa = (u32)(uptr)d->subareas + (u32)sub * 0x18, envs = (u32)(uptr)d->envSettings;
+    const u8 *s = AM_AT(sa, 0x18);
+    if (!s) return -1;
+    const u32 env = (u32)(s[2] << 8 | s[3]), flags = (u32)(s[0x14] << 8 | s[0x15]);
+    const u8 *e = AM_AT(envs + env * 0x20, 0x20);
+#undef AM_AT
+    if (!e) return -1;
+    const u32 mapflags = (u32)(e[0x18] << 8 | e[0x19]);
+    cache[map][sub] = (s16)((flags & 1) | ((mapflags & 4) ? 2 : 0));
+    return cache[map][sub];
+}
+
+static int holds_item(u32 item) {
+    for (int i = 0; i < 0x96; i++)
+        if (item_inventory[i] == item) return 1;
+    return 0;
+}
+
+static void build_marks(void) {
+    mark_count = 0;
+    /* the ways out (map_subarea_def->exits): a door when the exit opens its door object (kind 2-4:
+     * Player_StartAreaExit swings or slides map_objs[mapObj]), else a way out with no door. Exit_IsEnabled's item
+     * test: 0x10 needs the item, 0x20 shuts once it is held. */
+    for (s32 i = 0; i < map_subarea_def->exitCount; i++) {
+        const MapExit *x = &map_subarea_def->exits[i];
+        const u32 kind = (x->flags >> 8) & 0xF;
+        const int door = kind >= 2 && kind <= 4 && x->mapObj < map_subarea_grid->count;
+        ElAmMarker *m = new_mark(door ? EL_AM_MARK_DOOR : EL_AM_MARK_EXIT, (u32)i);
+        if (!m) break;
+        m->x = x->x; m->z = x->z; m->angle = x->angle; m->half_w = x->halfW; m->half_d = x->halfD;
+        m->y = player_state.actor.y;
+        if (door) {
+            /* the doorway: the door object's place, along the exit's way through (the box is in front of it) */
+            const MapObj *o = &map_objs[x->mapObj];
+            const float fx = sinf(x->angle), fz = cosf(x->angle);
+            const float t = (o->x - x->x) * fx + (o->z - x->z) * fz;
+            m->x = x->x + fx * t;
+            m->z = x->z + fz * t;
+            m->y = o->y;
+        }
+        m->to_map = (int16_t)x->dest[0];
+        m->to_sub = (int16_t)x->dest[1];
+        /* another area: another map, an enemy area (a field, a dungeon: dest_info bit 0) on one side, and neither side
+         * a building (no sky, no enemies: a house, an inn, a castle hall), whose doors are the town's or field's own */
+        const int di = dest_info((s32)x->dest[0], (s32)x->dest[1]);
+        const int here_enemy = map_subarea_flags & 1, here_house = !here_enemy && !(map_env_flags & 4);
+        const int there_enemy = di >= 0 && (di & 1), there_house = di >= 0 && !(di & 1) && !(di & 2);
+        if ((s32)x->dest[0] != map_id && (here_enemy || there_enemy) && !here_house && !there_house) m->flags |= EL_AM_MARK_AWAY;
+        m->item = x->id;
+        const char *what = (m->flags & EL_AM_MARK_AWAY) ? (door ? "Door to another area" : "Way to another area")
+                                                         : (door ? "Door" : "Way through");
+        char where[40];
+        snprintf(where, sizeof where, " (map %d, area %d)", (int)x->dest[0], (int)x->dest[1]);
+        char pre[80];
+        if ((x->flags & 0x10) && !holds_item(x->id)) {
+            m->flags |= EL_AM_MARK_LOCKED;
+            snprintf(pre, sizeof pre, "Locked %s%s: needs ", door ? "door" : "way", where);
+            label_of(m->label, sizeof m->label, pre, item_name(x->id), "an item");
+        } else if ((x->flags & 0x20) && holds_item(x->id)) {
+            m->flags |= EL_AM_MARK_SHUT;
+            snprintf(pre, sizeof pre, "%s%s: shut while you hold ", what, where);
+            label_of(m->label, sizeof m->label, pre, item_name(x->id), "an item");
+        } else {
+            snprintf(m->label, sizeof m->label, "%s%s", what, where);
+        }
+    }
+    /* people (npc_slots: the sub-area's NPCs, where they stand now), named by their speaker name */
+    for (s32 i = 0; i < npc_count && i < 16; i++) {
+        const Npc *n = &npc_slots[i];
+        ElAmMarker *m = new_mark(EL_AM_MARK_PERSON, (u32)i);
+        if (!m) break;
+        m->x = n->actor.x; m->y = n->actor.y; m->z = n->actor.z; m->angle = n->actor.rot;
+        label_of(m->label, sizeof m->label, "", n->def ? n->def->name : NULL, "Person");
+    }
+    /* chests (chest_objects: the sub-area's, Chest_LoadForMap), opened per chest_opened_flags */
+    for (s32 i = 0; i < chest_count && i < 16; i++) {
+        const Actor *c = &chest_objects[i];
+        ElAmMarker *m = new_mark(EL_AM_MARK_CHEST, (u32)i);
+        if (!m) break;
+        m->x = c->x; m->y = c->y; m->z = c->z; m->angle = c->rot;
+        m->item = c->animSetIndex;
+        if (Chest_IsOpened(c->floorFlags)) m->flags |= EL_AM_MARK_DONE;
+        label_of(m->label, sizeof m->label, (m->flags & EL_AM_MARK_DONE) ? "Chest (opened): " : "Chest: ",
+                 item_name(c->animSetIndex), "an item");
+    }
+    /* spirits (spirit_objects), taken per spirit_collected_flags; the element is the player's choice when taken */
+    for (s32 i = 0; i < spirit_count && i < 8; i++) {
+        const SpiritObj *sp = &spirit_objects[i];
+        ElAmMarker *m = new_mark(EL_AM_MARK_SPIRIT, (u32)i);
+        if (!m) break;
+        m->x = sp->x; m->y = sp->y; m->z = sp->z;
+        if (Spirit_IsCollected(sp->flagId)) m->flags |= EL_AM_MARK_DONE;
+        snprintf(m->label, sizeof m->label, "%s",
+                 (m->flags & EL_AM_MARK_DONE) ? "Spirit (taken)" : "Spirit: raises an element of your choice");
+    }
+    /* the boss standing in this sub-area, not yet beaten (Boss_LoadForArea), and how near starts the fight */
+    if (boss_field_index > 0 && boss_field_index <= 8) {
+        ElAmMarker *m = new_mark(EL_AM_MARK_BOSS, (u32)boss_field_index - 1);
+        if (m) {
+            const Actor *b = &boss_field_record.actor;
+            m->x = b->x; m->y = b->y; m->z = b->z; m->angle = b->rot;
+            m->radius = D_803AB48C[boss_field_index];
+            label_of(m->label, sizeof m->label, "Boss: ", (const u8 *)Port_N64Ptr(D_803AC418, boss_field_index - 1), "a boss");
+        }
+    }
+}
+
+/* ELTALE_AUTOMAP_LOG: what a sub-area has to mark (once per plan) */
+static void log_marks(void) {
+    for (s32 i = 0; i < map_subarea_def->exitCount; i++) {
+        const MapExit *x = &map_subarea_def->exits[i];
+        const MapObj *o = x->mapObj < map_subarea_grid->count ? &map_objs[x->mapObj] : NULL;
+        fprintf(stderr, "P1_AUTOMAP exit map=%d sub=%d i=%d at=%.1f,%.1f a=%.3f w=%.1f d=%.1f flags=%04x id=%u obj=%u "
+                "objat=%.1f,%.1f,%.1f objang=%.1f objkind=%04x model=%d bounds=%d..%d,%d..%d scale=%.3f to=%u,%u,%u\n",
+                (int)map_id, (int)map_subarea, (int)i, x->x, x->z, x->angle, x->halfW, x->halfD, x->flags, x->id, x->mapObj,
+                o ? o->x : 0, o ? o->y : 0, o ? o->z : 0, o ? o->angle : 0, o ? o->kind : 0, o ? o->model : -1,
+                o ? map_obj_models[o->model].minX : 0, o ? map_obj_models[o->model].maxX : 0,
+                o ? map_obj_models[o->model].minZ : 0, o ? map_obj_models[o->model].maxZ : 0, o ? o->scale : 0,
+                x->dest[0], x->dest[1], x->dest[2]);
+    }
+    u32 talk[8] = { 0 };
+    for (s32 i = 0; i < npc_count && i < 16; i++) talk[npc_slots[i].def ? npc_slots[i].def->talk_kind & 7 : 0]++;
+    fprintf(stderr, "P1_AUTOMAP marks map=%d sub=%d exits=%d npcs=%d (talk 0:%u 1:%u 2:%u 3:%u 4:%u 5:%u 6:%u 7:%u) chests=%d "
+            "spirits=%d boss=%d textspots=%d enemyarea=%d regions=%d\n", (int)map_id, (int)map_subarea,
+            (int)map_subarea_def->exitCount, (int)npc_count, talk[0], talk[1], talk[2], talk[3], talk[4], talk[5], talk[6], talk[7],
+            (int)chest_count, (int)spirit_count, (int)boss_field_index, (int)textspot_count, map_subarea_flags & 1,
+            map_area_def && map_area_def->encounterRegions ? (int)map_area_def->encounterRegions[map_subarea].count : -1);
+    for (s32 i = 0; i < npc_count && i < 16; i++) {
+        const NpcDef *d = npc_slots[i].def;
+        const char *en = d ? Port_TextPlain(d->name) : NULL;
+        if (d)
+            fprintf(stderr, "P1_AUTOMAP npc map=%d sub=%d i=%d talk=%u move=%u flags=%u item=%u name=%s\n", (int)map_id,
+                    (int)map_subarea, (int)i, d->talk_kind, d->movement_kind, d->flags, d->u6.b.item_id, en ? en : "?");
+    }
+    for (s32 i = 0; i < chest_count && i < 16; i++) {
+        const Actor *c = &chest_objects[i];
+        const u8 *jp = item_name(c->animSetIndex);
+        fprintf(stderr, "P1_AUTOMAP chest map=%d sub=%d i=%d at=%.1f,%.1f,%.1f flag=%u item=%u opened=%d name=%s\n", (int)map_id,
+                (int)map_subarea, (int)i, c->x, c->y, c->z, c->floorFlags, c->animSetIndex, Chest_IsOpened(c->floorFlags) != 0,
+                jp && Port_TextPlain(jp) ? Port_TextPlain(jp) : "?");
+        if (jp && !Port_TextPlain(jp))
+            fprintf(stderr, "P1_AUTOMAP chest name at %08x: %02x %02x %02x %02x %02x %02x\n", (unsigned)(uptr)jp, jp[0], jp[1], jp[2],
+                    jp[3], jp[4], jp[5]);
+    }
+    for (s32 i = 0; i < spirit_count && i < 8; i++)
+        fprintf(stderr, "P1_AUTOMAP spirit map=%d sub=%d i=%d at=%.1f,%.1f,%.1f flag=%u taken=%d\n", (int)map_id, (int)map_subarea,
+                (int)i, spirit_objects[i].x, spirit_objects[i].y, spirit_objects[i].z, spirit_objects[i].flagId,
+                Spirit_IsCollected(spirit_objects[i].flagId) != 0);
+    if (boss_field_index > 0)
+        fprintf(stderr, "P1_AUTOMAP boss map=%d sub=%d index=%d at=%.1f,%.1f radius=%.1f\n", (int)map_id, (int)map_subarea,
+                (int)boss_field_index - 1, boss_field_record.actor.x, boss_field_record.actor.z, D_803AB48C[boss_field_index]);
+    for (s32 i = 0; i < textspot_count && i < 16; i++) {
+        const TextSpotDef *t = textspot_list[i].entry;
+        fprintf(stderr, "P1_AUTOMAP textspot map=%d sub=%d at=%.1f,%.1f r=%.1f flags=%d\n", (int)map_id, (int)map_subarea,
+                t->x, t->z, t->radius, (int)t->flags);
+    }
+}
+
 /* ---- the truth view (a test) --------------------------------------------------------------------------- */
 
 static int truth_env = -1, shots_env = -1;
@@ -336,8 +558,20 @@ void nd_automap_tick(unsigned frame) {
             send_area(&area);
         }
     }
+    static int log = -1;
+    if (log < 0) log = getenv("ELTALE_AUTOMAP_LOG") != NULL;
+    mark_count = 0;
+    /* the marks: in play, and through the fade of a way out while the sub-area is still the plan's (the minimap keeps
+     * them until the next area comes) */
+    if (have_plan && core_game_mode == 1 && plan_map == map_id && plan_sub == map_subarea && map_subarea_grid == plan_grid &&
+        map_objs == plan_objs && map_subarea_def) {
+        build_marks();
+        if (log && play && ticks_on_plan == 1) log_marks();
+    }
     ElAmPlayer p;
     memset(&p, 0, sizeof p);
+    p.markers = marks;
+    p.marker_count = mark_count;
     p.frame = frame;
     p.area_serial = have_plan ? area.serial : 0;
     p.flags = (play && have_plan ? EL_AM_PLAYER_PLAY : 0) | ((battle_flags & 1) ? EL_AM_PLAYER_BATTLE : 0);

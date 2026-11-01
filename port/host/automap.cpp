@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cfloat>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,7 +59,6 @@ struct Plan {
     std::vector<ElAmTri> tris;
     std::vector<ElAmWall> walls;
     std::vector<ElAmExit> exits;
-    std::vector<ElAmMarker> markers;
     // made from the above when it comes
     std::vector<uint32_t> order; // the triangles, lowest first (a higher floor is drawn over a lower one)
     std::vector<float> slope;    // per triangle: its light (1 flat)
@@ -78,6 +78,7 @@ Plan plan;
 struct Sample {
     uint32_t frame = 0, area = 0, flags = 0;
     float x = 0, y = 0, z = 0, rot = 0;
+    std::vector<ElAmMarker> marks; // the tick's marks (doors, people, chests...)
 };
 constexpr size_t SAMPLES = 64;
 Sample samples[SAMPLES];
@@ -479,6 +480,227 @@ void draw_arrow(ImDrawList *dl, ImVec2 p, float rot, float size, float alpha) {
                     std::max(1.5f, size * 0.12f));
 }
 
+// The marks as the picture shows them: the newer recording's, people and the boss slid from where the older one had
+// them (as the picture moves their models)
+std::vector<ElAmMarker> marks_now(bool smooth) {
+    if (!smooth) return newest.marks;
+    const render::NativeDraw::Shown &sh = render::native_draw().shown_frames();
+    if (!sh.valid) return newest.marks;
+    const Sample *a = find_sample(sh.a), *b = find_sample(sh.b);
+    if (!a) return newest.marks;
+    if (!b || b == a || b->area != a->area || sh.t <= 0) return a->marks;
+    std::vector<ElAmMarker> r = b->marks;
+    for (ElAmMarker &m : r) {
+        if (m.kind != EL_AM_MARK_PERSON && m.kind != EL_AM_MARK_BOSS) continue;
+        for (const ElAmMarker &o : a->marks)
+            if (o.id == m.id) {
+                const float dx = m.x - o.x, dz = m.z - o.z;
+                if (dx * dx + dz * dz < 200.0f * 200.0f) {
+                    m.x = o.x + dx * sh.t;
+                    m.y = o.y + (m.y - o.y) * sh.t;
+                    m.z = o.z + dz * sh.t;
+                }
+                break;
+            }
+    }
+    return r;
+}
+
+// ---- the marks: doors and ways out, people; the cheats' chests, spirits and bosses (KF3/KF4's icons) ----------
+
+constexpr ImU32 COL_DOOR = IM_COL32(190, 120, 50, 255);
+constexpr ImU32 COL_LOCKED = IM_COL32(210, 60, 50, 255);
+constexpr ImU32 COL_SHUT = IM_COL32(120, 112, 100, 255);
+constexpr ImU32 COL_EXIT = IM_COL32(250, 250, 255, 255);
+constexpr ImU32 COL_PERSON = IM_COL32(255, 60, 170, 255);
+constexpr ImU32 COL_CHEST = IM_COL32(230, 170, 60, 255);
+constexpr ImU32 COL_SPIRIT = IM_COL32(190, 130, 255, 255); // (the game's sparkles are violet)
+constexpr ImU32 COL_BOSS = IM_COL32(235, 50, 50, 255);
+constexpr ImU32 COL_MARK_OUTLINE = IM_COL32(0, 0, 0, 205);
+
+ImU32 fade(ImU32 c, float a) { return (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * std::clamp(a, 0.0f, 1.0f)) << 24); }
+
+// which marks are on (the Map page; `all` for the tests' pictures)
+bool mark_shown(const ElAmMarker &m, bool all) {
+    if (all) return true;
+    const MapSettings &s = settings.map;
+    switch (m.kind) {
+    case EL_AM_MARK_DOOR:
+    case EL_AM_MARK_EXIT: return s.doors;
+    case EL_AM_MARK_PERSON: return s.people;
+    case EL_AM_MARK_CHEST: return s.cheat_chests;
+    case EL_AM_MARK_SPIRIT: return s.cheat_spirits;
+    case EL_AM_MARK_BOSS: return s.cheat_bosses;
+    default: return false;
+    }
+}
+
+// an exit's way through and its side, on the screen (world (sin a, cos a) and (cos a, -sin a)), unit length
+void exit_axes(const Xform &x, const ElAmMarker &m, ImVec2 *fwd, ImVec2 *side) {
+    const ImVec2 o = x.at(0, 0), f = x.at(std::sin(m.angle), std::cos(m.angle)), sd = x.at(std::cos(m.angle), -std::sin(m.angle));
+    *fwd = ImVec2((f.x - o.x) / x.s, (f.y - o.y) / x.s);
+    *side = ImVec2((sd.x - o.x) / x.s, (sd.y - o.y) / x.s);
+}
+
+// a chevron pointing the way through
+void draw_chevron(ImDrawList *dl, ImVec2 p, ImVec2 fwd, ImVec2 side, float k, ImU32 c, float alpha) {
+    const ImVec2 tip(p.x + fwd.x * k, p.y + fwd.y * k);
+    const ImVec2 l(p.x - fwd.x * k * 0.2f + side.x * k * 0.75f, p.y - fwd.y * k * 0.2f + side.y * k * 0.75f);
+    const ImVec2 r(p.x - fwd.x * k * 0.2f - side.x * k * 0.75f, p.y - fwd.y * k * 0.2f - side.y * k * 0.75f);
+    dl->AddTriangleFilled(tip, l, r, fade(c, alpha));
+    dl->AddTriangle(tip, l, r, fade(COL_MARK_OUTLINE, alpha), 1.0f);
+}
+
+void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, float alpha) {
+    const ImVec2 p = x.at(m.x, m.z);
+    const bool done = (m.flags & EL_AM_MARK_DONE) != 0;
+    switch (m.kind) {
+    case EL_AM_MARK_DOOR: {
+        // a bar across the doorway, on the wall line (KF4's door); an exit to another map points the way out
+        ImVec2 fwd, side;
+        exit_axes(x, m, &fwd, &side);
+        const float hw = std::max(m.half_w * x.s, r * 0.8f);
+        const ImVec2 a(p.x - side.x * hw, p.y - side.y * hw), b(p.x + side.x * hw, p.y + side.y * hw);
+        const ImU32 c = (m.flags & EL_AM_MARK_LOCKED) ? COL_LOCKED : (m.flags & EL_AM_MARK_SHUT) ? COL_SHUT : COL_DOOR;
+        const float w = std::clamp(r * 0.55f, 3.0f, 9.0f);
+        dl->AddLine(a, b, fade(COL_MARK_OUTLINE, alpha), w + 2.5f);
+        dl->AddLine(a, b, fade(c, alpha), w);
+        if (m.flags & EL_AM_MARK_LOCKED) dl->AddCircleFilled(p, w * 0.45f, fade(IM_COL32(20, 10, 8, 255), alpha), 8); // a keyhole
+        if (m.flags & EL_AM_MARK_AWAY) {
+            const float k = std::max(r * 0.7f, 5.0f);
+            draw_chevron(dl, ImVec2(p.x + fwd.x * (w * 0.5f + k * 0.35f), p.y + fwd.y * (w * 0.5f + k * 0.35f)), fwd, side, k, COL_EXIT,
+                         alpha);
+        }
+        break;
+    }
+    case EL_AM_MARK_EXIT: {
+        // the box the player walks into (KF4's way to another map), a chevron the way through (white: another map)
+        ImVec2 fwd, side;
+        exit_axes(x, m, &fwd, &side);
+        const float hw = std::max(m.half_w * x.s, r * 0.6f), hd = std::max(m.half_d * x.s, r * 0.3f);
+        ImVec2 q[4] = {
+            ImVec2(p.x - side.x * hw - fwd.x * hd, p.y - side.y * hw - fwd.y * hd),
+            ImVec2(p.x + side.x * hw - fwd.x * hd, p.y + side.y * hw - fwd.y * hd),
+            ImVec2(p.x + side.x * hw + fwd.x * hd, p.y + side.y * hw + fwd.y * hd),
+            ImVec2(p.x - side.x * hw + fwd.x * hd, p.y - side.y * hw + fwd.y * hd),
+        };
+        const ImU32 c = (m.flags & EL_AM_MARK_LOCKED) ? COL_LOCKED : (m.flags & EL_AM_MARK_SHUT) ? COL_SHUT : COL_EXIT;
+        dl->AddConvexPolyFilled(q, 4, fade(c, alpha * 0.22f));
+        dl->AddPolyline(q, 4, fade(c, alpha * 0.8f), ImDrawFlags_Closed, std::max(1.0f, r * 0.15f));
+        const float k = std::clamp(std::min(hw, hd * 2.0f) * 0.8f, r * 0.45f, r * 1.1f);
+        draw_chevron(dl, p, fwd, side, k, (m.flags & EL_AM_MARK_AWAY) ? COL_EXIT : COL_DOOR, alpha);
+        break;
+    }
+    case EL_AM_MARK_PERSON: {
+        const float k = r * 0.8f;
+        dl->AddCircleFilled(p, k, fade(COL_PERSON, alpha), 16);
+        dl->AddCircle(p, k, fade(IM_COL32(255, 255, 255, 255), alpha), 16, std::max(1.5f, k * 0.22f));
+        dl->AddCircle(p, k + std::max(1.5f, k * 0.22f) * 0.5f + 0.5f, fade(COL_MARK_OUTLINE, alpha), 16, 1.0f);
+        break;
+    }
+    case EL_AM_MARK_CHEST: {
+        const ImVec2 h(r * 0.8f, r * 0.58f);
+        if (done) {
+            dl->AddRectFilled(ImVec2(p.x - h.x, p.y - h.y), ImVec2(p.x + h.x, p.y + h.y), fade(IM_COL32(20, 17, 12, 220), alpha));
+            dl->AddRect(ImVec2(p.x - h.x, p.y - h.y), ImVec2(p.x + h.x, p.y + h.y), fade(COL_CHEST, alpha * 0.85f), 0.0f, 0,
+                        std::max(1.5f, r * 0.2f));
+        } else {
+            dl->AddRectFilled(ImVec2(p.x - h.x, p.y - h.y), ImVec2(p.x + h.x, p.y + h.y), fade(COL_CHEST, alpha));
+            dl->AddLine(ImVec2(p.x - h.x, p.y - h.y * 0.15f), ImVec2(p.x + h.x, p.y - h.y * 0.15f),
+                        fade(IM_COL32(120, 70, 20, 255), alpha), std::max(1.0f, r * 0.12f));
+            dl->AddRect(ImVec2(p.x - h.x, p.y - h.y), ImVec2(p.x + h.x, p.y + h.y), fade(COL_MARK_OUTLINE, alpha), 0.0f, 0, 1.0f);
+        }
+        break;
+    }
+    case EL_AM_MARK_SPIRIT: {
+        // a four-pointed sparkle; taken: its outline
+        const float k = r * 0.95f, n = k * 0.32f;
+        ImVec2 q[8];
+        for (int i = 0; i < 8; i++) {
+            const float a = float(i) * 0.78539816f, d = (i & 1) ? n : k;
+            q[i] = ImVec2(p.x + std::sin(a) * d, p.y - std::cos(a) * d);
+        }
+        if (done) {
+            dl->AddPolyline(q, 8, fade(COL_SPIRIT, alpha * 0.7f), ImDrawFlags_Closed, std::max(1.0f, r * 0.12f));
+        } else {
+            dl->AddConcavePolyFilled(q, 8, fade(COL_SPIRIT, alpha));
+            dl->AddPolyline(q, 8, fade(COL_MARK_OUTLINE, alpha), ImDrawFlags_Closed, 1.0f);
+            dl->AddCircleFilled(p, n * 0.6f, fade(IM_COL32(255, 255, 255, 255), alpha), 8);
+        }
+        break;
+    }
+    case EL_AM_MARK_BOSS: {
+        // how near starts the fight (a faint ring, world-sized), and a red diamond with a light rim
+        if (m.radius > 0) {
+            const float rr = m.radius * x.s;
+            dl->AddCircleFilled(p, rr, fade(COL_BOSS, alpha * 0.10f), 48);
+            dl->AddCircle(p, rr, fade(COL_BOSS, alpha * 0.55f), 48, 1.5f);
+        }
+        const float k = r * 1.0f;
+        const ImVec2 t(p.x, p.y - k), rt(p.x + k, p.y), b(p.x, p.y + k), lf(p.x - k, p.y);
+        dl->AddQuadFilled(t, rt, b, lf, fade(COL_BOSS, alpha));
+        dl->AddQuad(t, rt, b, lf, fade(IM_COL32(255, 235, 220, 255), alpha), std::max(1.5f, k * 0.15f));
+        break;
+    }
+    default: break;
+    }
+}
+
+// Every mark shown: the ways out first, then doors, chests and spirits, people and the boss on top
+void draw_marks(ImDrawList *dl, const Xform &x, const std::vector<ElAmMarker> &marks, float r, float alpha, bool all,
+                const float *clip) {
+    static const uint16_t order[] = { EL_AM_MARK_EXIT, EL_AM_MARK_DOOR, EL_AM_MARK_CHEST, EL_AM_MARK_SPIRIT, EL_AM_MARK_PERSON,
+                                      EL_AM_MARK_BOSS };
+    for (uint16_t kind : order)
+        for (const ElAmMarker &m : marks) {
+            if (m.kind != kind || !mark_shown(m, all)) continue;
+            const ImVec2 p = x.at(m.x, m.z);
+            const float pad = r * 3.0f + std::max({ m.half_w, m.half_d, m.radius }) * x.s;
+            if (clip && (p.x < clip[0] - pad || p.y < clip[1] - pad || p.x > clip[2] + pad || p.y > clip[3] + pad)) continue;
+            draw_mark(dl, x, m, r, alpha);
+        }
+}
+
+// The mark under the mouse (screen point q): the nearest within `reach` pixels, or a door's bar or an exit's box
+// under it; -1 none
+int pick_mark(const Xform &x, const std::vector<ElAmMarker> &marks, ImVec2 q, float reach, bool all) {
+    int best = -1;
+    float best_d = reach * reach;
+    for (size_t i = 0; i < marks.size(); i++) {
+        const ElAmMarker &m = marks[i];
+        if (!mark_shown(m, all)) continue;
+        const ImVec2 p = x.at(m.x, m.z);
+        float d = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y);
+        if (m.kind == EL_AM_MARK_DOOR || m.kind == EL_AM_MARK_EXIT) {
+            // in the exit's own frame (world units): across and along the way through
+            const float dx = x.wx(q.x) - m.x, dz = x.wz(q.y) - m.z;
+            const float along = dx * std::sin(m.angle) + dz * std::cos(m.angle);
+            const float across = dx * std::cos(m.angle) - dz * std::sin(m.angle);
+            const float slack = reach * 0.5f / x.s;
+            const float hd = m.kind == EL_AM_MARK_DOOR ? 0.0f : m.half_d;
+            if (std::fabs(across) <= m.half_w + slack && std::fabs(along) <= hd + slack) d = std::min(d, best_d * 0.98f);
+        }
+        if (m.kind == EL_AM_MARK_PERSON || m.kind == EL_AM_MARK_BOSS) d *= 0.5f; // (over what they stand on)
+        if (d < best_d) best_d = d, best = int(i);
+    }
+    return best;
+}
+
+// The label of the mark under the mouse, beside it (KF4's)
+void draw_hover_label(ImDrawList *dl, ImVec2 q, const char *label, const float *g, float ts) {
+    ImFont *font = ImGui::GetFont();
+    const ImVec2 ext = font->CalcTextSizeA(ts, FLT_MAX, ts * 24.0f, label);
+    const float pad = ts * 0.4f;
+    ImVec2 at(q.x + ts, q.y + ts * 0.6f);
+    if (at.x + ext.x + pad > g[2]) at.x = q.x - ts - ext.x - pad;
+    if (at.y + ext.y + pad > g[3]) at.y = q.y - ext.y - pad * 2.0f;
+    at.x = std::max(at.x, g[0] + pad);
+    at.y = std::max(at.y, g[1] + pad);
+    dl->AddRectFilled(ImVec2(at.x - pad, at.y - pad), ImVec2(at.x + ext.x + pad, at.y + ext.y + pad), IM_COL32(20, 17, 12, 235), pad);
+    dl->AddRect(ImVec2(at.x - pad, at.y - pad), ImVec2(at.x + ext.x + pad, at.y + ext.y + pad), IM_COL32(200, 180, 130, 230), pad);
+    dl->AddText(font, ts, at, IM_COL32(240, 230, 210, 255), label, nullptr, ts * 24.0f);
+}
+
 // ---- the tests' pictures (ELTALE_AUTOMAP_SHOTS, with the game's truth view) ------------------------
 
 const bool shots = std::getenv("ELTALE_AUTOMAP_SHOTS") != nullptr;
@@ -533,6 +755,21 @@ const bool dump_test = std::getenv("ELTALE_AUTOMAP_DUMP") != nullptr;
 int view_changes, view_dumped;
 uint32_t samples_on_plan;
 bool minimap_dumped;
+// the mark under the mouse (its id, 0 none); ELTALE_AUTOMAP_HOVER=person|door|exit|chest|spirit|boss (a test's
+// pictures): the mouse put on the first mark of that kind
+uint32_t hovered_id;
+const uint16_t hover_test_kind = [] {
+    const char *e = std::getenv("ELTALE_AUTOMAP_HOVER");
+    if (!e) return uint16_t(0);
+    const char *names[] = { "", "door", "exit", "person", "chest", "spirit", "boss" };
+    for (uint16_t k = 1; k < 7; k++)
+        if (!std::strcmp(e, names[k])) return k;
+    return uint16_t(0);
+}();
+// where the minimap was last drawn (the wheel over it zooms it), and the zoom's note until when (ImGui's time)
+float mm_rect[4];
+bool mm_shown;
+double zoom_note_until;
 
 void draw_full(ImDrawList *dl, const float *g) {
     const float gw = g[2] - g[0], gh = g[3] - g[1];
@@ -583,8 +820,28 @@ void draw_full(ImDrawList *dl, const float *g) {
     draw_wet(dl, x, 1.0f);
     const float wall_w = std::clamp(x.s * 3.0f, 1.0f, gh / 220.0f), edge_w = std::clamp(x.s * 1.5f, 1.0f, gh / 400.0f);
     draw_lines(dl, x, wall_w, edge_w, 1.0f);
+    const std::vector<ElAmMarker> marks = marks_now(!shots && !dump_test);
+    const float mr = std::clamp(x.s * 5.0f, gh / 110.0f, gh / 55.0f);
+    draw_marks(dl, x, marks, mr, 1.0f, false, area);
     if (p.area == plan.serial)
         draw_arrow(dl, x.at(p.x, p.z), p.rot, std::max(9.0f, std::min(gh / 45.0f, x.s * 20.0f)), 1.0f);
+    // the mark under the mouse, named (or, for a test's picture, ELTALE_AUTOMAP_HOVER's kind: the first such mark)
+    {
+        ImVec2 q(mouse_x, mouse_y);
+        bool over = inside && !dragging;
+        if (hover_test_kind) {
+            over = false;
+            for (const ElAmMarker &m : marks)
+                if (m.kind == hover_test_kind && mark_shown(m, false)) { q = x.at(m.x, m.z); over = true; break; }
+        }
+        const int h = over ? pick_mark(x, marks, q, std::max(mr * 1.6f, 10.0f), false) : -1;
+        if (h >= 0) {
+            hovered_id = marks[size_t(h)].id;
+            draw_hover_label(dl, q, marks[size_t(h)].label, area, ts);
+        } else {
+            hovered_id = 0;
+        }
+    }
     dl->PopClipRect();
 
     // the title, the legend and the help
@@ -610,16 +867,71 @@ void draw_full(ImDrawList *dl, const float *g) {
     swatch(rgba(50, 88, 140, 255 * 0.85f), "Water");
     line(COL_WALL, std::max(2.0f, gh / 300.0f), "Wall");
     line(COL_EDGE, std::max(1.5f, gh / 500.0f), "Ledge or drop");
+    // the marks this area has, as they are drawn (an icon in the swatch's place)
+    auto has = [&](uint16_t kind, uint16_t flags, uint16_t no) {
+        for (const ElAmMarker &m : marks)
+            if (m.kind == kind && (m.flags & flags) == flags && !(m.flags & no) && mark_shown(m, false)) return true;
+        return false;
+    };
+    auto icon = [&](uint16_t kind, uint16_t flags, float angle, const char *label) {
+        ElAmMarker m{};
+        m.kind = kind;
+        m.flags = flags;
+        m.angle = angle;
+        const Xform lxf{ lx + sw * 0.5f, ly + ts * 0.55f, 0.0f, 0.0f, 1.0f };
+        m.half_w = sw * 0.45f;
+        m.half_d = ts * 0.3f;
+        draw_mark(dl, lxf, m, ts * 0.45f, 1.0f);
+        draw_text(dl, ts, ImVec2(lx + sw * 1.4f, ly), COL_HELP, label);
+        ly += ts * 1.5f;
+    };
+    if (has(EL_AM_MARK_DOOR, 0, EL_AM_MARK_AWAY | EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_DOOR, 0, 0.0f, "Door");
+    if (has(EL_AM_MARK_DOOR, EL_AM_MARK_AWAY, EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_DOOR, EL_AM_MARK_AWAY, 0.0f, "Door to another area");
+    if (has(EL_AM_MARK_DOOR, EL_AM_MARK_LOCKED, 0) || has(EL_AM_MARK_EXIT, EL_AM_MARK_LOCKED, 0))
+        icon(EL_AM_MARK_DOOR, EL_AM_MARK_LOCKED, 0.0f, "Locked");
+    if (has(EL_AM_MARK_EXIT, 0, EL_AM_MARK_AWAY | EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_EXIT, 0, 0.0f, "Way through");
+    if (has(EL_AM_MARK_EXIT, EL_AM_MARK_AWAY, EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_EXIT, EL_AM_MARK_AWAY, 0.0f, "Way to another area");
+    if (has(EL_AM_MARK_PERSON, 0, 0)) icon(EL_AM_MARK_PERSON, 0, 0.0f, "Person");
+    if (has(EL_AM_MARK_CHEST, 0, EL_AM_MARK_DONE)) icon(EL_AM_MARK_CHEST, 0, 0.0f, "Chest");
+    if (has(EL_AM_MARK_CHEST, EL_AM_MARK_DONE, 0)) icon(EL_AM_MARK_CHEST, EL_AM_MARK_DONE, 0.0f, "Chest (opened)");
+    if (has(EL_AM_MARK_SPIRIT, 0, EL_AM_MARK_DONE)) icon(EL_AM_MARK_SPIRIT, 0, 0.0f, "Spirit");
+    if (has(EL_AM_MARK_SPIRIT, EL_AM_MARK_DONE, 0)) icon(EL_AM_MARK_SPIRIT, EL_AM_MARK_DONE, 0.0f, "Spirit (taken)");
+    if (has(EL_AM_MARK_BOSS, 0, 0)) icon(EL_AM_MARK_BOSS, 0, 0.0f, "Boss");
     draw_arrow(dl, ImVec2(lx + sw * 0.5f, ly + ts * 0.55f), 0.0f, ts * 0.55f, 1.0f);
     draw_text(dl, ts, ImVec2(lx + sw * 1.4f, ly), COL_HELP, "You");
     ly += ts * 2.2f;
     std::string key = "M";
     for (int s = 0; s < BIND_SLOTS - 1; s++)
         if (settings.controls.bind[ACT_MAP][s]) { key = binding_label(settings.controls.bind[ACT_MAP][s]); break; }
-    const std::string help = "Wheel: zoom\nDrag: move\nRight click: fit\n" + key + " or Esc: close";
+    const std::string help = "Wheel: zoom\nDrag: move\nRight click: fit\nPoint at a mark: what it is\n" + key + " or Esc: close";
     draw_text(dl, ts * 0.85f, ImVec2(lx, ly), COL_HELP, help.c_str());
     // north
     draw_text(dl, ts * 1.2f, ImVec2(area[2] - ts * 1.6f, area[1]), COL_NORTH, "N");
+}
+
+// The minimap's view: outdoors (an area with a sky) its outdoor reach, indoors its own (rooms are small: a house's
+// is 60-100 units across); a room whose reachable floor fits in the reach fills the minimap, centred on the room, so
+// you see the whole room and its doors and people (Map page: "Fit small rooms").
+struct MinimapView {
+    bool indoor = false, fitted = false;
+    float reach = 800.0f, cx = 0, cz = 0;
+};
+MinimapView minimap_view() {
+    MinimapView v;
+    const MapSettings &m = settings.map;
+    v.indoor = plan.valid() && !(plan.flags & EL_AM_AREA_SKY);
+    v.reach = float(v.indoor ? m.reach_in : m.reach);
+    if (m.fit_rooms && v.indoor && plan.reach_done) {
+        const float *b = plan.reach_box;
+        const float ext = std::max(b[2] - b[0], b[3] - b[1]) * 0.5f * 1.08f + 6.0f;
+        if (ext <= v.reach) {
+            v.reach = std::max(ext, 20.0f);
+            v.fitted = true;
+            v.cx = (b[0] + b[2]) * 0.5f;
+            v.cz = (b[1] + b[3]) * 0.5f;
+        }
+    }
+    return v;
 }
 
 void draw_minimap(ImDrawList *dl, const float *g) {
@@ -634,20 +946,49 @@ void draw_minimap(ImDrawList *dl, const float *g) {
     const float a = m.opacity / 100.0f;
     const ImVec2 p0(x0, y0), p1(x0 + side, y0 + side);
     const float round = side * 0.04f;
-    dl->AddRectFilled(p0, p1, rgba(10, 9, 8, 255 * 0.75f * a / 0.85f), round);
+    // (the backdrop: 75% at the default 85% opacity, solid at 100%)
+    const float back = a <= 0.85f ? 0.75f * a / 0.85f : 0.75f + (a - 0.85f) / 0.15f * 0.25f;
+    dl->AddRectFilled(p0, p1, rgba(10, 9, 8, 255 * back), round);
     const Sample p = player_now(!dump_test);
-    if (dump_test && !minimap_dumped && samples_on_plan >= 100) {
+    // (ELTALE_AUTOMAP_MINIMAP_AT=M,S: in that sub-area only)
+    static int at_map = -2, at_sub = -1;
+    if (at_map == -2) {
+        const char *e = std::getenv("ELTALE_AUTOMAP_MINIMAP_AT");
+        if (!e || std::sscanf(e, "%d,%d", &at_map, &at_sub) != 2) at_map = -1;
+    }
+    if (dump_test && !minimap_dumped && samples_on_plan >= (at_map < 0 ? 100u : 250u) && (at_map < 0 || (plan.map == at_map && plan.sub == at_sub))) {
         minimap_dumped = true;
         renderer()->request_dump("automap_minimap");
+        const MinimapView v = minimap_view();
+        std::printf("P1_AUTOMAP_MINIMAP map=%d sub=%d rect=%.0f,%.0f,%.0f,%.0f indoor=%d fitted=%d reach=%.1f\n", plan.map, plan.sub,
+                    x0, y0, x0 + side, y0 + side, v.indoor, v.fitted, v.reach);
+        std::fflush(stdout);
     }
-    const float reach = m.reach * 100.0f;
-    Xform x{ x0 + side * 0.5f, y0 + side * 0.5f, p.x, p.z, side * 0.5f / reach };
-    dl->PushClipRect(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p1.x - 1, p1.y - 1), true);
+    float cx = p.x, cz = p.z;
+    const MinimapView mv = minimap_view();
+    if (mv.fitted) cx = mv.cx, cz = mv.cz;
+    Xform x{ x0 + side * 0.5f, y0 + side * 0.5f, cx, cz, side * 0.5f / mv.reach };
+    mm_rect[0] = p0.x; mm_rect[1] = p0.y; mm_rect[2] = p1.x; mm_rect[3] = p1.y;
+    mm_shown = true;
+    const float clip[4] = { p0.x + 1, p0.y + 1, p1.x - 1, p1.y - 1 };
+    dl->PushClipRect(ImVec2(clip[0], clip[1]), ImVec2(clip[2], clip[3]), true);
     draw_floor(dl, x, p.y, a);
     draw_wet(dl, x, a);
     draw_lines(dl, x, std::clamp(x.s * 3.0f, 1.0f, side / 90.0f), std::clamp(x.s * 1.5f, 1.0f, side / 160.0f), a);
-    draw_arrow(dl, ImVec2(x0 + side * 0.5f, y0 + side * 0.5f), p.rot, std::max(5.0f, side * 0.045f), a);
+    draw_marks(dl, x, marks_now(!dump_test), std::clamp(x.s * 5.0f, side / 42.0f, side / 20.0f), a, false, clip);
+    draw_arrow(dl, x.at(p.x, p.z), p.rot, std::max(5.0f, side * 0.045f), a);
     dl->PopClipRect();
+    // after a zoom key or the wheel: the reach for a moment
+    if (zoom_note_until > 0 && ImGui::GetTime() < zoom_note_until) {
+        char note[64];
+        std::snprintf(note, sizeof note, mv.fitted ? "%s: the whole room" : "%s: %d units", mv.indoor ? "Indoors" : "Outdoors",
+                      int(mv.reach + 0.5f));
+        const float ns = std::max(11.0f, side * 0.065f);
+        const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ns, FLT_MAX, 0.0f, note);
+        const ImVec2 at(x0 + (side - ext.x) * 0.5f, y0 + side - ext.y - side * 0.03f);
+        dl->AddRectFilled(ImVec2(at.x - 3, at.y - 1), ImVec2(at.x + ext.x + 3, at.y + ext.y + 1), rgba(10, 9, 8, 200 * a), 3.0f);
+        draw_text(dl, ns, at, (COL_TITLE & 0x00FFFFFFu) | (ImU32(255 * a) << 24), note);
+    }
     dl->AddRect(p0, p1, rgba(200, 180, 130, 255 * 0.8f * a), round, 0, 1.5f);
     const float ns = std::max(12.0f, side * 0.08f);
     draw_text(dl, ns, ImVec2(x0 + side * 0.5f - ns * 0.3f, y0 + 2), (COL_NORTH & 0x00FFFFFFu) | (ImU32(255 * a) << 24), "N");
@@ -672,6 +1013,20 @@ void write_plan_json(const float *g) {
         const ElAmWall &w = plan.walls[i];
         std::fprintf(f, "%s[%.3f, %.3f, %.3f, %.3f]", i ? ", " : "", w.x0, w.z0, w.x1, w.z1);
     }
+    // the marks of the over picture's tick (tools/automap_sheet.py's close-ups)
+    std::fprintf(f, "],\n \"marks\": [");
+    for (size_t i = 0; i < newest.marks.size(); i++) {
+        const ElAmMarker &m = newest.marks[i];
+        std::string label;
+        for (const char *c = m.label; *c; c++) {
+            if (*c == '"' || *c == '\\') label += '\\';
+            if ((unsigned char)*c >= 0x20) label += *c;
+        }
+        std::fprintf(f, "%s\n  {\"id\": %u, \"kind\": %u, \"flags\": %u, \"x\": %.2f, \"y\": %.2f, \"z\": %.2f, \"angle\": %.4f, "
+                     "\"half_w\": %.2f, \"half_d\": %.2f, \"radius\": %.2f, \"item\": %u, \"to\": [%d, %d], \"label\": \"%s\"}",
+                     i ? "," : "", m.id, m.kind, m.flags, m.x, m.y, m.z, m.angle, m.half_w, m.half_d, m.radius, m.item, m.to_map,
+                     m.to_sub, label.c_str());
+    }
     std::fprintf(f, "]}\n");
     std::fclose(f);
 }
@@ -687,6 +1042,17 @@ void draw_over(ImDrawList *dl, const float *g) {
     draw_lines(dl, x, std::max(1.5f, gh / 400.0f), std::max(1.0f, gh / 700.0f), 1.0f, IM_COL32(255, 40, 255, 255),
                IM_COL32(255, 230, 0, 255));
     const Sample p = newest;
+    // every mark (cheats too), named, over the real models
+    const float r = std::max(7.0f, gh / 110.0f);
+    draw_marks(dl, x, p.marks, r, 0.9f, true, nullptr);
+    const float ts = std::max(11.0f, gh / 88.0f);
+    for (const ElAmMarker &m : p.marks) {
+        const ImVec2 q = x.at(m.x, m.z);
+        const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ts, FLT_MAX, 0.0f, m.label);
+        const ImVec2 at(q.x + r * 1.2f, q.y - ext.y * 0.5f);
+        dl->AddRectFilled(ImVec2(at.x - 2, at.y), ImVec2(at.x + ext.x + 2, at.y + ext.y), IM_COL32(0, 0, 0, 150), 2.0f);
+        draw_text(dl, ts, at, IM_COL32(255, 255, 200, 255), m.label);
+    }
     draw_arrow(dl, x.at(p.x, p.z), p.rot, std::max(9.0f, gh / 45.0f), 0.8f);
 }
 
@@ -710,7 +1076,6 @@ void receive_area(const ElAmArea *a) {
     plan.tris.assign(a->tris, a->tris + a->tri_count);
     plan.walls.assign(a->walls, a->walls + a->wall_count);
     plan.exits.assign(a->exits, a->exits + a->exit_count);
-    plan.markers.assign(a->markers, a->markers + a->marker_count);
     plan.water.assign(a->water, a->water + a->water_count);
     prepare(plan);
     fitted = false; // (a new area: the open map fits it)
@@ -723,6 +1088,7 @@ void receive_player(const ElAmPlayer *p) {
     s.area = p->area_serial;
     s.flags = p->flags;
     s.x = p->x; s.y = p->y; s.z = p->z; s.rot = p->rot;
+    if (p->markers && p->marker_count) s.marks.assign(p->markers, p->markers + p->marker_count);
     samples[sample_next] = s;
     sample_next = (sample_next + 1) % SAMPLES;
     newest = s;
@@ -748,6 +1114,25 @@ void toggle() {
 }
 
 bool full_open() { return full && in_play(); }
+
+// The minimap's zoom (the keys, the wheel over it): the reach of the kind of area shown (indoors or outdoors), from
+// what is shown now (a fitted room's too), x1.25 a step
+void minimap_zoom(int steps) {
+    if (!steps || !in_play() || !settings.map.minimap) return;
+    MapSettings &m = settings.map;
+    const MinimapView v = minimap_view();
+    int &reach = v.indoor ? m.reach_in : m.reach;
+    const int lo = v.indoor ? 25 : 100, hi = v.indoor ? 1500 : 3000;
+    const float k = std::pow(1.25f, float(-std::clamp(steps, -4, 4)));
+    const float from = steps > 0 ? std::min(float(reach), v.reach) : std::max(float(reach), v.reach);
+    reach = std::clamp(int(std::lround(from * k)), lo, hi);
+    zoom_note_until = ImGui::GetTime() + 1.5;
+    save_settings();
+    if (dump_test) {
+        std::printf("P1_AUTOMAP_ZOOM steps=%d %s reach=%d\n", steps, v.indoor ? "indoor" : "outdoor", reach);
+        std::fflush(stdout);
+    }
+}
 bool holds_game() { return full_open() && settings.map.pause; }
 
 bool event(const SDL_Event &e) {
@@ -764,6 +1149,13 @@ bool event(const SDL_Event &e) {
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
         if (dragging) view_changes++;
         dragging = false;
+    }
+    // the wheel over the minimap zooms it (not while the mouse turns the camera: the cursor is not shown then)
+    if (!full_open() && e.type == SDL_EVENT_MOUSE_WHEEL && mm_shown && settings.map.minimap && in_play() &&
+        !(window() && SDL_GetWindowRelativeMouseMode(window())) && e.wheel.mouse_x >= mm_rect[0] && e.wheel.mouse_x < mm_rect[2] &&
+        e.wheel.mouse_y >= mm_rect[1] && e.wheel.mouse_y < mm_rect[3]) {
+        minimap_zoom(e.wheel.integer_y * (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1));
+        return true;
     }
     if (!full_open()) return false;
     if (e.type == SDL_EVENT_MOUSE_WHEEL) {
@@ -787,6 +1179,7 @@ bool event(const SDL_Event &e) {
 }
 
 bool wants_overlay() {
+    mm_shown = false; // (until draw() draws it again)
     if (shots && (shot_kind || shot_latched))
         return true;
     if (!in_play()) return false;
@@ -835,28 +1228,71 @@ void draw() {
     if (shots && (newest.flags & (EL_AM_PLAYER_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP))) return;
     if (full) draw_full(dl, g);
     else if (settings.map.minimap) draw_minimap(dl, g);
+    // (a test's pictures: the minimap as the player sees it, 84 ticks into the area: am_MM_SS_mini.png, and where it
+    // is in the picture, am_MM_SS_mini.json, for tools/automap_sheet.py)
+    static uint32_t mini_done;
+    if (shots && !full && settings.map.minimap && mm_shown && samples_on_plan >= 84 && mini_done != plan.serial &&
+        !renderer()->dump_pending()) {
+        mini_done = plan.serial;
+        char name[64];
+        std::snprintf(name, sizeof name, "am_%02d_%02d_mini", plan.map, plan.sub);
+        renderer()->request_dump(name);
+        const char *dir = std::getenv("ELTALE_PRESENT_DUMP");
+        char path[1024];
+        std::snprintf(path, sizeof path, "%s/%s.json", dir ? dir : ".", name);
+        if (FILE *f = std::fopen(path, "w")) {
+            const MinimapView v = minimap_view();
+            std::fprintf(f, "{\"rect\": [%.1f, %.1f, %.1f, %.1f], \"indoor\": %d, \"fitted\": %d, \"reach\": %.1f}\n", mm_rect[0],
+                         mm_rect[1], mm_rect[2], mm_rect[3], v.indoor, v.fitted, v.reach);
+            std::fclose(f);
+        }
+    }
 }
 
 void settings_page() {
     MapSettings &m = settings.map;
     bool changed = false;
-    ImGui::TextWrapped("The area map: the floor plan of the place you are in. Open it with the Map key (Controls page; M "
-                       "by default). Wheel: zoom, drag: move, right click: fit, the key or Esc: close.");
+    auto key_of = [](int action, const char *none) {
+        for (int s = 0; s < BIND_SLOTS - 1; s++)
+            if (settings.controls.bind[action][s]) return binding_label(settings.controls.bind[action][s]);
+        return std::string(none);
+    };
+    ImGui::TextWrapped("The area map: the floor plan of the place you are in. Open it with the Map key (%s; Controls page). "
+                       "Wheel: zoom, drag: move, right click: fit, point at a mark to name it, the key or Esc: close.",
+                       key_of(ACT_MAP, "none").c_str());
     ImGui::Spacing();
     changed |= ImGui::Checkbox("Pause the game while the map is open", &m.pause);
     ImGui::TextDisabled("(the game makes its own music: paused, it is silent)");
     changed |= ImGui::SliderInt("Map background", &m.background, 40, 100, "%d%%");
+    changed |= ImGui::Checkbox("Doors and ways out", &m.doors);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Doors you can open (orange; red: locked, it names the item it needs), and the ways out with no door\n"
+                          "(a white box: stairs, a passage, a road). A white arrow: it leads to another area (a field, a dungeon, another town).");
+    changed |= ImGui::Checkbox("People", &m.people);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Everyone you can talk to, where they are now (pink).");
     ImGui::Separator();
     changed |= ImGui::Checkbox("Minimap", &m.minimap);
     const char *corners[] = { "Top right", "Bottom right", "Top left", "Bottom left" };
     changed |= ImGui::Combo("Corner", &m.corner, corners, 4);
     changed |= ImGui::SliderInt("Size", &m.size, 10, 45, "%d%% of the height");
-    int reach = m.reach * 100;
-    if (ImGui::SliderInt("Reach", &reach, 300, 3000, "%d units")) {
-        m.reach = std::clamp((reach + 50) / 100, 3, 30);
-        changed = true;
-    }
+    changed |= ImGui::SliderInt("Reach outdoors", &m.reach, 100, 3000, "%d units", ImGuiSliderFlags_Logarithmic);
+    changed |= ImGui::SliderInt("Reach indoors", &m.reach_in, 25, 1500, "%d units", ImGuiSliderFlags_Logarithmic);
+    changed |= ImGui::Checkbox("Fit small rooms", &m.fit_rooms);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("A room smaller than the reach fills the minimap and stays put while you walk in it.");
+    ImGui::TextDisabled("(while you play: %s / %s, or the wheel over the minimap, zoom the reach of the place you are in)",
+                        key_of(ACT_MAP_ZOOM_IN, "-").c_str(), key_of(ACT_MAP_ZOOM_OUT, "-").c_str());
     changed |= ImGui::SliderInt("Opacity", &m.opacity, 20, 100, "%d%%");
+    ImGui::Separator();
+    ImGui::TextDisabled("Cheats (they stand in for a guide):");
+    changed |= ImGui::Checkbox("Show chests", &m.cheat_chests);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Every chest, and what it holds (gold; opened: an outline).");
+    changed |= ImGui::Checkbox("Show spirits", &m.cheat_spirits);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("The hidden spirits that raise an element of your choice (violet sparkle; taken: an outline).");
+    changed |= ImGui::Checkbox("Show bosses", &m.cheat_bosses);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A boss waiting in the area, and how near you can go before it fights (red).");
     if (changed) save_settings();
 }
 

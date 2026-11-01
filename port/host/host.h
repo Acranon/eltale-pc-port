@@ -48,6 +48,7 @@ enum Action {
     ACT_LOOK_HOLD, ACT_LOOK_TOGGLE, ACT_CAM_LEFT, ACT_CAM_RIGHT, ACT_CAM_UP, ACT_CAM_DOWN, ACT_ZOOM_IN, ACT_ZOOM_OUT,
     ACT_CAM_RESET,
     ACT_MAP, // the area map (automap.cpp)
+    ACT_MAP_ZOOM_IN, ACT_MAP_ZOOM_OUT, // the minimap's reach (automap.cpp)
     ACT_COUNT
 };
 enum { BIND_SLOTS = 3, BIND_PAD_SLOT = 2 };
@@ -70,7 +71,14 @@ struct MapSettings {
     bool minimap = true;
     int corner = 1;       // the minimap's: 0 top right, 1 bottom right, 2 top left, 3 bottom left
     int size = 24;        // the minimap's side, percent of the picture's height (10..45)
-    int reach = 8;        // the minimap's reach from its centre to its edge, hundreds of units (3..30)
+    int reach = 800;      // the minimap's reach outdoors (an area with a sky), units from its centre to its edge (100..3000)
+    int reach_in = 150;   // ... indoors (no sky: houses, castles, caves) (25..1500)
+    bool fit_rooms = true; // a room smaller than the reach fills the minimap (and stays put while you walk in it)
+    bool doors = true;    // the marks: doors and ways out
+    bool people = true;   // ... people
+    bool cheat_chests = false;  // the cheats: chests (what they hold, opened or not)
+    bool cheat_spirits = false; // ... spirits
+    bool cheat_bosses = false;  // ... the bosses standing in the field, and how near starts the fight
     int opacity = 85;     // the minimap's, percent (20..100)
     int background = 92;  // the full map's backdrop, percent (40..100)
     bool pause = false;   // the game waits while the full map is open
@@ -173,6 +181,7 @@ namespace automap {
 bool event(const SDL_Event &e);
 void toggle();            // the map key
 bool full_open();         // the full map is shown (it takes the mouse)
+void minimap_zoom(int steps); // the minimap's zoom keys: + in, - out (the reach of the area kind shown)
 bool holds_game();        // ... and the game waits (settings.map.pause)
 bool wants_overlay();     // something to draw this picture (the full map or the minimap)
 void draw();              // into ImGui's frame (menu::frame calls it, under the menu)
