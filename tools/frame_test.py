@@ -12,6 +12,15 @@ them into <work>/<run>/png/frame_N.png (+ .vi.png with --vi). Checks:
   - the picture hashes against tests/render_ref.txt (or write them with --write-baseline).
 The frame images (8 MiB each) are deleted at the end unless --keep-bins. PNGs stay in <work>
 (default out/frame_test), outside git. Prints FRAME_TEST lines and FRAME_TEST_OK / FRAME_TEST_FAIL.
+
+--native [KINDS] (docs/renderer/NATIVE_DRAW.md): the native renderer's pass instead. Each run is one game:
+the kinds drawn natively (default "map") keep their display-list commands too (ELTALE_ND_COMPARE=1) while
+every other kind's are dropped (ELTALE_DL_KINDS), so the frame image holds only what the native renderer
+draws; eltale-rdpref draws that reference into <work>/<run>/png and the native renderer writes its own
+pictures (--dump-frames, 1x, the N64 look) into <work>/<run>/native. tools/render_compare.py counts the
+differences per frame against tests/render_baselines/<run>.txt (--write-baseline writes them); diff
+pictures go to <work>/<run>/diff. Work folder default out/frame_test_native. Needs eltale_host.dll and
+SDL3.dll next to the exe (tools/build_host.py, then copy out/host/*.dll).
 """
 
 import argparse
@@ -74,6 +83,12 @@ def dump(run, work: Path, args) -> Path:
     env["ELTALE_FRAME_IMAGE"] = "1"
     env["ELTALE_DUMP_IMAGE"] = ",".join(str(f) for f in run["frames"])
     cmd = [str(args.exe), "--headless", "--fast", *run["argv"], "--rom", str(args.rom)]
+    if args.native:
+        (d / "native").mkdir()
+        env["ELTALE_ND_COMPARE"] = "1"
+        env["ELTALE_DL_KINDS"] = args.native
+        env["ELTALE_NATIVE_KINDS"] = args.native
+        cmd += ["--dump-frames", str(d / "native")]
     with open(d / "log.txt", "wb") as log, open(d / "err.txt", "wb") as err:
         p = subprocess.run(cmd, cwd=d, env=env, stdout=subprocess.PIPE, stderr=err)
         # the per-frame P1_FRAME_IMAGE lines are long; keep the rest
@@ -143,7 +158,12 @@ def main() -> int:
     ap.add_argument("--keep-bins", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--sheet", type=Path, help="write a contact sheet of every picture here")
+    ap.add_argument("--native", nargs="?", const="map", default=None, metavar="KINDS",
+                    help="the native renderer's pass: these kinds (default map) against a reference of them alone")
+    ap.add_argument("--baselines", type=Path, default=ROOT / "tests/render_baselines")
     args = ap.parse_args()
+    if args.native and args.work == ROOT / "out/frame_test":
+        args.work = ROOT / "out/frame_test_native"
     args.exe, args.rdpref, args.work = args.exe.resolve(), args.rdpref.resolve(), args.work.resolve()
     args.saves = args.saves.resolve()
 
@@ -165,7 +185,7 @@ def main() -> int:
             if f not in got:
                 print(f"FRAME_TEST {r['name']} {f} NO PICTURE")
                 fails += 1
-            elif colours(args.work / r["name"] / "png" / f"frame_{f}.png") < 2:
+            elif not args.native and colours(args.work / r["name"] / "png" / f"frame_{f}.png") < 2:
                 print(f"FRAME_TEST {r['name']} {f} ONE COLOUR")
                 fails += 1
 
@@ -180,7 +200,27 @@ def main() -> int:
                     fails += 1
         print(f"FRAME_TEST_TWICE {'OK' if not fails else 'FAIL'}")
 
-    if args.write_baseline:
+    if args.native:
+        # the native pictures against the reference of the same kinds, per run, with its baseline
+        for r in runs:
+            d = args.work / r["name"]
+            base = args.baselines / f"{r['name']}.txt"
+            cmd = [sys.executable, str(ROOT / "tools/render_compare.py"), str(d / "png"), str(d / "native"),
+                   "--out", str(d / "diff"), "--name", r["name"], "--baseline", str(base)]
+            if args.write_baseline:
+                args.baselines.mkdir(parents=True, exist_ok=True)
+                cmd.append("--write-baseline")
+            elif not base.is_file():
+                cmd = cmd[:-2]
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            print(p.stdout, end="")
+            if p.returncode:
+                fails += 1
+            missing = [f for f in r["frames"] if not (d / "native" / f"frame_{f}.png").is_file()]
+            if missing:
+                print(f"FRAME_TEST {r['name']} no native picture for {' '.join(map(str, missing))}")
+                fails += 1
+    elif args.write_baseline:
         with open(args.baseline, "w", newline="\n") as fo:
             fo.write("# eltale-rdpref picture hashes (fnv1a-64 of the 320x240 RGBA5551 colour image) per run and frame\n"
                      "# of tests/render_frames.txt; written by tools/frame_test.py --write-baseline. Numbers only.\n")

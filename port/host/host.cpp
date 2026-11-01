@@ -1,6 +1,7 @@
 // eltale_host.dll's C interface (eltale_host.h): the window, events and poll codes, and the present
 // flow, with the game paused here while the F1 menu is open (its own loop, whichever renderer draws).
 #include "host.h" // (ELTALE_HOST_BUILD: set by CMake, so the entry points are exported)
+#include "nd_renderer.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -133,13 +134,38 @@ extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t by
     audio_queue(samples, bytes, rate);
 }
 
+extern "C" ELHOST_API int ElHost_InitHeadless(void) {
+    current.reset(make_native_renderer());
+    renderer_kind = EL_RENDERER_NATIVE;
+    if (!current->init_headless()) {
+        std::fprintf(stderr, "[host] the native renderer could not be set up without a window\n");
+        current.reset();
+        return -1;
+    }
+    std::fprintf(stderr, "[host] native renderer, headless\n");
+    return 0;
+}
+
+extern "C" ELHOST_API const void *ElHost_RenderApi(void) {
+    return current && renderer_kind == EL_RENDERER_NATIVE ? render::native_draw().api() : nullptr;
+}
+
+extern "C" ELHOST_API void ElHost_SetDump(const char *dir, const char *spec) {
+    render::native_draw().set_dump(dir ? dir : "", spec ? spec : "");
+}
+
 extern "C" ELHOST_API void ElHost_Shutdown(void) {
+    if (!win) { /* headless: only the renderer was started */
+        if (current) current->shutdown();
+        current.reset();
+        return;
+    }
     audio_shutdown();
     if (current) current->shutdown();
     menu::shutdown();
     current.reset();
     input_shutdown();
-    if (win) SDL_DestroyWindow(win);
+    SDL_DestroyWindow(win);
     win = nullptr;
     SDL_Quit();
 }

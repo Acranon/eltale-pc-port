@@ -71,6 +71,8 @@ static uint64_t monotonic_ns(void) {
 #ifdef ELTALE_P1_OS
 /* sees every ROM DMA (the audio reference uses it to know which memory holds ROM bytes) */
 void (*Port_PiDmaHook)(void *dst, u32 size);
+/* The native renderer's model cache (game/native_draw: nd_forget): what a ROM DMA overwrites */
+void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
 #endif
 
 void Port_HostPace(uint64_t virtual_ticks) {
@@ -358,6 +360,7 @@ s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
 #ifdef ELTALE_P1_OS
     Port_DataForget((u32)(uptr)dst, size);
     if (Port_PiDmaHook) Port_PiDmaHook(dst, size);
+    if (Port_DmaForgetHook) Port_DmaForgetHook((uintptr_t)dst, size);
 #endif
     memcpy(dst, rom_bytes + dev_addr, size);
     dma_count++;

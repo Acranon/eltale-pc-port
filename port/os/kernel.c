@@ -587,6 +587,10 @@ void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
 /* Called before each graphics task (the English pictures follow the language setting). */
 void (*Port_FrameHook)(void);
 
+/* Called as each graphics task starts, after Port_GfxTaskHook: the native renderer's tick ends
+ * (game/native_draw: nd_frame_end), numbered as P1_GFX_TASK counts them. */
+void (*Port_NativeTaskHook)(unsigned frame);
+
 void osSpTaskStartGo(OSTask *task) {
     if (task != loaded_task) Port_HostFatal("starting an unloaded RSP task");
     loaded_task = NULL;
@@ -607,6 +611,7 @@ void osSpTaskStartGo(OSTask *task) {
         printf("P1_GFX_TASK frame=%u vi=%llu words=%u hash=%016llx\n", gfx_task_count,
                (unsigned long long)vi_count, words, (unsigned long long)last_gfx_hash);
         if (Port_GfxTaskHook) Port_GfxTaskHook(task, gfx_task_count);
+        if (Port_NativeTaskHook) Port_NativeTaskHook(gfx_task_count);
         gfx_done_tick = next_vi_tick;
     } else if (task->t.type == M_AUDTASK) {
         if (Port_AudioTaskHook) Port_AudioTaskHook(task);

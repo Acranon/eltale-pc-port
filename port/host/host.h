@@ -95,6 +95,8 @@ public:
     // Set up on the window (made with window_flags()); false if it can't.
     virtual uint32_t window_flags() const = 0;
     virtual bool init(SDL_Window *window) = 0;
+    // Without a window (the native renderer's headless pictures, ElHost_InitHeadless); false if it can't
+    virtual bool init_headless() { return false; }
     // Dear ImGui's renderer side, after the context and fonts are made.
     virtual bool imgui_init() = 0;
     virtual void imgui_new_frame() = 0;

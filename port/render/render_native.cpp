@@ -1,9 +1,11 @@
 // --renderer native (port/host/host.h's Renderer): our own renderer on Granite (Vulkan), in
-// eltale_host.dll. R0 is its frame only: the Granite device (made as King's Field IV's gsn.cpp makes
-// its own: Context then Device, the window's surface and swapchain extensions on), one picture image
-// of the game's size, and the presenter (present_vk.cpp). In gameplay the picture is a clear colour;
-// a screen the CPU drew (the Controller Pak manager) is uploaded into it as one texture. The F1 menu
-// is drawn over it by ImGui's Vulkan backend. The game's own draws come from R2 on.
+// eltale_host.dll: the Granite device (made as King's Field IV's gsn.cpp makes its own: Context then
+// Device, the window's surface and swapchain extensions on), one picture image of the game's size, and
+// the presenter (present_vk.cpp). In gameplay the picture is the newest recording the game made
+// (nd_renderer.cpp, docs/renderer/NATIVE_DRAW.md: the kinds drawn natively so far); a screen the CPU
+// drew (the Controller Pak manager) is uploaded into it as one texture. The F1 menu is drawn over it
+// by ImGui's Vulkan backend. Headless (ElHost_InitHeadless) it has no window: only the pictures the
+// compare tools ask for (--dump-frames).
 //
 // ELTALE_PRESENT_DUMP=folder (a test): each new CPU screen presented is read back from the GPU and
 // written as folder/native_cpu_<n>.png, with P1_NATIVE_CPU_FRAME n hash (the hash Port_NoteCpuFrame
@@ -15,6 +17,7 @@
 #include "device.hpp"
 
 #include "host.h"
+#include "nd_renderer.h"
 #include "present_vk.h"
 #include "png.h"
 
@@ -72,6 +75,10 @@ public:
             std::fprintf(stderr, "[render] no picture image\n");
             return false;
         }
+        if (!render::native_draw().init(device)) {
+            std::fprintf(stderr, "[render] the native renderer's resources could not be made\n");
+            return false;
+        }
 
         const QueueInfo &queues = context.get_queue_info();
         render::PresentDevice pd = {};
@@ -92,6 +99,23 @@ public:
         return true;
     }
 
+    // Without a window (--dump-frames headless): the device and the renderer's resources only
+    bool init_headless() override {
+        if (!Context::init_loader(nullptr)) {
+            std::fprintf(stderr, "[render] no Vulkan loader\n");
+            return false;
+        }
+        context.set_num_thread_indices(1);
+        if (!context.init_instance_and_device(nullptr, 0, nullptr, 0, 0)) {
+            std::fprintf(stderr, "[render] no Vulkan device\n");
+            return false;
+        }
+        device.set_context(context);
+        device.init_frame_contexts(2);
+        headless = true;
+        return render::native_draw().init(device);
+    }
+
     bool imgui_init() override {
         return ImGui_ImplSDL3_InitForVulkan(window()) && render::present_imgui_init();
     }
@@ -99,16 +123,25 @@ public:
     void imgui_new_frame() override { ImGui_ImplVulkan_NewFrame(); }
 
     void present_game(const ElHostVi *, ImDrawData *overlay) override {
-        // R0: the clear colour (the game's draws come from R2)
+        // the newest recording (none yet: the clear colour)
         CommandBufferHandle cmd = begin();
-        RenderPassInfo rp;
-        rp.num_color_attachments = 1;
-        rp.color_attachments[0] = &picture->get_view();
-        rp.clear_attachments = 1;
-        rp.store_attachments = 1;
-        rp.clear_color[0] = CLEAR;
-        cmd->begin_render_pass(rp);
-        cmd->end_render_pass();
+        const render::Recording *rec = render::native_draw().latest();
+        if (rec) {
+            render::DrawOptions opt;
+            opt.border = settings.graphics.border;
+            opt.three_point = settings.graphics.three_point;
+            opt.n64_fog = settings.graphics.n64_fog;
+            render::native_draw().render(*cmd, *picture, rec, opt);
+        } else {
+            RenderPassInfo rp;
+            rp.num_color_attachments = 1;
+            rp.color_attachments[0] = &picture->get_view();
+            rp.clear_attachments = 1;
+            rp.store_attachments = 1;
+            rp.clear_color[0] = CLEAR;
+            cmd->begin_render_pass(rp);
+            cmd->end_render_pass();
+        }
         finish(cmd);
         const bool first = !cleared;
         cleared = true;
@@ -146,7 +179,7 @@ public:
         show(overlay, first ? "native_menu" : nullptr);
     }
 
-    uint32_t wires() const override { return FEATURE_SCALING | FEATURE_VSYNC; }
+    uint32_t wires() const override { return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG; }
 
     void graphics_changed() override {
         render::present_set_vsync(vsync_now());
@@ -155,12 +188,18 @@ public:
 
     void graphics_page_extra() override {
         ImGui::Spacing();
-        ImGui::TextDisabled("Drawn by the native renderer (--renderer native): R0 shows the frame only.");
+        ImGui::TextDisabled("Drawn by the native renderer (--renderer native): map objects so far (R2).");
     }
 
     void shutdown() override {
+        if (headless) {
+            device.wait_idle();
+            render::native_draw().shutdown();
+            return;
+        }
         if (!picture) return;
         device.wait_idle();
+        render::native_draw().shutdown();
         render::present_close();
         picture.reset();
     }
@@ -234,6 +273,7 @@ private:
     unsigned cpu_count = 0;
     std::string dump_dir;
     bool menu_dumped = false;
+    bool headless = false;
 };
 
 } // namespace

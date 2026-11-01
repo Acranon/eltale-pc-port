@@ -89,6 +89,19 @@ ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32
 
 ELHOST_API void ElHost_Shutdown(void);
 
+/* ---- the native renderer (port/include/port/render.h, docs/renderer/NATIVE_DRAW.md) ---- */
+
+/* The native renderer without a window (headless runs that write pictures: --dump-frames). Returns 0
+ * on success. No SDL, no menu, no sound. */
+ELHOST_API int ElHost_InitHeadless(void);
+
+/* The native renderer's function table (a `const ElRenderApi *`), or null with RT64. */
+ELHOST_API const void *ElHost_RenderApi(void);
+
+/* Pictures for the compare tools: the frames `spec` names (as ELTALE_DUMP_IMAGE: "a,b,c" or
+ * "first+step"; empty: all) written as dir/frame_N.png, 320x240, with the N64 look. */
+ELHOST_API void ElHost_SetDump(const char *dir, const char *spec);
+
 #ifdef __cplusplus
 }
 #endif

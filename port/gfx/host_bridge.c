@@ -8,6 +8,7 @@
  *   and shows the screens the CPU draws (the Controller Pak manager) as they are. */
 #include "port/gfx.h"
 #include "port/host/eltale_host.h"
+#include "game/native_draw/native_draw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,8 @@ extern void (*Port_GfxTaskHook)(OSTask *task, unsigned frame);
 extern void (*Port_ViHook)(u32 framebuffer);
 extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
 extern void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
+extern void (*Port_NativeTaskHook)(unsigned frame);
+extern void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
 void Port_OsRequestStop(void);
 
 static int renderer = EL_RENDERER_RT64;
@@ -40,6 +43,10 @@ static void (*h_notice)(const char *);
 static void (*h_pad)(uint16_t *, int8_t *, int8_t *);
 static void (*h_audio)(const int16_t *, uint32_t, uint32_t);
 static void (*h_shutdown)(void);
+static const void *(*h_render_api)(void);
+static void (*h_set_dump)(const char *, const char *);
+static int (*h_init_headless)(void);
+static const char *dump_dir;
 static int quick_key;
 static unsigned quick_key_age; /* retraces since the key was pressed */
 static int reset_request;
@@ -119,6 +126,24 @@ static void shutdown_host(void) {
     if (h_shutdown) h_shutdown();
 }
 
+/* --dump-frames DIR: the native renderer writes the frames ELTALE_DUMP_FRAMES names (else
+ * ELTALE_DUMP_IMAGE's, else all) as DIR/frame_N.png (docs/renderer/NATIVE_DRAW.md) */
+void Port_WindowSetDumpDir(const char *dir) { dump_dir = dir; }
+
+/* The native renderer's tick and its model cache, once the host is up */
+static void attach_native(void) {
+    const ElRenderApi *api = h_render_api ? (const ElRenderApi *)h_render_api() : NULL;
+    if (!api) return;
+    if (dump_dir && h_set_dump) {
+        const char *spec = getenv("ELTALE_DUMP_FRAMES");
+        if (!spec) spec = getenv("ELTALE_DUMP_IMAGE");
+        h_set_dump(dump_dir, spec ? spec : "");
+    }
+    nd_attach(api);
+    Port_NativeTaskHook = nd_frame_end;
+    Port_DmaForgetHook = nd_forget;
+}
+
 int Port_WindowSetRenderer(const char *name) {
     if (!strcmp(name, "rt64")) renderer = EL_RENDERER_RT64;
     else if (!strcmp(name, "native")) renderer = EL_RENDERER_NATIVE;
@@ -126,14 +151,38 @@ int Port_WindowSetRenderer(const char *name) {
     return 0;
 }
 
-int Port_WindowStart(void) {
 #ifdef _WIN32
-    HMODULE lib = LoadLibraryA("eltale_host.dll");
-#define SYM(name) (void *)GetProcAddress(lib, name)
+#define SYM(name) (void *)GetProcAddress((HMODULE)lib, name)
+static HMODULE load_host(void) { return LoadLibraryA("eltale_host.dll"); }
 #else
-    void *lib = dlopen("libeltale_host.so", RTLD_NOW);
 #define SYM(name) dlsym(lib, name)
+static void *load_host(void) { return dlopen("libeltale_host.so", RTLD_NOW); }
 #endif
+
+/* Without a window: only the native renderer, for --dump-frames (headless pictures) */
+int Port_NativeHeadlessStart(void) {
+    void *lib = (void *)load_host();
+    if (!lib) {
+        fprintf(stderr, "host: cannot load the eltale_host library (tools/build_host.py)\n");
+        return -1;
+    }
+    h_init_headless = (int (*)(void))SYM("ElHost_InitHeadless");
+    h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
+    h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
+    h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
+    if (!h_init_headless || !h_render_api || !h_set_dump || !h_shutdown) {
+        fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
+        return -1;
+    }
+    if (h_init_headless() != 0) return -1;
+    atexit(shutdown_host);
+    renderer = EL_RENDERER_NATIVE;
+    attach_native();
+    return 0;
+}
+
+int Port_WindowStart(void) {
+    void *lib = (void *)load_host();
     if (!lib) {
         fprintf(stderr, "host: cannot load the eltale_host library (tools/build_host.py)\n");
         return -1;
@@ -152,7 +201,8 @@ int Port_WindowStart(void) {
     h_pad = (void (*)(uint16_t *, int8_t *, int8_t *))SYM("ElHost_GetPad");
     h_audio = (void (*)(const int16_t *, uint32_t, uint32_t))SYM("ElHost_QueueAudio");
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
-#undef SYM
+    h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
+    h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
     if (!h_init || !h_draw || !h_keep || !h_present || !h_present_cpu || !h_poll || !h_data_dir || !h_language ||
         !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_audio || !h_shutdown) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
@@ -169,6 +219,8 @@ int Port_WindowStart(void) {
         h_keep(0x003DA800, 0x25800);
         h_keep(0x002DA800, 0x25800);
         Port_GfxTaskHook = draw_task;
+    } else {
+        attach_native();
     }
     Port_LivePad = (void (*)(u16 *, s8 *, s8 *))h_pad;
     Port_AiBufferHook = play_audio;

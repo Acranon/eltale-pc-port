@@ -322,10 +322,16 @@ void Port_NoteCpuFrame(u32 framebuffer, s32 state) {
 }
 #endif
 
+#ifdef ELTALE_P1_OS
+#include "game/native_draw/native_draw.h"
+void Port_WindowSetDumpDir(const char *dir);
+int Port_NativeHeadlessStart(void);
+#endif
+
 int main(int argc, char **argv) {
     const char *rom = NULL;
 #ifdef ELTALE_P1_OS
-    const char *input = NULL, *pak = NULL;
+    const char *input = NULL, *pak = NULL, *dump_frames = NULL;
 #endif
     unsigned requested_frames = 1;
     int frames_given = 0;
@@ -352,11 +358,14 @@ int main(int argc, char **argv) {
             if (Port_WindowSetRenderer(argv[++i]) != 0) Port_HostFatal("--renderer must be rt64 or native");
         }
         else if (!strcmp(argv[i], "--pak-manager")) pak_manager = 1;
+        else if (!strcmp(argv[i], "--native-kinds") && i + 1 < argc) i++; /* nd_config reads it */
+        else if (!strcmp(argv[i], "--dump-frames") && i + 1 < argc) dump_frames = argv[++i];
 #endif
         else {
 #ifdef ELTALE_P1_OS
             fprintf(stderr, "usage: eltale-p1 --rom path [--window [--renderer rt64|native]] [--headless --fast --frames N --input script --pak image.mpk]\n"
-                            "       [--pak-manager: start in the game's Controller Pak manager]\n");
+                            "       [--pak-manager: start in the game's Controller Pak manager]\n"
+                            "       [--native-kinds all|none|map,...] [--dump-frames DIR: the native renderer's pictures]\n");
 #else
             fprintf(stderr, "usage: eltale-p0 --rom path [--headless --fast]\n");
 #endif
@@ -367,7 +376,10 @@ int main(int argc, char **argv) {
     if (!rom) Port_HostFatal("supply --rom or ELTALE_ROM");
     if (Port_HostInit(rom) != 0) return 1;
 #ifdef ELTALE_P1_OS
+    nd_config(argc, argv);
+    if (dump_frames) Port_WindowSetDumpDir(dump_frames);
     if (window && Port_WindowStart() != 0) return 1;
+    if (!window && dump_frames && Port_NativeHeadlessStart() != 0) return 1;
     Port_TextInit();
     {
         extern void (*Port_FrameHook)(void);
@@ -409,6 +421,7 @@ int main(int argc, char **argv) {
         int reset = window ? Port_WindowTakeReset() : 0;
         if (!reset) break;
         Port_HostRestore();
+        nd_after_reset();
         if (Port_PakLoad(pak)) return 1; /* the saves as they are now, not as they were */
         if (reset == 3) Port_ControllerHoldStartAtBoot();
         fprintf(stderr, "P1_RESET%s\n", reset == 3 ? " pak-manager" : "");
