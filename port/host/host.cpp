@@ -78,6 +78,11 @@ extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height, 
             height = int(float(height) * k);
         }
     }
+    // ELTALE_WINDOW_SIZE=WxH (a test, with ELTALE_HIDDEN_WINDOW): the window's size in pixels
+    if (const char *e = std::getenv("ELTALE_WINDOW_SIZE")) {
+        int w = 0, h = 0;
+        if (std::sscanf(e, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) width = w, height = h;
+    }
     win = SDL_CreateWindow(title, width, height,
                            SDL_WINDOW_RESIZABLE | current->window_flags() | (hidden ? SDL_WINDOW_HIDDEN : 0));
     if (!win) {

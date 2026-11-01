@@ -37,6 +37,7 @@
 #include "nd_renderer.h"
 #include "nd_interp.h"
 #include "nd_pipeline_warm.h"
+#include "nd_shaders.h"
 #include "present_vk.h"
 #include "png.h"
 
@@ -341,6 +342,7 @@ public:
         render::present_close();
         flash.clear();
         picture.reset();
+        window_picture.reset();
         cpu_picture.reset();
     }
 
@@ -495,7 +497,14 @@ private:
         render::pipeline_warm_tick();
         const bool first = !cleared;
         cleared = true;
-        show(overlay, first && !dump_dir.empty() ? "native_clear" : nullptr);
+        // ELTALE_PRESENT_DUMP_AT=n,m,... (a test, with ELTALE_PRESENT_DUMP): the window as shown at those pictures
+        static const std::string dump_at = std::getenv("ELTALE_PRESENT_DUMP_AT") ? "," + std::string(std::getenv("ELTALE_PRESENT_DUMP_AT")) + "," : "";
+        static uint64_t shown_count = 0;
+        shown_count++;
+        std::string at_name;
+        if (!dump_dir.empty() && dump_at.find("," + std::to_string(shown_count) + ",") != std::string::npos)
+            at_name = "native_shown_" + std::to_string(shown_count);
+        show(overlay, first && !dump_dir.empty() ? "native_clear" : at_name.empty() ? nullptr : at_name.c_str());
         // F8, or ELTALE_FLASH_AT=N (a test): the flash recorder at the Nth picture
         static const long flash_at = std::getenv("ELTALE_FLASH_AT") ? std::atol(std::getenv("ELTALE_FLASH_AT")) : 0;
         if (menu::take_flash_key() || (flash_at > 0 && flash_count == uint64_t(flash_at))) flash_write();
@@ -598,10 +607,67 @@ private:
         device.flush_frame();
     }
 
+    // "Smooth pixel edges": the picture made the size the window shows it at with present_area.frag (an area
+    // filter: each window pixel the share-weighted average of the picture pixels under it), which the presenter
+    // then copies as it is. The presenter's own linear blit read 2 x 2 picture pixels per window pixel, which
+    // at a size between scales (Match the window rounds the scale up: 1200 lines into a 1080-line window) drops
+    // and doubles lines of the N64 pixel blocks. Null when the picture is shown at its own size or not smooth.
+    const Image *scaled_for_window(const Image &src) {
+        if (settings.graphics.scaling != 2 || std::getenv("ELTALE_PRESENT_BLIT")) return nullptr;
+        uint32_t w = 0, h = 0;
+        if (!render::present_fit_size(src.get_width(), src.get_height(), &w, &h)) return nullptr;
+        if (w == src.get_width() && h == src.get_height()) return nullptr;
+        if (!area_program) {
+            ResourceLayout vert = {};
+            ResourceLayout frag = {};
+            frag.output_mask = 1;
+            frag.push_constant_size = 4 * sizeof(int32_t);
+            frag.sets[0].sampled_image_mask = 1u << 0;
+            frag.sets[0].fp_mask = 1u << 0;
+            frag.sets[0].meta[0].array_size = 1;
+            Shader *vs = device.request_shader(nd_spv_present_vert, sizeof(nd_spv_present_vert), &vert);
+            Shader *fs = device.request_shader(nd_spv_present_area_frag, sizeof(nd_spv_present_area_frag), &frag);
+            area_program = vs && fs ? device.request_program(vs, fs) : nullptr;
+            if (!area_program) return nullptr;
+        }
+        if (!window_picture || window_picture->get_width() != w || window_picture->get_height() != h) {
+            device.wait_idle();
+            ImageCreateInfo info = ImageCreateInfo::render_target(w, h, VK_FORMAT_R8G8B8A8_UNORM);
+            info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            info.layout = ImageLayout::General;
+            info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+            window_picture = device.create_image(info);
+            if (!window_picture) return nullptr;
+        }
+        CommandBufferHandle cmd = begin();
+        RenderPassInfo rp;
+        rp.num_color_attachments = 1;
+        rp.color_attachments[0] = &window_picture->get_view();
+        rp.store_attachments = 1;
+        cmd->begin_render_pass(rp);
+        cmd->set_opaque_state();
+        cmd->set_program(area_program);
+        cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+        cmd->set_cull_mode(VK_CULL_MODE_NONE);
+        cmd->set_depth_test(false, false);
+        cmd->set_texture(0, 0, src.get_view(), StockSampler::NearestClamp);
+        struct {
+            int32_t size[2];
+            float ratio[2];
+        } push = { { int32_t(src.get_width()), int32_t(src.get_height()) },
+                   { float(src.get_width()) / float(w), float(src.get_height()) / float(h) } };
+        cmd->push_constants(&push, 0, sizeof push);
+        cmd->draw(3);
+        cmd->end_render_pass();
+        finish(cmd);
+        return window_picture.get();
+    }
+
     void show(ImDrawData *overlay, const char *dump_name) {
         std::vector<uint32_t> rgba;
         uint32_t w = 0, h = 0;
-        const Image &img = *shown_image;
+        const Image *scaled = scaled_for_window(*shown_image);
+        const Image &img = scaled ? *scaled : *shown_image;
         render::present_frame(img.get_image(), img.get_width(), img.get_height(), overlay, dump_name ? &rgba : nullptr, &w, &h);
         if (dump_name && !rgba.empty()) {
             const std::string path = dump_dir + "/" + dump_name + ".png";
@@ -645,6 +711,8 @@ private:
     ImageHandle picture;          // the game's (320x240 times the resolution scale)
     ImageHandle cpu_picture;      // a CPU-drawn screen's (320x240)
     const Image *shown_image = nullptr; // the one shown last (present_again shows it again)
+    ImageHandle window_picture;          // the shown picture at the window's size ("Smooth pixel edges")
+    Program *area_program = nullptr;     // present_area.frag
     bool cleared = false;
     uint64_t cpu_hash = 0;
     unsigned cpu_count = 0;

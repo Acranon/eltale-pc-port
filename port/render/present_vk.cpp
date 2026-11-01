@@ -512,6 +512,19 @@ void present_set_vsync(int mode) { pr.vsync_wanted = mode; }
 
 void present_set_scaling(int scaling) { pr.scaling = scaling; }
 
+bool present_fit_size(uint32_t w, uint32_t h, uint32_t *fit_w, uint32_t *fit_h) {
+    if (!pr.up || w == 0 || h == 0) return false;
+    int drawable_w = 0, drawable_h = 0;
+    SDL_GetWindowSizeInPixels(pr.window, &drawable_w, &drawable_h);
+    if (drawable_w <= 0 || drawable_h <= 0) return false;
+    int x, y, fw, fh;
+    fit(drawable_w, drawable_h, int(w), int(h), &x, &y, &fw, &fh);
+    if (fw <= 0 || fh <= 0) return false;
+    *fit_w = uint32_t(fw);
+    *fit_h = uint32_t(fh);
+    return true;
+}
+
 bool present_frame(VkImage source, uint32_t source_w, uint32_t source_h, ImDrawData *overlay,
                    std::vector<uint32_t> *window_rgba, uint32_t *width, uint32_t *height) {
     if (!pr.up) return false;
