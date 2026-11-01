@@ -55,6 +55,8 @@ game (exe)                                         eltale_host.dll
 | `ELTALE_ND_LOG=1` / `2` | a line per mesh made (2: and its materials), and anything the loader did not expect |
 | `ELTALE_ND_VIEW=1..4` | a test view: the shade, TEXEL0, the shade alpha (fog), the combiner output |
 | `ELTALE_ND_DEBUG=1` | per picture: camera, item count, the first item's first vertex in clip space |
+| `ELTALE_DL_CENSUS=1` | at exit, `P1_DL_CENSUS`: the display-list commands left in the frame lists, per kind (R5's exit check: 0 with every kind native) |
+| `ELTALE_ND_LOG=2` / `3` | also each 2D rectangle with its material (3: and the colour registers as set) |
 
 Kinds (`EL_KIND_*`, render.h): map, billboard, backdrop, actor, shadow, effect, screen (fade,
 letterbox), hud, text, menu, picture (title, intro, ending, picture cues). The frame list wraps each
@@ -445,11 +447,129 @@ spell models (texgen, scrolling, flipbooks, CI8 with TLUTs) and the fade agree t
 in any test frame: streaks (melee hits) and the map-object arc and drop sprites (they share the sprite
 path). The map tour with every kind native keeps 30374 frames and audio a2d2e81245d538d4.
 
-## What is left after R3
+## 2D (R5, game/native_draw/nd_2d.c)
 
-- The 2D kinds (R5). Under `--renderer native` map objects, billboards, the backdrop, shadows, actors,
-  effects and the screen quads draw (the rest of the frame is the clear colour). R5 also owns the floating
-  numbers (`EL_KIND_HUD`) and the ending's fade (mode 5).
+`EL_KIND_HUD` (meters, element icons and glows, the compass, the spell name and input, the allocation
+panel, the enemy panel, markers and the floating numbers), `EL_KIND_TEXT` (text windows: the game's font
+and the port's English fonts and pages), `EL_KIND_MENU` (the item menu, the pause menu's pages, the save
+menu) and `EL_KIND_PICTURE` (the title with the English strip and logo, the intro, the ending's pages,
+its fade and credits, the camera tour's picture cues). With every kind native, **no display-list command
+is left in the frame lists** (`ELTALE_DL_CENSUS=1`, below).
+
+### How it works
+
+- **The core, not the sites, knows the RDP.** 2D is texture rectangles, fill rectangles and a few
+  triangles. A 2D file includes `nd_2d_gbi.h` last: it redefines the gbi macros the others are built
+  from (`gSPSetOtherMode`, `gDPSetColor`, `gDPSetPrimColor`, `gDPSetCombine`, `gSetImage`,
+  `gDPSetTile`, `gDPLoadTileGeneric`, `gDPLoadBlock`, `gDPLoadTLUTCmd`, `gSPTexture`, the geometry
+  modes, `gDma1p` (display lists and matrices), `gSPTextureRectangle`, `gDPFillRectangle`) with the
+  SDK's bodies plus one call into the core with the values the macro was given. So `gDPLoadTextureTile`,
+  `gDPLoadTLUT_pal256`, `gDPSetRenderMode` and the rest reach it unchanged, and the queued words are
+  the same. Code that writes words itself (matched decomp: `Text_DrawTexturedRect`, a combiner in
+  `Hud_DrawSpellInput`, the overlays' `GFX_WORDS` and `GFX_TEXRECT_STEPS`) calls the core next to them
+  (`nd_2d_*`, `ND2D_WORDS`, `ND2D_TEXRECT`). The floating numbers in effect.c call it directly.
+- **State kept as the RDP holds it**: othermodes, combiner, the colour registers, the 8 tiles, `TEXTURE`,
+  the matrices, and **TMEM by reference**: each load remembers which memory bytes went to which TMEM
+  bytes (a tile load row by row at the tile's line, rows longer than the line running into the next as
+  on the RDP; a block as one run; the TLUT entry by entry). When a rectangle samples a tile it is decoded
+  from those bytes over what it can address (its mask or clamp extent) into texels (RGBA8 or palette
+  indices) through `nd_model_texture` (shared by content), once per load (cached until TMEM or the tile
+  changes). CI palettes are `nd_model_palette_source` (read again each frame) or fixed values.
+- **A rectangle is one `ElRd2D`** (render.h v4): its screen rectangle in 320x240 units, s/t at the corner
+  and the steps (S10.5, S5.10 as given), a material (`material_2d`: combiner, othermodes, the decoded
+  tiles; deduplicated by content) and the colour registers. A FILL-mode fill rectangle includes its
+  corners and writes the fill colour (a PRIM-passing material); a 1-cycle one uses the state.
+- **Static lists** (the HUD's setup and icon lists in the common block, the text glyph setup, the title's
+  and intro's lists) are read once into calls (`Op`) and replayed; a ROM DMA over one drops it. One with
+  triangles (the compass disc, the element glows and flashes) becomes a mesh: `nd_model_get(list, entry)`
+  with an entry list made from the 2D state at the list's call (othermodes, combiner, geometry, `TEXTURE`,
+  the TLUT loads; interned in the image, since the loader takes 32-bit list addresses), drawn with the
+  model matrix the code loaded times the 2D projection (the game's ortho times its translate).
+- **Lists the code builds itself** (the intro's and the ending's sprite lists) are called with
+  `gSPDisplayListBuilt`: their commands reached the core as they were queued, so the call is not followed.
+- **Sections.** main.c calls `nd_2d_section(kind)` where each 2D section starts (text, HUD with the
+  floating numbers, menu, picture cues; mode 2 menu; modes 3-5 picture). Items are recorded only while
+  the section's kind is native; the state is kept whenever the native renderer is on, so a section sees
+  what the one before it left, as the RDP does. The ending's fade (mode 5) stays in the picture section:
+  fade.c draws it natively when `EL_KIND_PICTURE` is (`ND_FADE_NATIVE`), nd_effect.c's quad.
+- **Order**: 2D items go into the same recording as the 3D ones, so they draw in the frame list's order.
+  The renderer draws a rectangle from a vertex buffer of the picture's own, no depth, with the texel of
+  each pixel's corner (the half-pixel move) plus 1/256 texel, so an exact texel boundary never floors to
+  the texel before: text and pictures are pixel-exact at 1x.
+- **Recordings wait for their task.** The menu, title, intro and ending loops build the next frame before
+  the last one's graphics task starts, so `frame_begin` can come before `frame_end`: the renderer keeps
+  built recordings in a queue and `frame_end(n)` numbers the oldest (before this, those modes' pictures
+  were one frame late; gameplay is unchanged).
+
+### For R6 and R7
+
+- **Ids**: `kind << 56 | element << 40 | the item's number in it`. `nd_2d_element(element, anchor)` names
+  the element (the HUD functions each set one: meters 2, element levels 3, compass 4, spell input 5, spell
+  name 6, allocation 7, markers 8-13, status indicators 14, enemy panel 15, popups 16; the floating
+  numbers 1).
+- **Anchors** (`EL_RD2D_ANCHOR_*` in `ElRd2D.flags`): HUD meters, element levels and spell input LEFT,
+  the compass and the enemy panel RIGHT, spell name and allocation CENTRE, markers, status indicators,
+  popups and floating numbers WORLD (placed by `Camera_WorldToScreen`), fill rectangles covering the
+  width STRETCH, everything else (text, menus, pictures) CENTRE. Each item also gives its screen
+  rectangle (a mesh: where its origin lands), and a mesh its model matrix alone (`ElRd2D.model`): the
+  compass's rotation for R6.
+
+### The Controller Pak manager
+
+It draws into its own framebuffers with the CPU and never queues a graphics task, so it has no
+recording: on a retrace whose framebuffer is not one of the game's, `--renderer native` uploads the
+320x240 RGBA5551 pixels as one texture and presents them (R0, host_bridge.c `present`). That is already
+the scheme's end state (no display list involved); `tests/host_checks.sh native` checks it
+(`P1_NATIVE_CPU_FRAME`: the GPU's copy has the same hashes as `P1_CPU_FRAME`).
+
+### The census (R5's exit check)
+
+`ELTALE_DL_CENSUS=1` counts, at the end of each frame list, the commands still in it per kind and the
+rest ("state": segments, the clears, the camera, lights and fog the native kinds send from where they are
+queued), and prints `P1_DL_CENSUS` at exit. A kind's commands are dropped where its section ends; when no
+kind kept any and the frame is not a compare run, `nd_frame_list_end` drops the frame's own set-up and
+state too, so the list is just its FullSync and end. With every kind native (`--renderer native`, or
+headless `--dump-frames`), 2026-11-01:
+
+| run | frames | commands left |
+|---|---|---|
+| New Game (title-new-game.input) | 700 | 0 |
+| map tour (ELTALE_MAP_TOUR, 258 sub-areas) | 30,374 | 0 |
+| ending + camera tour (ELTALE_START_MODE=5) | 10,000 | 0 |
+| battle (battle-stuck.input) / spells (battle-spells.input) | 1,500 / 1,600 | 0 / 0 |
+| menus (item-menu.input: item menu, status and map pages) | 650 | 0 |
+| save menu (title-continue.input) / intro (no input) | 500 / 1,200 | 0 / 0 |
+
+The map tour natively keeps 30,374 frames and audio a2d2e81245d538d4; New Game audio be0b67b7b718648e.
+Without the native renderer nothing changes (tests/p1_checks.sh prints the same lines).
+
+### Compare
+
+`tests/render_frames_2d.txt` (title_en, font1-5, intro and intro_en, save and save_en, compass, panel and
+panel_en, menu_en, ending_en: 45 frames) runs after the other lists. The 2D kinds alone
+(`--native hud,text,menu,picture`) against a reference of them alone count **0 solid pixels in every
+frame** of render_frames.txt and render_frames_2d.txt (the few differing pixels are the RDP's dither in
+translucent pictures and the compass's rotated edges). With every kind native (`tests/render_baselines/
+all/`, rewritten 2026-11-01):
+
+| run | frames | solid sum | worst |
+|---|---|---|---|
+| ng | 7 | 499 | 167 (600: the throne room behind the window) |
+| tour | 18 | 6,891 | 2,617 (24633, map 29's lava) |
+| ending | 9 | 1,987 | 1,676 (9950, the harbour water) |
+| battle | 7 | 1,504 | 317 (820) |
+| menu | 6 | 125 | 121 (620) |
+| chests | 7 | 1,712 | 1,521 (12651) |
+| spells / spirit | 11 / 3 | 1,721 / 11 | 326 (1370) / 10 |
+| 2D list | 45 | 3,076 | 326 (panel 225: the battle field behind the panel) |
+
+No frame got worse than the R4 baselines; menu (298 -> 125), ng (692 -> 499) and ending fell, as the 2D
+now covers 3D differences. What is left is the 3D kinds' (near-plane clipping, dither).
+
+## What is left after R5
+
+- Every kind draws natively under `--renderer native`; the display-list census is 0 (R5's gate). RT64 and
+  the frame image are only the fallback and the reference (R8 removes them from play).
 - Pictures between ticks (R6): the recording keeps what it needs (ids, inputs); `render` draws one.
 - Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
   move and the 8-pixel border scale with it.

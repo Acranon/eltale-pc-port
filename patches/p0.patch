@@ -386,7 +386,7 @@ index e7ec32e..bfc7333 100644
          size -= mesgSize;
          devAddr = devAddr + mesgSize;
 diff --git a/src/game/core/main.c b/src/game/core/main.c
-index db2ffb3..c767d62 100644
+index db2ffb3..7165b51 100644
 --- a/src/game/core/main.c
 +++ b/src/game/core/main.c
 @@ -1,3 +1,10 @@
@@ -400,15 +400,16 @@ index db2ffb3..c767d62 100644
  #include "game/core/main.h"
  #include "game/core/dma.h"
  #include "game/core/overlay_load.h"
-@@ -31,6 +38,7 @@
+@@ -31,6 +38,8 @@
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
  #include "game/text/text_window.h"
 +#include "game/native_draw/native_draw.h"
++#include "game/native_draw/nd_2d.h"
  #include "game/event/cutscene.h"
  #include "game/event/scene.h"
  
-@@ -176,11 +184,18 @@ void Core_MainThread(void *arg0) {
+@@ -176,11 +185,18 @@ void Core_MainThread(void *arg0) {
          Bgm_Init();
          Core_ResetGameState();
          Menu_Init();
@@ -427,7 +428,7 @@ index db2ffb3..c767d62 100644
          switch (core_game_mode) {
              case 1:
                  Core_RunGameplayLoop();
-@@ -204,6 +219,7 @@ void Core_MainThread(void *arg0) {
+@@ -204,6 +220,7 @@ void Core_MainThread(void *arg0) {
                  Core_RunEndingLoop();
                  break;
          }
@@ -435,7 +436,7 @@ index db2ffb3..c767d62 100644
          if (!(core_flags & 0x8000)) {
              goto loop;
          }
-@@ -249,8 +265,14 @@ void Gfx_InitFrames(void) {
+@@ -249,8 +266,14 @@ void Gfx_InitFrames(void) {
      Dma_ReadRom(D_71920, D_80095AF0, D_753F0 - D_71920);
      gfx_segment1_base = D_80095AF0;
      Dma_ReadRom(D_D490C0, D_800C0000, D_D74AC0 - D_D490C0);
@@ -450,7 +451,7 @@ index db2ffb3..c767d62 100644
      D_80301000[0].data.msg = 2;
      D_80301000[0].data.framebuffer = D_803B5000;
      Gfx_InitFrameTask(&D_80301000[0]);
-@@ -274,7 +296,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
+@@ -274,7 +297,7 @@ void Gfx_InitFrameTask(GfxFrame *arg0) {
      arg0->task.list.t.type = M_GFXTASK;
      arg0->task.list.t.flags = 0;
      arg0->task.list.t.ucode_boot = D_8004B980;
@@ -459,17 +460,18 @@ index db2ffb3..c767d62 100644
      arg0->task.list.t.ucode = D_8004BA50;
      arg0->task.list.t.ucode_data = D_80070260;
      arg0->task.list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-@@ -299,6 +321,9 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -299,6 +322,10 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      GfxFrameData *sub;
  
      gfx_dl_head = arg0->data.dl;
 +#ifdef ELTALE_P1_OS
 +    nd_frame_begin(); /* the native renderer's recording of this tick (native_draw.h) */
++    nd_2d_frame(&arg0->data); /* the 2D core: segment 2's matrices (nd_2d.h) */
 +#endif
  
      gSPSegment(gfx_dl_head++, 0x00, 0x00000000);
      gSPSegment(gfx_dl_head++, 0x01, osVirtualToPhysical(gfx_segment1_base));
-@@ -324,43 +349,76 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -324,43 +351,86 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      gDPPipeSync(gfx_dl_head++);
      gDPSetCycleType(gfx_dl_head++, G_CYC_2CYCLE);
  
@@ -483,6 +485,9 @@ index db2ffb3..c767d62 100644
 +     * screens (modes 3, 4, 5) are pictures. */
 +    ND_DL_BEGIN(nd_frame_mark);
 +    u16 nd_frame_mode = core_game_mode;
++    if (nd_frame_mode >= 3 && nd_frame_mode <= 5) {
++        nd_2d_section(EL_KIND_PICTURE);
++    }
      if (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7) {
 +        ND_DL_BEGIN(nd_mark);
          Camera_Update(sub);
@@ -516,49 +521,64 @@ index db2ffb3..c767d62 100644
          Effect_UpdateAndDrawSprites(sub);
 -        Effect_UpdateAndDrawAll(sub);
 +        ND_DL_END(EL_KIND_EFFECT, nd_mark);
++        nd_2d_section(EL_KIND_HUD); /* the floating numbers (effect.c) are the HUD's 2D */
 +        Effect_UpdateAndDrawAll(sub); /* drops its effects (EL_KIND_EFFECT) and floating numbers (EL_KIND_HUD) */
 +        nd_mark = gfx_dl_head;
++        nd_2d_section(EL_KIND_SCREEN);
          Fade_UpdateAndDraw(sub);
 +        ND_DL_END(EL_KIND_SCREEN, nd_mark);
 +        nd_mark = gfx_dl_head;
++        nd_2d_section(EL_KIND_TEXT);
          if (core_flags & 2) {
              Text_UpdateAndDrawWindows();
          }
 +        ND_DL_END(EL_KIND_TEXT, nd_mark);
 +        nd_mark = gfx_dl_head;
++        nd_2d_section(EL_KIND_HUD);
          if (!(core_flags & 0x4000) && (D_8007A172 != 4)) {
              Hud_Draw(sub);
          }
 +        ND_DL_END(EL_KIND_HUD, nd_mark);
 +        nd_mark = gfx_dl_head;
++        nd_2d_section(EL_KIND_MENU);
          if (core_flags & 1) {
              Item_UpdateInventoryMenu();
          }
 +        ND_DL_END(EL_KIND_MENU, nd_mark);
 +        nd_mark = gfx_dl_head;
++        nd_2d_section(EL_KIND_PICTURE);
          if (core_game_mode == 7) {
              Cutscene_UpdateAndDrawImageCues();
          }
 +        ND_DL_END(EL_KIND_PICTURE, nd_mark);
      } else if (core_game_mode == 2) {
 +        ND_DL_BEGIN(nd_mark);
++        nd_2d_section(EL_KIND_MENU);
          Menu_Update(sub);
 +        ND_DL_END(EL_KIND_MENU, nd_mark);
      } else if (core_game_mode == 3) {
          switch (func_8020C11C()) {
              case 0:
-@@ -406,6 +464,10 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -401,11 +471,17 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+         }
+     } else if (core_game_mode == 5) {
+         count = func_8020C15C();
+-        Fade_UpdateAndDraw(sub);
++        Fade_UpdateAndDraw(sub); /* in the picture section (fade.c draws it natively with it) */
+         if (count == 0) {
              core_game_mode = 7;
          }
      }
 +    if (nd_frame_mode >= 3 && nd_frame_mode <= 5) {
 +        ND_DL_END(EL_KIND_PICTURE, nd_frame_mark);
 +    }
++    nd_2d_section(-1);
++    nd_frame_list_end(arg0->data.dl, (void **)&gfx_dl_head);
 +#endif
      gDPFullSync(gfx_dl_head++);
      gSPEndDisplayList(gfx_dl_head++);
      osWritebackDCache(&D_2000000, 0xDA70);
-@@ -420,6 +482,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
+@@ -420,6 +496,7 @@ void Gfx_BuildFrameDisplayList(GfxFrame *arg0) {
      arg0->task.list.t.data_size = (gfx_dl_head - sub->dl) * sizeof(Gfx);
  }
  
@@ -566,7 +586,7 @@ index db2ffb3..c767d62 100644
  void Core_RunGameplayLoop(void) {
      OSMesg msg;
      GfxFrame *frame;
-@@ -497,6 +560,9 @@ void Core_RunGameplayLoop(void) {
+@@ -497,6 +574,9 @@ void Core_RunGameplayLoop(void) {
          MapObjAnim_UpdateAll();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
          frame = &D_80301000[gfx_frame_index];
@@ -576,7 +596,7 @@ index db2ffb3..c767d62 100644
          if (!(core_flags & 0x87)) {
              if (!(player_state.actor.animFlags & 1) && Exit_CheckEnter(player_state.actor.x, player_state.actor.z, player_state.actor.rot) != 0) {
                  core_flags |= 0x80;
-@@ -558,6 +624,9 @@ void Core_RunGameplayLoop(void) {
+@@ -558,6 +638,9 @@ void Core_RunGameplayLoop(void) {
          nnsc_retrace_count = 0;
          gfx_frame_index ^= 1;
          core_frame_start_time = osGetTime();
@@ -586,7 +606,7 @@ index db2ffb3..c767d62 100644
      }
      if (core_flags & 0x200) {
          Audio_StopSeq(0);
-@@ -566,6 +635,9 @@ void Core_RunGameplayLoop(void) {
+@@ -566,6 +649,9 @@ void Core_RunGameplayLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -596,7 +616,7 @@ index db2ffb3..c767d62 100644
          }
      }
      if (core_flags & 0x400) {
-@@ -649,6 +721,9 @@ void Core_RunMessageCutsceneLoop(void) {
+@@ -649,6 +735,9 @@ void Core_RunMessageCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -606,7 +626,7 @@ index db2ffb3..c767d62 100644
          }
      }
  }
-@@ -660,6 +735,12 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -660,6 +749,12 @@ void Core_RunCameraCutsceneLoop(void) {
  
      msg = NULL;
      Dma_ReadRom(D_E43780, D_801C0000, D_E5BF60 - D_E43780);
@@ -619,7 +639,7 @@ index db2ffb3..c767d62 100644
      core_transition_timer = 0;
      fade_transition_style = 2;
      sfx_master_volume = 0;
-@@ -722,6 +803,9 @@ void Core_RunCameraCutsceneLoop(void) {
+@@ -722,6 +817,9 @@ void Core_RunCameraCutsceneLoop(void) {
      if (core_flags & 0x200) {
          core_flags &= ~0x200;
          while (Audio_GetSeqState(0) != 0) {
@@ -629,7 +649,7 @@ index db2ffb3..c767d62 100644
          }
      }
      core_flags |= 0x20000;
-@@ -754,6 +838,9 @@ void Core_RunMenuLoop(void) {
+@@ -754,6 +852,9 @@ void Core_RunMenuLoop(void) {
          Bgm_Play(-1);
          while (bgm_current != -1) {
              Bgm_Update();
@@ -639,7 +659,7 @@ index db2ffb3..c767d62 100644
          }
      }
      if (menu_save_loaded != 0) {
-@@ -784,10 +871,14 @@ void Core_RunTitleLoop(void) {
+@@ -784,10 +885,14 @@ void Core_RunTitleLoop(void) {
          }
          osSendMesg(gfx_sched_mq, frame, OS_MESG_BLOCK);
          gfx_frame_index ^= 1;
@@ -654,7 +674,7 @@ index db2ffb3..c767d62 100644
  void Core_RunIntroLoop(void) {
      GfxFrame *frame;
  
-@@ -799,6 +890,9 @@ void Core_RunIntroLoop(void) {
+@@ -799,6 +904,9 @@ void Core_RunIntroLoop(void) {
          gfx_mtx_index = 0;
          Bgm_Update();
          Gfx_BuildFrameDisplayList(&D_80301000[gfx_frame_index]);
@@ -664,7 +684,7 @@ index db2ffb3..c767d62 100644
          frame = &D_80301000[gfx_frame_index];
          if (gfx_frame_sent == 0) {
              gfx_frame_sent++;
-@@ -814,6 +908,7 @@ void Core_RunIntroLoop(void) {
+@@ -814,6 +922,7 @@ void Core_RunIntroLoop(void) {
      Gfx_WaitForFrameMessage(2);
  }
  
@@ -672,7 +692,7 @@ index db2ffb3..c767d62 100644
  void Core_RunEndingLoop(void) {
      GfxFrame *frame;
  
-@@ -888,3 +983,4 @@ void Fade_StartTransitionOut(void) {
+@@ -888,3 +997,4 @@ void Fade_StartTransitionOut(void) {
              break;
      }
  }
@@ -1103,10 +1123,18 @@ index fe11d2c..d4dca20 100644
  
  /* .data */
 diff --git a/src/game/event/cutscene.c b/src/game/event/cutscene.c
-index f0c85f6..7c93dec 100644
+index f0c85f6..3bea90c 100644
 --- a/src/game/event/cutscene.c
 +++ b/src/game/event/cutscene.c
-@@ -581,7 +581,7 @@ void Cutscene_StartNextScene(void) {
+@@ -9,6 +9,7 @@
+ #include "game/npc/npc.h"
+ #include "game/player/player.h"
+ #include "game/text/text_window.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Cutscene scene sequencing, camera tracks, and timed image cue drawing.
+@@ -581,7 +582,7 @@ void Cutscene_StartNextScene(void) {
      CutsceneSequenceEntry *e = &D_801D8620[cutscene_sequence_index++];
      s32 i;
  
@@ -1115,7 +1143,7 @@ index f0c85f6..7c93dec 100644
      cutscene_camera_frame = 0;
      cutscene_camera_end_frame = cutscene_camera_track->last;
      map_id = -1;
-@@ -609,7 +609,7 @@ void Cutscene_StartNextScene(void) {
+@@ -609,7 +610,7 @@ void Cutscene_StartNextScene(void) {
      npc_count = 0;
      enemy_count = 0;
      cutscene_image_frame = 0;
@@ -1124,7 +1152,7 @@ index f0c85f6..7c93dec 100644
      for (i = 0; i < 32; i++) {
          cutscene_image_cue_slots[i].remaining_frames = 0;
      }
-@@ -677,7 +677,7 @@ void Cutscene_UpdateAndDrawImageCues(void) {
+@@ -677,7 +678,7 @@ void Cutscene_UpdateAndDrawImageCues(void) {
                  n--;
                  slot++;
              }
@@ -1258,17 +1286,18 @@ index e9d4940..2c8006d 100644
      /* 0x3C */ u16 flags;
      /* 0x3E */ s16 unk3E;
 diff --git a/src/game/gfx/effect.c b/src/game/gfx/effect.c
-index 792d4bc..cd9df8f 100644
+index 792d4bc..3f4e8cb 100644
 --- a/src/game/gfx/effect.c
 +++ b/src/game/gfx/effect.c
-@@ -1,3 +1,6 @@
+@@ -1,3 +1,7 @@
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
++#include "game/native_draw/nd_2d.h"
 +#endif
  #include "game/gfx/effect.h"
  #include "game/actor/actor.h"
  #include "game/camera/camera.h"
-@@ -8,6 +11,10 @@
+@@ -8,6 +12,10 @@
  #include "game/env/env.h"
  #include "game/math/math.h"
  #include "game/player/player.h"
@@ -1279,7 +1308,7 @@ index 792d4bc..cd9df8f 100644
  
  /*
   * Sprite particles, model effects, floating numbers, streaks, and terrain rings.
-@@ -73,6 +80,9 @@ void Effect_ResetAll(void) {
+@@ -73,6 +81,9 @@ void Effect_ResetAll(void) {
  }
  
  void Effect_UpdateAndDrawAll(struct GfxFrameData* arg0) {
@@ -1289,7 +1318,7 @@ index 792d4bc..cd9df8f 100644
      Effect_UpdateFootEmitters();
      Effect_UpdateMapObjEmitters();
      Effect_UpdateConvergeEmitters();
-@@ -80,7 +90,14 @@ void Effect_UpdateAndDrawAll(struct GfxFrameData* arg0) {
+@@ -80,7 +91,14 @@ void Effect_UpdateAndDrawAll(struct GfxFrameData* arg0) {
      Effect_DrawStatUpMarkers(arg0);
      Effect_UpdateAndDrawRings(arg0);
      Effect_UpdateAndDrawModelEffects(arg0);
@@ -1304,7 +1333,7 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_ResetFootEmitters(void) {
-@@ -144,6 +161,9 @@ void Effect_UpdateFootParticle(EffectSprite* arg0) {
+@@ -144,6 +162,9 @@ void Effect_UpdateFootParticle(EffectSprite* arg0) {
      arg0->vecZ *= 0.8;
      arg0->scaleX = arg0->scaleY = effect_foot_particle_scale_anim[arg0->life];
      gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, effect_foot_particle_alpha_anim[arg0->life]);
@@ -1314,7 +1343,7 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_ResetMapObjEmitters(void) {
-@@ -254,6 +274,9 @@ void Effect_UpdateMapObjParticle(EffectSprite* arg0) {
+@@ -254,6 +275,9 @@ void Effect_UpdateMapObjParticle(EffectSprite* arg0) {
          b = 0xFF;
      }
      gDPSetEnvColor(gfx_dl_head++, r, g, b, effect_mapobj_particle_alpha_anim[arg0->life]);
@@ -1324,7 +1353,7 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_SpawnFlipbookSprite(f32 x, f32 y, f32 z) {
-@@ -297,10 +320,13 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
+@@ -297,10 +321,13 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
      u16 v = arg0->life;
  
      if (!(v & 3)) {
@@ -1339,7 +1368,43 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_ResetFloatingNumbers(void) {
-@@ -510,6 +536,9 @@ void Effect_UpdateConvergeParticle(EffectSprite* arg0) {
+@@ -384,6 +411,14 @@ void Effect_DrawFloatingNumbers(void) {
+                     gSPDisplayList(gfx_dl_head++, D_800C40C0);
+                     gDPLoadTextureBlock(gfx_dl_head++, D_8039E290, G_IM_FMT_RGBA, G_IM_SIZ_16b, 128, 10, 0, G_TX_WRAP, G_TX_WRAP, 0, 0, G_TX_NOLOD, G_TX_NOLOD);
+                     first++;
++#ifdef ELTALE_P1_OS
++                    if (ND2D_TRACK()) { /* the native 2D core (nd_2d.h): the HUD's, placed from the world */
++                        nd_2d_element(1, EL_RD2D_ANCHOR_WORLD);
++                        nd_2d_display_list((uintptr_t)D_800C40C0);
++                        nd_2d_load_texture_block((uintptr_t)D_8039E290, G_IM_FMT_RGBA, G_IM_SIZ_16b, 128, 10, 0, G_TX_WRAP,
++                                                 G_TX_WRAP, 0, 0, G_TX_NOLOD, G_TX_NOLOD);
++                    }
++#endif
+                 }
+                 if (d->styleAndColor & 0x8000) {
+                     dsdx = 0x280;
+@@ -408,12 +443,20 @@ void Effect_DrawFloatingNumbers(void) {
+                 c = effect_floating_number_colors[d->styleAndColor & 0xF];
+                 gDPPipeSync(gfx_dl_head++);
+                 gDPSetEnvColor(gfx_dl_head++, c[0], c[1], c[2], 255);
++#ifdef ELTALE_P1_OS
++                if (ND2D_TRACK()) nd_2d_color(G_SETENVCOLOR, (u32)c[0] << 24 | (u32)c[1] << 16 | (u32)c[2] << 8 | 255);
++#endif
+                 dp = d->digits;
+                 sx -= (k = d->numDigits) * 4;
+                 while (k) {
+                     k--;
+                     if (*dp != 0x20) {
+                         gSPTextureRectangle(gfx_dl_head++, (sx - w) << 2, (sy - h) << 2, (sx + w) << 2, (sy + h) << 2, G_TX_RENDERTILE, *dp << 8, 0, dtdy, dsdx);
++#ifdef ELTALE_P1_OS
++                        if (ND2D_TRACK())
++                            nd_2d_texrect((sx - w) << 2, (sy - h) << 2, (sx + w) << 2, (sy + h) << 2, G_TX_RENDERTILE, *dp << 8, 0,
++                                          dtdy, dsdx);
++#endif
+                         sx += w * 2;
+                     }
+                     dp++;
+@@ -510,6 +553,9 @@ void Effect_UpdateConvergeParticle(EffectSprite* arg0) {
      } else {
          gDPSetEnvColor(gfx_dl_head++, c[0], c[1], c[2], 0x20);
      }
@@ -1349,7 +1414,7 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_SpawnBurst(s32 arg0, f32 arg1, f32 arg2, f32 arg3, f32 arg4) {
-@@ -557,6 +586,9 @@ void Effect_UpdateBurstParticle(EffectSprite* arg0) {
+@@ -557,6 +603,9 @@ void Effect_UpdateBurstParticle(EffectSprite* arg0) {
      } else {
          gDPSetEnvColor(gfx_dl_head++, c[0], c[1], c[2], 0x20);
      }
@@ -1359,7 +1424,7 @@ index 792d4bc..cd9df8f 100644
  }
  
  void Effect_ResetStreaks(void) {
-@@ -612,6 +644,10 @@ void Effect_UpdateAndDrawStreaks(struct GfxFrameData* arg0) {
+@@ -612,6 +661,10 @@ void Effect_UpdateAndDrawStreaks(struct GfxFrameData* arg0) {
                  gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
                  gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, alpha);
                  gSPDisplayList(gfx_dl_head++, D_800EB8E8);
@@ -1370,7 +1435,7 @@ index 792d4bc..cd9df8f 100644
              }
              p->framesLeft--;
              p->vx *= 0.6;
-@@ -792,6 +828,9 @@ void Effect_UpdateAndDrawRings(struct GfxFrameData* arg0) {
+@@ -792,6 +845,9 @@ void Effect_UpdateAndDrawRings(struct GfxFrameData* arg0) {
              }
              color = effect_ring_colors[p->colorIndex];
              gDPSetEnvColor(gfx_dl_head++, color[0], color[1], color[2], alpha);
@@ -1380,7 +1445,7 @@ index 792d4bc..cd9df8f 100644
              pt = p->pts;
              j = 16;
              do {
-@@ -826,6 +865,9 @@ void Effect_UpdateAndDrawRings(struct GfxFrameData* arg0) {
+@@ -826,6 +882,9 @@ void Effect_UpdateAndDrawRings(struct GfxFrameData* arg0) {
                      guMtxF2L(mtx.mf, &arg0->mtx[gfx_mtx_index]);
                      gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
                      gSPDisplayList(gfx_dl_head++, D_800C4840);
@@ -1390,7 +1455,7 @@ index 792d4bc..cd9df8f 100644
                  }
              } while (j != 0);
          }
-@@ -864,10 +906,16 @@ EffectModel* Effect_CreateModelEffect(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s3
+@@ -864,10 +923,16 @@ EffectModel* Effect_CreateModelEffect(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s3
      p->upX = 0.0f;
      p->upY = 0.0f;
      p->upZ = 1.0f;
@@ -1408,7 +1473,7 @@ index 792d4bc..cd9df8f 100644
      p->framesLeft = p->loopLength = p->anim.length;
      p->flags = arg4;
      p->animFrame = 0;
-@@ -906,12 +954,21 @@ void Effect_UpdateAndDrawModelEffects(struct GfxFrameData* arg0) {
+@@ -906,12 +971,21 @@ void Effect_UpdateAndDrawModelEffects(struct GfxFrameData* arg0) {
              }
              col = D_800EB5E4[p->colorIndex & 0xFF];
              gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], alpha);
@@ -1430,7 +1495,7 @@ index 792d4bc..cd9df8f 100644
              p->animFrame++;
              if (--p->framesLeft == 0) {
                  if (p->flags & 1) {
-@@ -950,7 +1007,7 @@ void Effect_DrawModelEffectGeometry(EffectModel* arg0, struct GfxFrameData* arg1
+@@ -950,7 +1024,7 @@ void Effect_DrawModelEffectGeometry(EffectModel* arg0, struct GfxFrameData* arg1
      scale.x = arg0->scaleX * 0.01;
      scale.y = arg0->scaleY * 0.01;
      scale.z = arg0->scaleZ * 0.01;
@@ -1439,7 +1504,7 @@ index 792d4bc..cd9df8f 100644
      frame = arg0->animFrame;
      if (gfx_mtx_index < 0x1E6) {
          for (i = 0; i < arg0->anim.nodeCount; i++) {
-@@ -1084,11 +1141,15 @@ void Effect_DrawStatUpMarkers(struct GfxFrameData* arg0) {
+@@ -1084,11 +1158,15 @@ void Effect_DrawStatUpMarkers(struct GfxFrameData* arg0) {
                  {
                      Gfx* _g = gfx_dl_head++;
                      _g->words.w0 = 0x01020040;
@@ -1457,20 +1522,25 @@ index 792d4bc..cd9df8f 100644
              p->framesLeft--;
          }
 diff --git a/src/game/gfx/fade.c b/src/game/gfx/fade.c
-index cd2cb83..a8e7c99 100644
+index cd2cb83..ffa9007 100644
 --- a/src/game/gfx/fade.c
 +++ b/src/game/gfx/fade.c
-@@ -1,5 +1,9 @@
+@@ -1,5 +1,14 @@
  #include "game/gfx/fade.h"
  #include "game/core/main.h"
 +#ifdef ELTALE_P1_OS
 +#include "game/native_draw/native_draw.h"
 +#include "game/native_draw/nd_effect.h"
++/* the screen quads drawn natively: the gameplay modes' (EL_KIND_SCREEN), and the ending's (mode 5), whose
++ * commands are in the ending's picture section (EL_KIND_PICTURE, the 2D kinds) */
++#define ND_FADE_NATIVE() \
++    ((ND_ON(EL_KIND_SCREEN) && (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7)) || \
++     (ND_ON(EL_KIND_PICTURE) && core_game_mode == 5))
 +#endif
  
  /*
   * Screen fade: a full-screen quad whose colour steps through an RGBA ramp each frame, and
-@@ -26,7 +30,7 @@ Gfx fade_quad_dl[8] = {
+@@ -26,7 +35,7 @@ Gfx fade_quad_dl[8] = {
      {{ 0xB7000000, 0x00000204 }},
      {{ 0xFC42CA85, 0xFF97FFFF }},
      {{ 0xBB000000, 0x80008000 }},
@@ -1479,19 +1549,19 @@ index cd2cb83..a8e7c99 100644
      {{ 0xB1020400, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -103,6 +107,11 @@ void Fade_Init(void) {
+@@ -103,6 +112,11 @@ void Fade_Init(void) {
  void Fade_UpdateAndDraw(GfxFrameData* arg0) {
      if (fade_flags & 8) {
          gSPDisplayList(gfx_dl_head++, fade_letterbox_dl);
 +#ifdef ELTALE_P1_OS
 +        nd_env_color(0, 0, 0, 0); /* the list's own, left for what follows */
 +        /* EL_KIND_SCREEN in the gameplay modes (main.c); the ending's (mode 5) is in its picture section */
-+        if (ND_ON(EL_KIND_SCREEN) && (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7)) nd_screen_letterbox();
++        if (ND_FADE_NATIVE()) nd_screen_letterbox();
 +#endif
      }
      if (fade_flags & 1) {
          gDPPipeSync(gfx_dl_head++);
-@@ -111,12 +120,19 @@ void Fade_UpdateAndDraw(GfxFrameData* arg0) {
+@@ -111,12 +125,19 @@ void Fade_UpdateAndDraw(GfxFrameData* arg0) {
          gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index], G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
          gfx_mtx_index++;
          gDPSetEnvColor(gfx_dl_head++, fade_ramp_ptr->r, fade_ramp_ptr->g, fade_ramp_ptr->b, fade_ramp_ptr->a);
@@ -1505,7 +1575,7 @@ index cd2cb83..a8e7c99 100644
          }
          gSPDisplayList(gfx_dl_head++, fade_quad_dl);
 +#ifdef ELTALE_P1_OS
-+        if (ND_ON(EL_KIND_SCREEN) && (core_game_mode == 1 || core_game_mode == 6 || core_game_mode == 7))
++        if (ND_FADE_NATIVE())
 +            nd_screen_fade(&arg0->ortho, &arg0->mtx[gfx_mtx_index - 1], fade_ramp_ptr->a == 0xFF);
 +#endif
          if (fade_frames_left) {
@@ -1738,7 +1808,7 @@ index cc5330a..975387d 100644
  }
 +#endif
 diff --git a/src/game/item/item.c b/src/game/item/item.c
-index 5e43dc3..02c9cf2 100644
+index 5e43dc3..b3e25b9 100644
 --- a/src/game/item/item.c
 +++ b/src/game/item/item.c
 @@ -1,3 +1,7 @@
@@ -1749,7 +1819,15 @@ index 5e43dc3..02c9cf2 100644
  #include "game/item/item.h"
  #include "game/audio/sound.h"
  #include "game/battle/battle.h"
-@@ -354,8 +358,14 @@ void Item_UpdateInventoryMenu(void) {
+@@ -12,6 +16,7 @@
+ #include "game/player/player.h"
+ #include "game/text/text.h"
+ #include "game/ui/menu.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Items: the 150-slot inventory (item_inventory), the in-field inventory menu with its icon cache,
+@@ -354,8 +359,14 @@ void Item_UpdateInventoryMenu(void) {
              }
          }
          gSPDisplayList(gfx_dl_head++, D_1000388);
@@ -1764,7 +1842,7 @@ index 5e43dc3..02c9cf2 100644
          if ((input_pressed_buttons & 0xA000) && Item_TryUse(item_inventory[item_menu_scroll + item_menu_cursor])) {
              p = &item_inventory[item_menu_scroll + item_menu_cursor];
              for (n = 0x95 - item_menu_scroll - item_menu_cursor; n != 0; n--) {
-@@ -475,7 +485,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
+@@ -475,7 +486,7 @@ void Item_UseWarp(Actor* arg0, ItemDef* arg1) {
      Sfx_Play(0, 0x3B, 0xFF);
  }
  
@@ -2672,10 +2750,18 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..06e032f 100644
+index f2ae77c..87b3346 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
-@@ -974,7 +974,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -13,6 +13,7 @@
+ #include "game/text/text.h"
+ #include "game/text/text_window.h"
+ #include "game/ui/menu.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ 
+ /*
+@@ -974,7 +975,7 @@ void SaveMenu_SaveSelectedFile(void) {
          SaveMenu_CaptureGameState(idx);
      }
      id = save_menu_selected_slot;
@@ -2684,7 +2770,7 @@ index f2ae77c..06e032f 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -996,7 +996,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -996,7 +997,7 @@ void SaveMenu_SaveSelectedFile(void) {
          save_menu_flags &= ~0x2000;
          return;
      }
@@ -2694,20 +2780,21 @@ index f2ae77c..06e032f 100644
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
 diff --git a/src/game/text/text.c b/src/game/text/text.c
-index af00459..3f46c08 100644
+index af00459..d8882c2 100644
 --- a/src/game/text/text.c
 +++ b/src/game/text/text.c
-@@ -1,6 +1,9 @@
+@@ -1,6 +1,10 @@
  #include "game/text/text.h"
  #include "game/core/dma.h"
  #include "game/core/main.h"
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
 +#endif
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
  
  /*
   * Encoded text and font rendering: string copying, font DMA, and glyph drawing.
-@@ -55,12 +58,30 @@ void Text_CopyTerminatedBytes(u8 *dst, u8 *src) {
+@@ -55,12 +59,30 @@ void Text_CopyTerminatedBytes(u8 *dst, u8 *src) {
  void Text_LoadFontAssets(void) {
      Dma_ReadRom(D_D3A8B0, D_80332D30, 0x80);
      Dma_ReadRom(D_D3A930, D_803245A0, 0xE790);
@@ -2738,7 +2825,7 @@ index af00459..3f46c08 100644
  
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureLUT(gfx_dl_head++, G_TT_RGBA16);
-@@ -69,6 +90,13 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
+@@ -69,6 +91,13 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
              c = *str & 0x1F;
              switch (*str & 0x60) {
                  case 0x00:
@@ -2752,7 +2839,7 @@ index af00459..3f46c08 100644
                      gDPLoadTextureTile_4b(gfx_dl_head++, D_803245A0 + c * 0x7B8, G_IM_FMT_CI, 304, 13, 0, 0, 303, 12, 0, 0, 0, 0, 0, 0, 0);
                      break;
                  case 0x20:
-@@ -76,6 +104,9 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
+@@ -76,6 +105,9 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
                      break;
                  case 0x40:
                      if (c < 16) {
@@ -2762,7 +2849,7 @@ index af00459..3f46c08 100644
                          text_font_index = c;
                      } else {
                          text_extra_glyph_spacing = c;
-@@ -92,6 +123,12 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
+@@ -92,6 +124,12 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
                              break;
                          case 0:
                              x = x0;
@@ -2775,7 +2862,7 @@ index af00459..3f46c08 100644
                              y += text_font_metrics[text_font_index].line_height;
                              break;
                      }
-@@ -99,6 +136,25 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
+@@ -99,6 +137,25 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
              }
          } else {
              c = *str & 0x7F;
@@ -2801,7 +2888,7 @@ index af00459..3f46c08 100644
              if (*str == 0x7F) {
                  x += text_font_metrics[text_font_index].advance + text_extra_glyph_spacing;
              } else {
-@@ -110,4 +166,9 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
+@@ -110,4 +167,9 @@ void Text_DrawEncodedString(s32 x0, s32 y0, u8 *str) {
      }
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
@@ -2812,20 +2899,21 @@ index af00459..3f46c08 100644
 +#endif
  }
 diff --git a/src/game/text/text_window.c b/src/game/text/text_window.c
-index 4f9f215..75eeeaa 100644
+index 4f9f215..09e6fc3 100644
 --- a/src/game/text/text_window.c
 +++ b/src/game/text/text_window.c
-@@ -6,6 +6,9 @@
+@@ -6,6 +6,10 @@
  #include "game/npc/npc.h"
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
 +#endif
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
  
  /*
   * Text windows: slot lifecycle, message and choice layout, input, and drawing.
-@@ -42,6 +45,16 @@ TextChoiceRows text_pending_choice_rows;
+@@ -42,6 +46,16 @@ TextChoiceRows text_pending_choice_rows;
  TextWindow text_window_slots[4];
  u8 text_stick_advance_enabled;
  u16 text_stick_advance_frames;
@@ -2842,7 +2930,7 @@ index 4f9f215..75eeeaa 100644
  
  
  #ifdef NON_MATCHING
-@@ -158,6 +171,27 @@ s32 Text_OpenWindow(s32 arg0) {
+@@ -158,6 +172,27 @@ s32 Text_OpenWindow(s32 arg0) {
                  }
                  text_window_slots[i].reveal_delay = text_reveal_delay_steps[0] + menu_text_delay_option;
                  text_window_slots[i].reveal_timer = c;
@@ -2870,7 +2958,7 @@ index 4f9f215..75eeeaa 100644
              }
              text_window_slots[i].reveal_index = 1;
              text_window_slots[i].pending_byte = text_window_slots[i].message_bytes[1];
-@@ -397,11 +431,11 @@ void Text_UpdateAndDrawWindows(void) {
+@@ -397,11 +432,11 @@ void Text_UpdateAndDrawWindows(void) {
                                      text_window_slots[idx].message_bytes[j] = text_window_slots[idx].pending_byte;
                                      tab = 0;
                                      col = 0;
@@ -2884,7 +2972,17 @@ index 4f9f215..75eeeaa 100644
                                                  if (tab < col) {
                                                      col -= tab;
                                                      col += tab;
-@@ -605,8 +639,8 @@ void Text_DrawWindowFrame(s32 idx) {
+@@ -507,6 +542,9 @@ void Text_UpdateAndDrawWindows(void) {
+     gDPPipeSync(gfx_dl_head++);
+     gfx = gfx_dl_head++; gfx->words.w0 = 0xF9000000; gfx->words.w1 = 1;
+     gfx = gfx_dl_head++; gfx->words.w0 = 0xE7000000; gfx->words.w1 = 0;
++#ifdef ELTALE_P1_OS
++    if (ND2D_TRACK()) nd_2d_color(G_SETBLENDCOLOR, 1); /* the words above, for the native 2D core */
++#endif
+ }
+ #else
+ #pragma GLOBAL_ASM("asm/nonmatchings/game/text/text_window/Text_UpdateAndDrawWindows.s")
+@@ -605,8 +643,8 @@ void Text_DrawWindowFrame(s32 idx) {
  /* frame 0x40 vs 0x48, one more saved register, row loop tested as row != rows + 1; code is equivalent */
  void Text_BuildVisiblePage(s32 idx) {
      TextWindow *p = &text_window_slots[idx];
@@ -2895,7 +2993,7 @@ index 4f9f215..75eeeaa 100644
      s32 k = 0;
      s32 dst = -1;
      s32 src = -1;
-@@ -709,6 +743,17 @@ void Text_MeasureChoiceWindow(s32 arg0) {
+@@ -709,6 +747,17 @@ void Text_MeasureChoiceWindow(s32 arg0) {
      s32 cnt;
  
      text_choice_window_rect.height = n * 13 + 12;
@@ -2913,7 +3011,7 @@ index 4f9f215..75eeeaa 100644
      for (i = 0; i < n; i++) {
          j = 0;
          cnt = 0;
-@@ -761,7 +806,7 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
+@@ -761,7 +810,7 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
    ;
    t = &prm.e[type];
    {
@@ -2922,8 +3020,31 @@ index 4f9f215..75eeeaa 100644
      ;
      { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (((((unsigned int) ((((unsigned int) 0xf5) & ((0x01 << 8) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 2) & ((0x01 << 3) - 1)) << 21))) | ((unsigned int) ((((unsigned int) 1) & ((0x01 << 2) - 1)) << 19))) | ((unsigned int) ((((unsigned int) ((((((t->w - 1) - 0) + 1) * 1) + 7) >> 3)) & ((0x01 << 9) - 1)) << 9))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 9) - 1)) << 0)); _g->words.w1 = ((((((((unsigned int) ((((unsigned int) 7) & ((0x01 << 3) - 1)) << 24)) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 20))) | ((unsigned int) ((((unsigned int) t->cmt) & ((0x01 << 2) - 1)) << 18))) | ((unsigned int) ((((unsigned int) t->maskt) & ((0x01 << 4) - 1)) << 14))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 10))) | ((unsigned int) ((((unsigned int) t->cms) & ((0x01 << 2) - 1)) << 8))) | ((unsigned int) ((((unsigned int) prm.e[type].masks) & ((0x01 << 4) - 1)) << 4))) | ((unsigned int) ((((unsigned int) 0) & ((0x01 << 4) - 1)) << 0)); }
      ;
+@@ -774,6 +823,22 @@ void Text_DrawTexturedRect(s32 type, s32 x, s32 y, s32 w, s32 h)
+   }
+   { Gfx *_g = (Gfx *) (gfx_dl_head++); _g->words.w0 = (unsigned int) ((((unsigned int) 0xe7) & ((0x01 << 8) - 1)) << 24); _g->words.w1 = 0; }
+   ;
++#ifdef ELTALE_P1_OS
++  /* the words above, for the native 2D core: the CI8 texture's load, its tile, the rectangle */
++  if (ND2D_TRACK()) {
++    u32 line = ((t->w - 1) + 1 + 7) >> 3;
++    nd_2d_texture_image(G_IM_FMT_CI, G_IM_SIZ_8b, t->w, (uptr)tex.p[type]);
++    nd_2d_tile(G_IM_FMT_CI, G_IM_SIZ_8b, line, 0, G_TX_LOADTILE, 0, t->cmt, t->maskt, 0, t->cms, prm.e[type].masks, 0);
++    nd_2d_load_tile(G_TX_LOADTILE, 0, 0, (t->w - 1) << 2, (prm.e[type].h - 1) << 2);
++    nd_2d_tile(G_IM_FMT_CI, G_IM_SIZ_8b, line, 0, G_TX_RENDERTILE, 0, t->cmt, t->maskt, 0, t->cms, prm.e[type].masks, 0);
++    nd_2d_tile_size(G_TX_RENDERTILE, 0, 0, (t->w - 1) << 2, (prm.e[type].h - 1) << 2);
++    if (type == 0) {
++      nd_2d_texrect(x << 2, y << 2, (x + w) << 2, (y + h) << 2, G_TX_RENDERTILE, (x & 0xF) << 5, (y & 0xF) << 5, 1 << 10, 1 << 10);
++    } else {
++      nd_2d_texrect(x << 2, y << 2, (x + w) << 2, (y + h) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++    }
++  }
++#endif
+ 
+ }
+ #else
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..c2c286d 100644
+index e6f79b4..2dcc1ff 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
 @@ -1,3 +1,7 @@
@@ -2934,7 +3055,15 @@ index e6f79b4..c2c286d 100644
  #include "game/ui/hud.h"
  #include "game/camera/camera.h"
  #include "game/gfx/effect.h"
-@@ -128,7 +132,7 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -13,6 +17,7 @@
+ #include "game/player/player.h"
+ #include "game/ui/menu.h"
+ #include "game/core/main.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * In-game HUD: meters, compass, spell input, status indicators, and text primitives.
+@@ -128,7 +133,7 @@ void Hud_Draw(GfxFrameData* buf) {
      }
      if (!(core_flags & 0xC00)) {
          Hud_DrawPlayerMeters((Actor*)&player_state.actor);
@@ -2943,16 +3072,69 @@ index e6f79b4..c2c286d 100644
          if (hud_panel_transition_state == 1) {
              if (++hud_panel_transition_frame >= 13) {
                  hud_panel_transition_frame = 12;
-@@ -237,7 +241,7 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+@@ -192,6 +197,9 @@ void Hud_Draw(GfxFrameData* buf) {
+ extern HudTextureDesc D_803A86F8;
+ 
+ void Hud_DrawPlayerMeters(Actor* arg0) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(2, EL_RD2D_ANCHOR_LEFT); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     ActorStats* st;
+     s32 w;
+     s32 d;
+@@ -237,7 +245,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
  extern Gfx D_803AA3C8[];
  extern Gfx D_803AA2F8[];
  
 -void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
 +void Hud_DrawElementLevels(GfxFrameData* buf, ActorStats *arg1) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(3, EL_RD2D_ANCHOR_LEFT); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
      s32 x;
      f32 fx;
      f32 fy;
-@@ -465,7 +469,17 @@ void Hud_DrawSpellName(void* arg0) {
+@@ -295,6 +306,9 @@ extern HudTextureDesc D_803A86F8;
+ f32 sqrtf(f32);
+ 
+ void Hud_DrawCompass(GfxFrameData* buf) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(4, EL_RD2D_ANCHOR_RIGHT); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     f32 dx;
+     f32 dz;
+     f32 dist;
+@@ -340,6 +354,9 @@ extern HudTextureDesc D_803A8718;
+ extern Gfx D_803AA2F8[];
+ 
+ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(5, EL_RD2D_ANCHOR_LEFT); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 i;
+     s32 x1;
+     u8* col;
+@@ -383,6 +400,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+         gDPSetRenderMode(gfx_dl_head++, 0x504240, 0);
+         /* Keep this block on one line for IDO scheduling. */
+         { Gfx* _g = gfx_dl_head++; if (i) {} _g->words.w0 = 0xFCFF9BFF; _g->words.w1 = 0xFF34FE7F; }
++#ifdef ELTALE_P1_OS
++        if (ND2D_TRACK()) nd_2d_combine(0xFF9BFF, 0xFF34FE7F); /* the words above, for the native 2D core */
++#endif
+         gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255 - i * 255 / 64);
+     }
+     if (arg1->spell_input_count < 3) {
+@@ -454,6 +474,9 @@ extern HudTextureDesc D_803A8718;
+ #ifdef NON_MATCHING
+ /* register-only: (u8)w lands in a2 instead of t9 and w >> 8 misses ra; code is equivalent */
+ void Hud_DrawSpellName(void* arg0) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(6, EL_RD2D_ANCHOR_CENTRE); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 tmp;
+     volatile s32 id;
+     s32 t;
+@@ -465,7 +488,17 @@ void Hud_DrawSpellName(void* arg0) {
      hud_draw_origin_y = 0x32;
      w = ((Player *)arg0)->spell_id;
      id = (u8)w;
@@ -2970,7 +3152,97 @@ index e6f79b4..c2c286d 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureFilter(gfx_dl_head++, G_TF_POINT);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
-@@ -895,7 +909,18 @@ void Hud_DrawEnemyInfoPanel(void) {
+@@ -496,6 +529,9 @@ extern u8 D_8039ADB0[];
+ extern Gfx D_803AA2F8[];
+ 
+ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(7, EL_RD2D_ANCHOR_CENTRE); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     u16 alpha;
+     s32 yoff;
+     s32 t;
+@@ -580,6 +616,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+ 
+ 
+ void Hud_DrawNpcTalkMarker(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(8, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 bob;
+     Actor* p;
+@@ -600,6 +639,9 @@ void Hud_DrawNpcTalkMarker(void) {
+ }
+ 
+ void Hud_DrawSpiritMarker(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(9, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 sy;
+     s32 bob;
+@@ -617,6 +659,9 @@ void Hud_DrawSpiritMarker(void) {
+ }
+ 
+ void Hud_DrawChestMarker(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(10, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 sy;
+     s32 bob;
+@@ -634,6 +679,9 @@ void Hud_DrawChestMarker(void) {
+ }
+ 
+ void Hud_DrawTextSpotMarker(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(11, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 sy;
+     s32 bob;
+@@ -654,6 +702,9 @@ void Hud_DrawTextSpotMarker(void) {
+ extern Gfx D_803AA5B0[];
+ 
+ void Hud_DrawMeleeTargetMarker(u16 arg0) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(12, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 sy;
+     s32 bob;
+@@ -681,6 +732,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
+ }
+ 
+ void Hud_DrawOutOfRangeIcon(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(13, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 sx;
+     s32 sy;
+     f32 y;
+@@ -745,6 +799,9 @@ typedef struct {
+ extern Struct_803AA628 D_803AA628[];
+ 
+ void Hud_UpdateAndDrawActorStatusIndicators(Actor* arg0) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(14, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     ActorBattle* s = arg0->battle;
+     f32 y;
+     s32 vis;
+@@ -874,6 +931,9 @@ extern HudTextureDesc D_803A86F8;
+ extern HudTextureDesc D_803A8718;
+ 
+ void Hud_DrawEnemyInfoPanel(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(15, EL_RD2D_ANCHOR_RIGHT); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 d;
+ 
+     hud_draw_origin_x = 0xB5;
+@@ -895,7 +955,18 @@ void Hud_DrawEnemyInfoPanel(void) {
          Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
          Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
      }
@@ -2990,7 +3262,17 @@ index e6f79b4..c2c286d 100644
      Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
      if (enemy_turn_current->battle.status_bits & 0x80) {
-@@ -984,14 +1009,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -946,6 +1017,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
+ }
+ 
+ void Hud_DrawPopups(void) {
++#ifdef ELTALE_P1_OS
++    nd_2d_element(16, EL_RD2D_ANCHOR_WORLD); /* port: R7's widescreen anchor (nd_2d.h) */
++#endif
+     s32 i;
+     HudPopup* p;
+     f32 x;
+@@ -984,14 +1058,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -3019,7 +3301,7 @@ index e6f79b4..c2c286d 100644
      w = Hud_MeasureGlyphString(str);
      arg0 = arg0 - w / 2 + 0x37;
      Hud_DrawGlyphString(arg0, arg1, hud_spell_label_palettes[flags], str);
-@@ -1001,9 +1039,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1001,9 +1088,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 cur = 8;
      s32 col;
      s32 row;
@@ -3036,7 +3318,7 @@ index e6f79b4..c2c286d 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1013,6 +1058,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1013,6 +1107,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              x += 1;
          } else if (*str == 0x82) {
              x += 4;
@@ -3047,7 +3329,7 @@ index e6f79b4..c2c286d 100644
          } else {
              col = (*str & 0xF) * 8;
              row = (*str & 0x70) >> 4;
-@@ -1022,7 +1071,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1022,7 +1120,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              }
              row *= 9;
              Hud_DrawClippedTextureRect(x, y, 8, 9, col, row, 0x400, 0x400);
@@ -3059,7 +3341,7 @@ index e6f79b4..c2c286d 100644
          }
          str++;
      }
-@@ -1030,10 +1083,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1030,10 +1132,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
  
  s32 Hud_MeasureGlyphString(u8* str) {
      s32 w = 0;
@@ -3081,7 +3363,7 @@ index e6f79b4..c2c286d 100644
          } else if (*str == 0x80 || *str == 0x81) {
              w += 1;
          } else if (*str == 0x82) {
-@@ -1065,6 +1129,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1178,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
@@ -3111,10 +3393,18 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..a97fba3 100644
+index c955abf..dc05f4c 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
-@@ -1432,19 +1432,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
+@@ -9,6 +9,7 @@
+ #include "game/save/save_menu.h"
+ #include "game/text/text.h"
+ #include "game/text/text_window.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Start-button menu (game state 2): four pages (stats, map, element levels, options) with
+@@ -1432,19 +1433,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
  u32 mapobjanim_type23_keys[0x8F] = {
  #include "assets/mapobjanim_type23_keys.inc.c"
  };
@@ -3138,7 +3428,7 @@ index c955abf..a97fba3 100644
  u32 mapobj_loop_anim0_keys[0x27] = {
  #include "assets/mapobj_loop_anim0_keys.inc.c"
  };
-@@ -1458,10 +1458,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
+@@ -1458,10 +1459,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
  #include "assets/mapobj_loop_anim3_keys.inc.c"
  };
  AnimNode mapobj_loop_anims[4] = {
@@ -3153,7 +3443,7 @@ index c955abf..a97fba3 100644
  };
  u16 mapobj_kind11_tlut[0x200] = {
  #include "assets/mapobj_kind11_tlut.inc.c"
-@@ -1536,7 +1536,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
+@@ -1536,7 +1537,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3162,7 +3452,7 @@ index c955abf..a97fba3 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1552,7 +1552,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1552,7 +1553,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3171,7 +3461,7 @@ index c955abf..a97fba3 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1561,12 +1561,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1561,12 +1562,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx mapobj_kind11_quad_dl[3] = {
@@ -3186,7 +3476,7 @@ index c955abf..a97fba3 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1605,13 +1605,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
+@@ -1605,13 +1606,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3202,7 +3492,7 @@ index c955abf..a97fba3 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1632,11 +1632,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
+@@ -1632,11 +1633,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -3519,10 +3809,26 @@ index c6c476c..17d0a0e 100644
  typedef Acmd *(*ALCmdHandler)(void *, s16 *, s32, s32, Acmd *);
  typedef s32   (*ALSetParam)(void *, s32, void *);
 diff --git a/src/overlays/ending/ending.c b/src/overlays/ending/ending.c
-index 1afa21f..493a701 100644
+index 1afa21f..9cfbbcb 100644
 --- a/src/overlays/ending/ending.c
 +++ b/src/overlays/ending/ending.c
-@@ -95,7 +95,11 @@ s32 Ending_Update(void) {
+@@ -2,6 +2,7 @@
+ #include "game/audio/audio.h"
+ #include "game/core/main.h"
+ #include "overlays/ending/ending_data.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Ending overlay: entry and per-frame update, the same scripted sprite engine as the intro,
+@@ -55,6 +56,7 @@ s32 ending_display_buffer_index = 0;
+         gImmp1(pkt, G_RDPHALF_2,                                                                          \
+                (((unsigned int) ((((unsigned int) (dsdx)) & ((0x01 << 16) - 1)) << 13) << 3) |             \
+                 _SHIFTL(dtdy, 0, 16)));                                                                   \
++        ND2D_TEXRECT(xl, yl, xh, yh, tile, s, t, dsdx, dtdy)                                              \
+     }
+ 
+ /* func_8020E9C8's picture table (E25C80.c's D_80210800, 16-byte entries) */
+@@ -95,12 +97,16 @@ s32 Ending_Update(void) {
      // D_8020F698 is a function static in the original: IDO does not keep its address
      // in a register. Until D2 moves the data into C, write it through the neighbouring
      // symbol so this extern's address is not CSE'd either.
@@ -3534,6 +3840,12 @@ index 1afa21f..493a701 100644
      ret = Ending_RunSpriteScript();
      idx = ending_display_buffer_index;
      gSPEndDisplayList(gfx_dl_head++);
+     gfx_dl_head = ending_saved_display_ptr;
+-    gSPDisplayList(gfx_dl_head++, ending_display_list_buffers[idx]);
++    gSPDisplayListBuilt(gfx_dl_head++, ending_display_list_buffers[idx]); /* port: built here: its commands reached the native 2D core as queued */
+     return ret;
+ }
+ 
 diff --git a/src/overlays/ending/ending_data.c b/src/overlays/ending/ending_data.c
 index fe5a9e7..1860370 100644
 --- a/src/overlays/ending/ending_data.c
@@ -3756,18 +4068,58 @@ index 337160b..cde65a5 100644
      /* 0x22 */ s16 sprite_slot;
      /* 0x24 */ u16 previous_cue_index;
 diff --git a/src/overlays/intro/intro.c b/src/overlays/intro/intro.c
-index fc18718..6d55484 100644
+index fc18718..c91e8d5 100644
 --- a/src/overlays/intro/intro.c
 +++ b/src/overlays/intro/intro.c
-@@ -364,7 +364,7 @@ s32 Intro_RunSpriteScript(void) {
+@@ -6,6 +6,7 @@
+ #include "game/input/input.h"
+ #include "overlays/intro/intro_data.h"
+ #include "overlays/intro/intro_screens.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Intro overlay: entry and per-frame update (boot pak check, splashes), and the
+@@ -23,6 +24,7 @@ typedef struct {
+         Gfx *_g = gfx_dl_head++;            \
+         _g->words.w0 = (a);                \
+         _g->words.w1 = (b);                \
++        ND2D_WORDS(a, b)                   \
+     }
+ 
+ #ifdef NON_MATCHING
+@@ -38,6 +40,7 @@ typedef struct {
+         gImmp1(pkt, G_RDPHALF_2,                                                                          \
+                (((unsigned int) ((((unsigned int) (dsdx)) & ((0x01 << 16) - 1)) << 13) << 3) |             \
+                 _SHIFTL(dtdy, 0, 16)));                                                                   \
++        ND2D_TEXRECT(xl, yl, xh, yh, tile, s, t, dsdx, dtdy)                                              \
+     }
+ #endif
+ 
+@@ -222,7 +225,7 @@ s32 Intro_Update(void) {
+                 ret = Intro_RunSpriteScript();
+                 gSPEndDisplayList(gfx_dl_head);
+                 gfx_dl_head = intro_saved_display_ptr;
+-                gSPDisplayList(gfx_dl_head++, intro_display_list_buffers[intro_display_buffer_index]);
++                gSPDisplayListBuilt(gfx_dl_head++, intro_display_list_buffers[intro_display_buffer_index]);
+                 break;
+         }
+     }
+@@ -364,8 +367,14 @@ s32 Intro_RunSpriteScript(void) {
              intro_fade_alpha = 0xFF;
          }
          g = gfx_dl_head++; g->words.w0 = _SHIFTL(G_RDPPIPESYNC, 24, 8); g->words.w1 = 0;
 -        g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_DL, 24, 8) | _SHIFTL(G_DL_PUSH, 16, 8)); g->words.w1 = (u32)D_802122E0_ovl_intro;
 +        g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_DL, 24, 8) | _SHIFTL(G_DL_PUSH, 16, 8)); g->words.w1 = (u32)(uptr)D_802122E0_ovl_intro;
          g = gfx_dl_head++; g->words.w0 = (_SHIFTL(G_SETOTHERMODE_H,24,8) | _SHIFTL(G_MDSFT_TEXTLUT,8,8) | _SHIFTL(2,0,8)); g->words.w1 = G_TT_RGBA16;
++#ifdef ELTALE_P1_OS
++        if (ND2D_TRACK()) { /* the words above, for the native 2D core */
++            nd_2d_display_list((uintptr_t)D_802122E0_ovl_intro);
++            nd_2d_othermode(G_SETOTHERMODE_H, G_MDSFT_TEXTLUT, 2, G_TT_RGBA16);
++        }
++#endif
          gDPSetRenderMode(gfx_dl_head++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
          gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, intro_fade_alpha);
+         gDPLoadTLUT_pal256(gfx_dl_head++, D_80217A80_ovl_intro);
 diff --git a/src/overlays/intro/intro_data.c b/src/overlays/intro/intro_data.c
 index 20075a2..413953d 100644
 --- a/src/overlays/intro/intro_data.c
@@ -4713,6 +5065,26 @@ index a93dfb8..f3c00c4 100644
      /* 0x20 */ s16 anim_step_index;
      /* 0x22 */ s16 sprite_slot;
      /* 0x24 */ u16 previous_cue_index;
+diff --git a/src/overlays/intro/intro_screens.c b/src/overlays/intro/intro_screens.c
+index a87243b..2fd2eb6 100644
+--- a/src/overlays/intro/intro_screens.c
++++ b/src/overlays/intro/intro_screens.c
+@@ -3,13 +3,14 @@
+ #include "game/input/input.h"
+ #include "overlays/intro/intro.h"
+ #include "overlays/intro/intro_data.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Intro overlay: the three splash screens, the no-controller message and the pak warning screens.
+  * Original file: ovl_intro/DC9350.c (ROM 0xDC9350).
+  */
+ 
+-#define GFX_WORDS(a, b)                    {                                          Gfx *_g = gfx_dl_head++;                _g->words.w0 = (a);                    _g->words.w1 = (b);                }
++#define GFX_WORDS(a, b)                    {                                          Gfx *_g = gfx_dl_head++;                _g->words.w0 = (a);                    _g->words.w1 = (b);                ND2D_WORDS(a, b) }
+ 
+ 
+ /* ovl_intro .data 80212250..80212270 (the rest of the slab is still asm): 250, 254,
 diff --git a/src/overlays/pakmenu/pakmenu.c b/src/overlays/pakmenu/pakmenu.c
 index 145e9b5..1117a4b 100644
 --- a/src/overlays/pakmenu/pakmenu.c
@@ -4856,21 +5228,34 @@ index 145e9b5..1117a4b 100644
 +    }
 +#endif
  }
+diff --git a/src/overlays/title/title.c b/src/overlays/title/title.c
+index 009c33d..74cf310 100644
+--- a/src/overlays/title/title.c
++++ b/src/overlays/title/title.c
+@@ -4,6 +4,7 @@
+ #include "game/event/cutscene.h"
+ #include "game/input/input.h"
+ #include "overlays/title/title_draw.h"
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
+ 
+ /*
+  * Title overlay: entry, per-frame update, the phase state machine, button handling.
 diff --git a/src/overlays/title/title_draw.c b/src/overlays/title/title_draw.c
-index d3ba9ee..05cc0b4 100644
+index d3ba9ee..f8c72d0 100644
 --- a/src/overlays/title/title_draw.c
 +++ b/src/overlays/title/title_draw.c
-@@ -6,6 +6,9 @@
+@@ -6,6 +6,10 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "overlays/title/title_data.h"
 +#ifdef ELTALE_P1_OS
 +#include "port/text.h"
 +#endif
++#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
  
  /*
   * Title overlay: draws the title screen, its menu cursors and message windows; screen fades.
-@@ -54,7 +57,7 @@ Gfx title_menu_sprite_setup_dl[5] = {
+@@ -54,7 +58,7 @@ Gfx title_menu_sprite_setup_dl[5] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F2A8_ovl_title[11] = {
@@ -4879,7 +5264,7 @@ index d3ba9ee..05cc0b4 100644
      {{ 0xF5480800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF4000000, 0x0706A02C }},
-@@ -67,7 +70,7 @@ Gfx D_8020F2A8_ovl_title[11] = {
+@@ -67,7 +71,7 @@ Gfx D_8020F2A8_ovl_title[11] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F300_ovl_title[11] = {
@@ -4888,7 +5273,7 @@ index d3ba9ee..05cc0b4 100644
      {{ 0xF5480800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF406C000, 0x070D802C }},
-@@ -80,7 +83,7 @@ Gfx D_8020F300_ovl_title[11] = {
+@@ -80,7 +84,7 @@ Gfx D_8020F300_ovl_title[11] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx D_8020F358_ovl_title[11] = {
@@ -4897,7 +5282,7 @@ index d3ba9ee..05cc0b4 100644
      {{ 0xF5480A00, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF40DA000, 0x0715C02C }},
-@@ -97,13 +100,13 @@ Gfx title_initial_screen_dl[21] = {
+@@ -97,13 +101,13 @@ Gfx title_initial_screen_dl[21] = {
      {{ 0xB900031D, 0x00504240 }},
      {{ 0xFCFF9BFF, 0xFF34FE7F }},
      {{ 0xBA000E02, 0x00008000 }},
@@ -4913,7 +5298,16 @@ index d3ba9ee..05cc0b4 100644
      {{ 0xF5481800, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
      {{ 0xF4000000, 0x07168038 }},
-@@ -141,6 +144,16 @@ s32 D_8020F488_ovl_title[18] = {
+@@ -131,7 +135,7 @@ s32 D_8020F488_ovl_title[18] = {
+     0x00000081, 0x000000A0, 0x00000036, 0x00000000, 0x00000037, 0x0000000C,
+     0x000000CB, 0x000000A0, 0x0000006D, 0x00000000, 0x00000042, 0x0000000C,
+ };
+-#define GFX_WORDS(a, b) { Gfx *_g = gfx_dl_head++; _g->words.w0 = (a); _g->words.w1 = (b); }
++#define GFX_WORDS(a, b) { Gfx *_g = gfx_dl_head++; _g->words.w0 = (a); _g->words.w1 = (b); ND2D_WORDS(a, b) }
+ 
+ 
+ 
+@@ -141,6 +145,16 @@ s32 D_8020F488_ovl_title[18] = {
  s8 title_confirmation_row;
  s32 title_confirm_cursor_alpha;
  
@@ -4930,7 +5324,7 @@ index d3ba9ee..05cc0b4 100644
  void Title_DrawScreenAndMoveCursor(s32 arg0) {
      static s32 title_cursor_anim_frame = 0;
      static s8 D_8020F4D4_ovl_title = 0;
-@@ -284,9 +297,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
+@@ -284,9 +298,26 @@ void Title_DrawScreenAndMoveCursor(s32 arg0) {
              gSPDisplayList(gfx_dl_head++, title_menu_sprite_setup_dl);
              gDPPipeSync(gfx_dl_head++);
              gDPLoadTLUT_pal16(gfx_dl_head++, 0, title_menu_atlas_tlut);

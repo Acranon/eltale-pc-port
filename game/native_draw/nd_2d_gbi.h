@@ -158,6 +158,10 @@
         _g->words.w1 = (unsigned int)(uintptr_t)(dl);                                                     \
     }
 
+/* For code that writes command words itself (the overlays' GFX_WORDS and GFX_TEXRECT_STEPS) */
+#define ND2D_WORDS(a, b) if (ND2D_TRACK()) nd_2d_words((a), (b));
+#define ND2D_TEXRECT(xl, yl, xh, yh, tile, s, t, dsdx, dtdy)     if (ND2D_TRACK()) nd_2d_texrect((xl), (yl), (xh), (yh), (tile), (s), (t), (dsdx), (dtdy));
+
 #undef gSPTextureRectangle
 #define gSPTextureRectangle(pkt, xl, yl, xh, yh, tile, s, t, dsdx, dtdy)                                   \
     {                                                                                                     \
@@ -177,6 +181,12 @@
         _g->words.w1 = (_SHIFTL((ulx), 14, 10) | _SHIFTL((uly), 2, 10));                                  \
         if (ND2D_TRACK()) nd_2d_fillrect((ulx), (uly), (lrx), (lry));                                     \
     }
+
+#else
+
+#define ND2D_WORDS(a, b)
+#define ND2D_TEXRECT(xl, yl, xh, yh, tile, s, t, dsdx, dtdy)
+#define gSPDisplayListBuilt(pkt, dl) gSPDisplayList(pkt, dl)
 
 #endif
 

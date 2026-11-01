@@ -3,11 +3,11 @@ frame_1080 75
 frame_1090 71
 frame_1350 101
 frame_1370 326
-frame_1570 315
+frame_1570 311
 frame_570 84
 frame_600 312
 frame_80 118
-frame_830 76
+frame_830 75
 frame_92 71
 frame_98 177
-sum 1726
+sum 1721

@@ -332,6 +332,11 @@ void NativeDraw::resources_reset() {
 // ---- recording -----------------------------------------------------------------------------------
 
 void NativeDraw::frame_begin(const ElRdFrameInfo *info) {
+    // The game can build the next frame before the last one's graphics task starts (the menus, the
+    // title: they wait only for the swap): the finished one waits for its number (frame_end)
+    if (in_frame) pending.push_back(std::move(building));
+    while (pending.size() > 4) pending.pop_front(); // (a build no task took)
+    building = Recording();
     building.info = *info;
     building.items.clear();
     building.items2d.clear();
@@ -376,10 +381,15 @@ void NativeDraw::draw_2d(const ElRd2D *d) {
 }
 
 void NativeDraw::frame_end(uint32_t frame) {
-    if (!in_frame) return;
-    in_frame = false;
-    building.frame = frame;
-    std::swap(done, building);
+    if (!pending.empty()) {
+        done = std::move(pending.front());
+        pending.pop_front();
+    } else {
+        if (!in_frame) return;
+        in_frame = false;
+        std::swap(done, building);
+    }
+    done.frame = frame;
     has_latest = true;
     if (want_dump(frame)) dump_frame(done);
 }

@@ -58,6 +58,9 @@ void nd_2d_display_list(uintptr_t address);                                     
 void nd_2d_load_texture_block(uintptr_t timg, uint32_t fmt, uint32_t siz, uint32_t width, uint32_t height, uint32_t pal,
                               uint32_t cms, uint32_t cmt, uint32_t masks, uint32_t maskt, uint32_t shifts, uint32_t shiftt);
 
+/* One command written as words by the code itself (a state command or a display list call) */
+void nd_2d_words(uint32_t w0, uint32_t w1);
+
 /* Drawing */
 void nd_2d_texrect(int32_t xl, int32_t yl, int32_t xh, int32_t yh, uint32_t tile, int32_t s, int32_t t, int32_t dsdx,
                    int32_t dtdy); /* gSPTextureRectangle's arguments (10.2, S10.5, S5.10) */

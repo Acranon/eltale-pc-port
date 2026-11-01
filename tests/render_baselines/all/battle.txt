@@ -3,7 +3,7 @@ frame_100 126
 frame_1420 315
 frame_260 46
 frame_300 312
-frame_460 140
-frame_500 250
+frame_460 139
+frame_500 249
 frame_820 317
-sum 1506
+sum 1504

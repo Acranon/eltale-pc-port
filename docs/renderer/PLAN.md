@@ -103,6 +103,9 @@ The compass, the floating numbers and the ending's fade went to R5 (2D).
 - Fade quad, letterbox, camera shake, additive env flashes, and the compass's 2D triangles.
 
 ### R5: 2D
+**Done 2026-11-01** (branch nr/2d): see [NATIVE_DRAW.md](NATIVE_DRAW.md), "2D". The census is 0 commands in
+every run (New Game, map tour, ending, battle, spells, menus, save menu, intro).
+
 - Texture rectangles become native quads: HUD, text windows, the English fonts, menus, the title
   (including the English strip and logo), intro, ending, picture cues, and the Pak manager.
 - **Exit check:** a census run over New Game, the map tour, the ending, a battle and the menus

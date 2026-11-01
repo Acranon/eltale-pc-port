@@ -2,8 +2,8 @@
 frame_125 0
 frame_200 0
 frame_225 2
-frame_275 171
+frame_275 164
 frame_50 0
-frame_600 174
-frame_700 173
-sum 520
+frame_600 167
+frame_700 166
+sum 499

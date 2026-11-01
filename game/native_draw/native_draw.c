@@ -43,6 +43,10 @@ const NdKind nd_kinds_table[] = {
     { EL_KIND_ACTOR, nd_actor_attach },
     { EL_KIND_EFFECT, nd_effect_attach },
     { EL_KIND_SCREEN, NULL },
+    { EL_KIND_HUD, NULL },     /* nd_2d.c */
+    { EL_KIND_TEXT, NULL },    /* nd_2d.c */
+    { EL_KIND_MENU, NULL },    /* nd_2d.c */
+    { EL_KIND_PICTURE, NULL }, /* nd_2d.c */
     { -1, NULL },
 };
 static unsigned requested = ~0u;
@@ -167,13 +171,13 @@ void nd_frame_begin(void) {
     }
     info.mode = (u8)core_game_mode;
     api->frame_begin(&info);
-    in_frame = 1;
+    in_frame++; /* the next frame can be built before the last one's task starts (menus, the title) */
     nd_2d_frame_begin();
 }
 
 void nd_frame_end(unsigned frame) {
     if (!nd_kinds || !in_frame) return;
-    in_frame = 0;
+    in_frame--;
     nd_model_frame_end();
     api->frame_end(frame);
 }

@@ -1,0 +1,15 @@
+# The title menu's second item (Continue): Start skips the intro, Start opens the title menu, the stick
+# moves its cursor right, Start opens the save menu (the Controller Pak's notes), then the stick moves the
+# save menu's cursor. Used by tests/render_frames_2d.txt (run "save").
+10 0x1000 0 0
+12 0 0 0
+40 0x1000 0 0
+42 0 0 0
+200 0x1000 0 0
+202 0 0 0
+500 0 80 0
+504 0 0 0
+560 0x1000 0 0
+562 0 0 0
+700 0 0 -80
+704 0 0 0

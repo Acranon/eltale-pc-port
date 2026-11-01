@@ -86,6 +86,7 @@ typedef struct {
     uint32_t lo, hi;
     uint32_t row_tmem;  /* TMEM bytes per row (a tile load); 0: one run (a block) */
     uint32_t row_bytes; /* bytes loaded per row */
+    uint32_t rows;
     const uint8_t *src; /* the bytes of TMEM byte lo */
     uint32_t row_src;   /* memory bytes per row */
     uint8_t native, unit;
@@ -165,6 +166,7 @@ static void set_rgba(uint8_t *dst, uint32_t v) {
 }
 
 void nd_2d_color(uint32_t cmd, uint32_t value) {
+    if (log_on > 2) fprintf(stderr, "nd_2d: colour %02x %08x\n", cmd & 0xFF, value);
     switch (cmd & 0xFF) {
     case G_SETENVCOLOR: set_rgba(st.env, value); break;
     case G_SETBLENDCOLOR: set_rgba(st.blend, value); break;
@@ -241,9 +243,12 @@ void nd_2d_load_tile(uint32_t tile, uint32_t uls, uint32_t ult, uint32_t lrs, ui
     memset(&l, 0, sizeof l);
     l.lo = (uint32_t)t->tmem * 8;
     l.row_tmem = (uint32_t)t->line * 8;
-    l.row_bytes = (sh - sl + 1) * (uint32_t)bpp;
-    if (l.row_tmem < l.row_bytes) l.row_tmem = (l.row_bytes + 7) & ~7u;
-    l.hi = l.lo + (th - tl + 1) * l.row_tmem;
+    /* the RDP writes whole 64-bit words per row at the tile's line: a row longer than the line runs
+     * into the next, which then overwrites it */
+    l.row_bytes = ((sh - sl + 1) * (uint32_t)bpp + 7) & ~7u;
+    if (!l.row_tmem) l.row_tmem = l.row_bytes;
+    l.rows = th - tl + 1;
+    l.hi = l.lo + (l.rows - 1) * l.row_tmem + l.row_bytes;
     l.src = st.timg.p.p + ((size_t)tl * st.timg.width + sl) * (size_t)bpp;
     l.row_src = st.timg.width * (uint32_t)bpp;
     l.native = (uint8_t)st.timg.p.native;
@@ -332,6 +337,7 @@ static uint8_t tmem_byte(uint32_t a) {
         uint32_t off = a - l->lo;
         if (l->row_tmem) {
             uint32_t row = off / l->row_tmem, col = off % l->row_tmem;
+            if (row >= l->rows) row = l->rows - 1, col = off - row * l->row_tmem;
             if (col >= l->row_bytes) continue;
             return mem_byte(l->src + (size_t)row * l->row_src + col, l->native, l->unit);
         }
@@ -534,7 +540,7 @@ void nd_2d_reset(void) {
 
 static void emit(ElRd2D *d) {
     d->id = (uint64_t)(nd2d_kind & 0xFF) << 56 | (uint64_t)(element & 0xFFFF) << 40 | item_number++;
-    d->flags |= (uint32_t)anchor;
+    if (!(d->flags & EL_RD2D_ANCHOR_MASK)) d->flags |= (uint32_t)anchor; /* a rectangle's own (a full-width fill) first */
     memcpy(d->env, st.env, 4);
     memcpy(d->prim, st.prim, 4);
     memcpy(d->blend, st.blend, 4);
@@ -577,7 +583,10 @@ static void rect_item(float x0, float y0, float x1, float y1, int tile, float s,
         d.material = id;
         d.rect[0] = x0; d.rect[1] = y0; d.rect[2] = x1; d.rect[3] = y1;
         d.st[0] = s; d.st[1] = t; d.st[2] = dsdx; d.st[3] = dtdy;
-        if (fill || !textured) d.flags = EL_RD2D_FILL;
+        if (fill || !textured) {
+            d.flags = EL_RD2D_FILL;
+            if (x0 <= 8 && x1 >= 312) d.flags |= EL_RD2D_ANCHOR_STRETCH; /* covers the screen's width */
+        }
         emit(&d);
         return;
     }
@@ -906,4 +915,19 @@ void nd_2d_load_texture_block(uintptr_t timg, uint32_t fmt, uint32_t siz, uint32
         gDPLoadTextureBlock(g++, timg, fmt, G_IM_SIZ_32b, width, height, pal, cms, cmt, masks, maskt, shifts, shiftt);
         break;
     }
+}
+
+/* One command the code wrote as words itself (GFX_WORDS in the overlays: othermodes, combiner, colours,
+ * a display list call), the way a static list's commands are taken */
+void nd_2d_words(uint32_t w0, uint32_t w1) {
+    Gfx g[2];
+    g[0].words.w0 = w0;
+    g[0].words.w1 = w1;
+    g[1].words.w0 = (uint32_t)G_ENDDL << 24;
+    g[1].words.w1 = 0;
+    List l;
+    memset(&l, 0, sizeof l);
+    compile(&l, (uintptr_t)g, 0);
+    replay(&l);
+    free(l.ops);
 }

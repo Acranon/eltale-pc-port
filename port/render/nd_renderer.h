@@ -8,6 +8,7 @@
 #include "port/render.h"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -105,6 +106,7 @@ private:
     std::vector<ElRdMaterial> material_cpu; // for the pipeline state
 
     Recording building, done;
+    std::deque<Recording> pending; // built, waiting for their graphics task's number
     bool has_latest = false, state_dirty = true, in_frame = false;
     Recording::State state = {};
 

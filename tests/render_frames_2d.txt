@@ -1,0 +1,26 @@
+# Frames for the 2D kinds (docs/renderer/NATIVE_DRAW.md, "2D"), same format as tests/render_frames.txt.
+# tools/frame_test.py runs it after the other lists. Japanese is the default; ELTALE_LANG=en is the port's
+# English (port/text/en_text.c, en_images.c), ELTALE_FONT=n one of the optional English fonts.
+# title_en: the English title (the menu strip, the logo), the New Game window and the opening dialogue.
+# font1..5: the opening dialogue in each optional English font.
+# intro:    the intro's sprite script (no input), Japanese and English.
+# save:     the title's Continue: the save menu over the battle-stuck save's Controller Pak (and English).
+# compass:  the compass-spirit save in the field: the HUD with the compass.
+# panel:    the battle-stuck save: the enemy name panel (225), the spell input (250), and English.
+# menu_en:  the item menu, the pause menu's status and map pages in English.
+# ending_en: the epilogue pages in English.
+title_en  | ELTALE_LANG=en --frames 700 --input tests/title-new-game.input | 50 200 275 600 700
+font1     | ELTALE_LANG=en ELTALE_FONT=1 --frames 600 --input tests/title-new-game.input | 600
+font2     | ELTALE_LANG=en ELTALE_FONT=2 --frames 600 --input tests/title-new-game.input | 600
+font3     | ELTALE_LANG=en ELTALE_FONT=3 --frames 600 --input tests/title-new-game.input | 600
+font4     | ELTALE_LANG=en ELTALE_FONT=4 --frames 600 --input tests/title-new-game.input | 600
+font5     | ELTALE_LANG=en ELTALE_FONT=5 --frames 600 --input tests/title-new-game.input | 600
+intro     | --frames 1200 | 150 300 450 600 900 1200
+intro_en  | ELTALE_LANG=en --frames 1200 | 150 300 450 600 900 1200
+save      | @save=battle-stuck --frames 500 --input tests/title-continue.input | 300 450 480
+save_en   | @save=battle-stuck ELTALE_LANG=en --frames 500 --input tests/title-continue.input | 300 450 480
+compass   | @save=compass-spirit ELTALE_QUICK_LOAD_AT=100 --frames 200 --input tests/intro-to-title.input | 120 160 200
+panel     | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 --frames 300 --input tests/battle-stuck.input | 225 250 300
+panel_en  | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 ELTALE_LANG=en --frames 300 --input tests/battle-stuck.input | 225 250 300
+menu_en   | @save=battle-stuck ELTALE_QUICK_LOAD_AT=100 ELTALE_LANG=en --frames 650 --input tests/item-menu.input | 250 400 420 460 620
+ending_en | ELTALE_START_MODE=5 ELTALE_LANG=en --frames 3500 | 450 2700 3450
