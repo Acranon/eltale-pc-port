@@ -11,7 +11,7 @@
  * Switches (nd_config):
  *   --native-kinds LIST / ELTALE_NATIVE_KINDS=LIST   which kinds the native renderer draws: "all"
  *       (the default), "none", or names (map,billboard,backdrop,actor,shadow,effect,screen,hud,text,
- *       menu,picture). Only kinds that are done draw natively (nd_kinds_table; R2: map, R3: backdrop).
+ *       menu,picture). Only kinds that are done draw natively (nd_kinds_table; R2: map).
  *   ELTALE_ND_COMPARE=1    native kinds keep their display-list commands too (one run gives both the
  *       frame image for the reference and the native picture)
  *   ELTALE_DL_KINDS=LIST   the frame list keeps only these kinds' commands (the rest are dropped after
