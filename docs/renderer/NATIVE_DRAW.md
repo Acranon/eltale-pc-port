@@ -567,6 +567,10 @@ all/`, rewritten 2026-11-01):
 No frame got worse than the R4 baselines; menu (298 -> 125), ng (692 -> 499) and ending fell, as the 2D
 now covers 3D differences. What is left is the 3D kinds' (near-plane clipping, dither).
 
+`tests/render_frames_panels.txt` (2026-11-01) adds the battle's spell input panel (spellin: 8 frames, 2,674 solid,
+the field behind it as in panel 225) and the spirit's element allocation panel (alloc: 8 frames, 5 solid);
+baselines in `all/` and `wide/`, reference hashes in `tests/render_ref.txt`.
+
 ## Pictures between ticks (R6, port/render/nd_interp.cpp)
 
 Gameplay runs at 30 ticks a second (a recording every 2 retraces); the menus, the title, the intro and the
@@ -897,10 +901,23 @@ mille of the depth range: at the disc's edge 82-95% fog) and the far plane at 10
 
 - The pipeline cache (`native_pipelines.bin`) and every pipeline Granite makes are kept in the data folder
   (`native_pipeline_list.txt`, KF4's line format: shaders by SPIR-V hash and layout, the compatible render pass,
-  the state); the shipped list is `port/render/nd_pipeline_list.h` (46 pipelines: MSAA 1x 10, 2x/4x/8x 12 each),
-  made by `tools/pipeline_list.py` from `tools/warm_test.py --collect` runs (New Game and a walk, a battle with
-  every element's spells, the item menu and pages, the ending). Make it again after a shader or Granite change
-  (stale lines are skipped by their hash).
+  the state); the shipped list is `port/render/nd_pipeline_list.h` (60 pipelines: MSAA 1x 12, 2x/4x/8x 16 each),
+  made by `tools/pipeline_list.py` from `tools/warm_test.py` cold runs (New Game and a walk, a battle with every
+  element's spells, the item menu and pages, the ending, and the whole map tour) at MSAA 1, 2, 4 and 8 in every look.
+- **Making it again** (after a shader, Granite or 2D change; stale lines are skipped by their hash, so a stale list
+  costs only room), one command, about 6 minutes with `--jobs 2`:
+  `python tools/warm_test.py --rom ROM --regen --jobs 2` (cold runs of every case x MSAA x look, merged into the
+  shipped list with `pipeline_list.py --keep`, then `build_host.py` and `--check`); `--regen --fresh` empties the
+  list and builds first, so the list is made anew without stale lines (two builds). A run's own list holds only
+  what the shipped list lacks, hence the merge.
+- **The check**: `python tools/warm_test.py --rom ROM --check --jobs 2` runs every case (the map tour included) at
+  MSAA 1, 2, 4, 8 in every look (`everything`, `classic`, `cvisuals`, `dither`: Everything on with the N64 dither,
+  `border`: 4:3 with the border and N64 fog) from a fresh data folder with the shipped list only: `WARM_CHECK_FAIL`
+  (exit 1) when any run makes a pipeline in play. 100 runs, about 6 minutes; `WARM_CHECK_OK` 2026-11-01.
+- The looks make the same pipelines (the dither, the fog, the border and the draw distance are push constants or
+  scissors, not pipeline state): the MSAA count and what is drawn decide them. Before the tour was in the list, map
+  0's stone rooms (sub-areas 1 and 2: state no other case drew) made 2 (MSAA 1x) or 4 pipelines in play, ~90 ms
+  each, in every preset.
 - At the start the lines for the MSAA count in use are made on threads; a change of MSAA in the menu starts that
   count's. The first picture that draws waits for them (~70 ms, at the start: the boot logos), so no draw makes
   one twice. `ELTALE_WARM=0` makes nothing ahead; `P1_PIPELINES` at exit.
@@ -915,6 +932,22 @@ mille of the depth range: at the disc's edge 82-95% fog) and the far plane at 10
 `OPT_DITHER`: the RDP's 5 bits a channel with its magic square at each N64 pixel, for draws the GPU does not
 blend with the picture (the RDP dithers after its blend; blended draws stay smooth).
 
+`ELTALE_DUMP_LOOK=classic` gives the headless dumps the Classic look (the dither on top of the N64 look);
+`frame_test.py --native --look classic` compares it with the reference (`tests/render_baselines/all-classic/`,
+2026-11-01). Against the default dumps (`all/`): ng 499 -> 8 solid pixels (frame 600: 167 -> 3), the fonts 167 -> 3,
+chests 1,712 -> 370, menu 125 -> 103, spells 1,721 -> 1,635, battle 1,504 -> 1,457; worse: tour 6,891 -> 12,617
+(24633, map 29's lava: 2,617 -> 6,414), alloc 5 -> 168, compass 1 -> 31.
+
+### Scaled pictures against the reference
+
+`frame_test.py --native --hires [SxM]` (default 4x4): the dumps at scale S with MSAA M (1280x960), box-filtered to
+320x240 and compared with the 1x reference at two 5-bit steps (`render_compare.py --shrink --level 2`); baselines
+`tests/render_baselines/all-s4m4/` (2026-11-01: ng 4, tour 1,466, ending 2,023, battle 1,248, chests 225, spells
+1,573, panel 817, spellin 2,565, alloc 234). It guards the high-resolution path (placement, decals and the decal
+depth copy at a scale, the MSAA resolve), which the 1x sets never draw: a picture moved by half an N64 pixel (2
+picture pixels) takes battle 500 from 194 to 363. 2D drawn crisp at a scale (each N64 pixel a whole block) is a
+different check (`frame_test.py --scale`, `render_compare.py --blocks`, from the 2D fixes branch).
+
 ### Pacing at the options
 
 `tools/pace_test.py --hz 240` (hidden window, tests/interp-walk.input, the play half), 2026-11-01: 1x no MSAA 240.0
@@ -927,8 +960,9 @@ draws a tick at 2x.)
 
 | | |
 |---|---|
-| `ELTALE_DUMP_SCALE=n`, `ELTALE_DUMP_MSAA=n`, `ELTALE_DUMP_LOOK=modern` (no border, fog per pixel), `ELTALE_DRAW_DISTANCE=k` | headless dumps with the options (contact sheets) |
+| `ELTALE_DUMP_SCALE=n`, `ELTALE_DUMP_MSAA=n`, `ELTALE_DUMP_LOOK=modern` (no border, fog per pixel) or `classic` (the N64 dither too), `ELTALE_DRAW_DISTANCE=k` | headless dumps with the options (contact sheets, `frame_test.py --look`, `--hires`) |
+| `tools/frame_test.py --native --look classic`, `--native --hires 4x4` | the Classic look, and 4x with MSAA 4x shrunk to 1x, against the reference: `all-classic/`, `all-s4m4/` |
 | `ELTALE_OPTIONS_CYCLE=N` | every N pictures the next MSAA, resolution and draw distance, and every 4N the next widescreen (off, 16:9, the window's), as the menu changes them (targets and pipelines made again in play) |
-| `tools/warm_test.py` | the hitch with and without the list (cold, warm, shipped), `--collect` for pipeline_list.py |
+| `tools/warm_test.py` | the hitch with and without the list (cold, warm, shipped), `--collect` for pipeline_list.py; `--check` (no pipeline made in play, map tour included, every MSAA and look), `--regen [--fresh]` (the shipped list made again in one command) |
 | `tools/pace_test.py --scale N --msaa N --distance far` | pacing at the options |
 
