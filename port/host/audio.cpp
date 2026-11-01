@@ -3,7 +3,7 @@
 // little faster or slower (at most 0.5%, inaudible) to keep it near that fill: the game is paced by
 // the host clock and the sound card by its own, and a hitch on either side is absorbed instead of
 // heard as a click. If the ring runs dry anyway, the output fades the last frame out and waits to
-// refill. (Moved from eltale_rt64.dll as it was; SDL3's stream takes the callback's output.)
+// refill. (SDL3's stream takes the callback's output.)
 #include "host.h"
 
 #include <algorithm>

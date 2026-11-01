@@ -335,7 +335,7 @@ the billboard cone cull (below) widened.
 
 ## 8. Suggested porting order
 
-Each step switchable and compared against the RT64 frame-image path:
+Each step switchable and compared against the frame-image reference (paraLLEl-RDP, REFERENCE.md):
 
 1. **Infrastructure**: a per-tick recording (camera, lights/fog, ordered draw list with ids), a
    static-DL → mesh converter (F3DEX vertex/tri/texture/state walk, as census.py does) with a cache keyed

@@ -40,14 +40,14 @@ game (exe)                                         eltale_host.dll
   rewinds `gfx_dl_head` over what it queued (`ND_DL_BEGIN`/`ND_DL_END`). The game does the same work
   either way (the same matrices, the same `gfx_mtx_index`, the same updates): the map tour with map
   objects native gives the same audio hash and frame count (a2d2e81245d538d4, 30374) and the quick-save
-  values are the same. Without the native renderer every kind's commands stay: the frame lists are byte
-  for byte the original (tests/p1_checks.sh prints the same lines).
+  values are the same. Without the native renderer (a headless run without `--dump-frames`) every kind's
+  commands stay: the frame lists are byte for byte the original (tests/p1_checks.sh prints the same lines).
 
 ### Switches
 
 | Switch | What |
 |---|---|
-| `--renderer native` | the window's renderer; native kinds draw through the recording |
+| `--window` | the window; the native renderer (the only one) draws every kind through the recording. `--renderer native` is still accepted and changes nothing |
 | `--native-kinds all\|none\|map,...` / `ELTALE_NATIVE_KINDS` | which kinds the native renderer draws (default all; only done kinds can) |
 | `--dump-frames DIR` | headless: the native renderer without a window writes `DIR/frame_N.png` (320x240, 1x, nearest, the N64 look: border, three-point, N64 fog) for the frames `ELTALE_DUMP_FRAMES` (else `ELTALE_DUMP_IMAGE`) names, else every frame. Works with a window too |
 | `ELTALE_ND_COMPARE=1` | native kinds keep their display-list commands too (one run gives the reference's frame image and the native picture) |
@@ -520,9 +520,9 @@ is left in the frame lists** (`ELTALE_DL_CENSUS=1`, below).
 ### The Controller Pak manager
 
 It draws into its own framebuffers with the CPU and never queues a graphics task, so it has no
-recording: on a retrace whose framebuffer is not one of the game's, `--renderer native` uploads the
+recording: on a retrace whose framebuffer is not one of the game's, the native renderer uploads the
 320x240 RGBA5551 pixels as one texture and presents them (R0, host_bridge.c `present`). That is already
-the scheme's end state (no display list involved); `tests/host_checks.sh native` checks it
+the scheme's end state (no display list involved); `tests/host_checks.sh` checks it
 (`P1_NATIVE_CPU_FRAME`: the GPU's copy has the same hashes as `P1_CPU_FRAME`).
 
 ### The census (R5's exit check)
@@ -531,8 +531,8 @@ the scheme's end state (no display list involved); `tests/host_checks.sh native`
 rest ("state": segments, the clears, the camera, lights and fog the native kinds send from where they are
 queued), and prints `P1_DL_CENSUS` at exit. A kind's commands are dropped where its section ends; when no
 kind kept any and the frame is not a compare run, `nd_frame_list_end` drops the frame's own set-up and
-state too, so the list is just its FullSync and end. With every kind native (`--renderer native`, or
-headless `--dump-frames`), 2026-11-01:
+state too, so the list is just its FullSync and end. With every kind native (a window, or headless
+`--dump-frames`), 2026-11-01:
 
 | run | frames | commands left |
 |---|---|---|
@@ -544,7 +544,7 @@ headless `--dump-frames`), 2026-11-01:
 | save menu (title-continue.input) / intro (no input) | 500 / 1,200 | 0 / 0 |
 
 The map tour natively keeps 30,374 frames and audio a2d2e81245d538d4; New Game audio be0b67b7b718648e.
-Without the native renderer nothing changes (tests/p1_checks.sh prints the same lines).
+Headless without `--dump-frames` nothing changes (tests/p1_checks.sh prints the same lines).
 
 ### Compare
 
@@ -780,8 +780,7 @@ The Graphics page's **Widescreen** switch: *Off (4:3)*, *16:9* or *Match the win
 from 4:3 to 32:9). Everything on sets 16:9; Classic and Classic + visuals set Off. settings.json keeps it as
 `"widescreen": "off" | "16:9" | "window"` (a file from before R7 with `true`/`false` reads as 16:9/off).
 `ELTALE_WIDESCREEN=off|16:9|window|<number>` overrides it (tests; headless "window" is 16:9). With 16:9 the
-window starts 16:9 (1706x960, smaller if the display's usable area is). RT64 stays 4:3 (the switch is
-greyed there).
+window starts 16:9 (1706x960, smaller if the display's usable area is).
 
 ### The design: the picture is wider, the game's units are not
 
@@ -843,7 +842,7 @@ greyed there).
   the player, `Effect_QueueMapObjEmitter` a half-plane (+-90 degrees: fine to 180), the RSP's CULLDL boxes
   are ignored natively (the GPU clips), the far plane and fog are the map's (R7b's draw distance).
 - The backdrop is a whole cylinder at the eye: nothing to widen.
-- RT64 (the fallback until R8) and the paraLLEl-RDP reference stay 4:3.
+- The paraLLEl-RDP reference stays 4:3.
 - The display-list path keeps the game's frame list; with widescreen its perspective is the wide one, so
   `ELTALE_ND_COMPARE` pictures of the reference are only meaningful at 4:3.
 
@@ -897,13 +896,15 @@ greyed there).
   over 1,500 ticks): P1_OS_OK, `P1_PIPELINES made_in_play=0`; the shipped pipeline list needed no change (a wider
   picture changes no render pass format or sample count).
 
-## What is left after R5
+## What is left
 
-- Every kind draws natively under `--renderer native`; the display-list census is 0 (R5's gate). RT64 and
-  the frame image are only the fallback and the reference (R8 removes them from play).
-- Pictures between ticks: R6, above.
-- Resolution scale, MSAA, draw distance, warm-up, N64 dither: R7b, "Modern options" below. Widescreen: R7a.
+Every kind draws natively and the native renderer is the only one; the display-list census is 0 in play.
+The frame image (port/gfx/frame_image.c, made only when `ELTALE_FRAME_IMAGE` is set) and paraLLEl-RDP
+(tools/rdpref) are the tests' reference.
+
 - Near-plane clipping as the RSP does it: the residual differences.
+- Linux: built (HOST_LAYER.md, "Build") and checked headless (the same `P1_OS_OK` as Windows, correct
+  `--dump-frames` pictures); the window (input, sound, menu) is not yet tried there.
 
 ## Modern options (R7b, 2026-11-01)
 

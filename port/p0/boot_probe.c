@@ -355,7 +355,7 @@ int main(int argc, char **argv) {
 #ifdef ELTALE_P1_OS
         else if (!strcmp(argv[i], "--window")) window = 1;
         else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) {
-            if (Port_WindowSetRenderer(argv[++i]) != 0) Port_HostFatal("--renderer must be rt64 or native");
+            if (Port_WindowSetRenderer(argv[++i]) != 0) Port_HostFatal("--renderer: only native is left");
         }
         else if (!strcmp(argv[i], "--pak-manager")) pak_manager = 1;
         else if (!strcmp(argv[i], "--native-kinds") && i + 1 < argc) i++; /* nd_config reads it */
@@ -363,7 +363,7 @@ int main(int argc, char **argv) {
 #endif
         else {
 #ifdef ELTALE_P1_OS
-            fprintf(stderr, "usage: eltale-p1 --rom path [--window [--renderer rt64|native]] [--headless --fast --frames N --input script --pak image.mpk]\n"
+            fprintf(stderr, "usage: eltale-p1 --rom path [--window] [--headless --fast --frames N --input script --pak image.mpk]\n"
                             "       [--pak-manager: start in the game's Controller Pak manager]\n"
                             "       [--native-kinds all|none|map,...] [--dump-frames DIR: the native renderer's pictures]\n");
 #else

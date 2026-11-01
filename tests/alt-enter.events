@@ -1,0 +1,9 @@
+# Alt+Enter (the fullscreen key, port/host/menu.cpp) on the intro is not Start (port/host/input.cpp): Alt down, Enter
+# with Alt, Alt let go first, then the held Enter repeating without Alt, then let go. tests/host_checks.sh: the run
+# ends as the same run with no keys does. (A hidden window stays windowed.)
+10 key_down Left Alt
+10 key_down Return | alt
+12 key_up Left Alt
+14 key_down Return | repeat
+16 key_down Return | repeat
+18 key_up Return

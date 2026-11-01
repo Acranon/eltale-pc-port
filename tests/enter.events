@@ -1,0 +1,3 @@
+# Enter alone at the same tick as tests/alt-enter.events: Start (tests/host_checks.sh, the Alt+Enter check's control).
+10 key_down Return
+18 key_up Return

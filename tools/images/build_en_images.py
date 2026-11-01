@@ -17,6 +17,10 @@ from collections import Counter
 
 from PIL import Image
 
+# Pillow 12 renamed getdata() to get_flattened_data(); distro Pillows (Ubuntu 24.04: 10.2) only have getdata()
+if not hasattr(Image.Image, "get_flattened_data"):
+    Image.Image.get_flattened_data = Image.Image.getdata
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
 sys.path.insert(0, os.path.join(HERE, "..", "text"))

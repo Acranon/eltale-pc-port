@@ -14,8 +14,7 @@ struct ImDrawData;
 namespace host {
 
 // ---- settings.cpp: the data folder and settings.json ---------------------------------------------
-// The picture's switches. The presets only set them; each is its own switch in the F1 menu. A
-// renderer wires what it can do (Renderer::wires); the rest are kept, shown, and wait for theirs.
+// The picture's switches. The presets only set them; each is its own switch in the F1 menu.
 struct Graphics {
     int resolution = 1;        // 0 original (320x240), 1 match the window, 2 a multiple
     int resolution_scale = 4;  // 1..8, for a multiple
@@ -116,23 +115,7 @@ bool input_capturing(int *action = nullptr, int *slot = nullptr);
 void audio_queue(const int16_t *samples, uint32_t bytes, uint32_t rate);
 void audio_shutdown();
 
-// ---- The renderers (renderer_rt64.cpp, port/render/render_native.cpp) ----------------------------
-// Features a Graphics page may wire (Renderer::wires)
-enum Feature : uint32_t {
-    FEATURE_RESOLUTION = 1 << 0,
-    FEATURE_MSAA = 1 << 1,
-    FEATURE_FRAME_RATE = 1 << 2,
-    FEATURE_THREE_POINT = 1 << 3,
-    FEATURE_SCALING = 1 << 4,
-    FEATURE_VSYNC = 1 << 5,
-    FEATURE_WIDESCREEN = 1 << 6,
-    FEATURE_BORDER = 1 << 7,
-    FEATURE_DRAW_DISTANCE = 1 << 8,
-    FEATURE_N64_FOG = 1 << 9,
-    FEATURE_N64_DITHER = 1 << 10,
-    FEATURE_SHADER_WARMUP = 1 << 11,
-};
-
+// ---- The renderer (port/render/render_native.cpp) ------------------------------------------------
 class Renderer {
 public:
     virtual ~Renderer() = default;
@@ -145,8 +128,6 @@ public:
     // Dear ImGui's renderer side, after the context and fonts are made.
     virtual bool imgui_init() = 0;
     virtual void imgui_new_frame() = 0;
-    virtual void draw_task(const uint8_t *, uint32_t, uint32_t, uint32_t) {}
-    virtual void keep_range(uint32_t, uint32_t) {}
     // A picture: the game's frame, a CPU-drawn screen, or (the game paused under the menu) the last
     // picture again; `overlay` (null: none) goes over it.
     virtual void present_game(const ElHostVi *vi, ImDrawData *overlay) = 0;
@@ -155,8 +136,7 @@ public:
     // The game's thread is about to sleep `ns` nanoseconds until its next event (R6): a renderer that
     // shows pictures between the game's shows those that come due meanwhile, and returns in time.
     virtual void wait(uint64_t ns) { (void)ns; }
-    // The Graphics switches this renderer acts on (Feature bits), and the MSAA counts it can do.
-    virtual uint32_t wires() const = 0;
+    // The MSAA counts the GPU can do (bits: 1, 2, 4, 8), 0 if not known.
     virtual uint32_t msaa_supported() const { return 0; }
     // settings.graphics changed: apply it.
     virtual void graphics_changed() = 0;
@@ -165,7 +145,6 @@ public:
     virtual void shutdown() = 0;
 };
 
-Renderer *make_rt64_renderer();
 Renderer *make_native_renderer();
 Renderer *renderer();
 
@@ -186,8 +165,7 @@ int take_quick_key();
 void notice(const char *text);
 // a notice is on screen (ELTALE_PRESENT_DUMP's native_notice.png)
 bool notice_shown();
-// The Graphics page's shared rows (menu_graphics.cpp): presets and every switch, the ones the
-// renderer doesn't wire yet shown as such.
+// The Graphics page (menu_graphics.cpp): the preset and every switch.
 void graphics_page();
 } // namespace menu
 

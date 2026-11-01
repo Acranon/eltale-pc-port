@@ -1,6 +1,6 @@
 /* The VI on the host: the mode, black and special-feature state the game sets, and the VI
- * registers they give for a framebuffer, as libultra's VI manager computes them (used to show a
- * frame with RT64; see port/gfx/host_bridge.c). */
+ * registers they give for a framebuffer, as libultra's VI manager computes them (port/gfx/host_bridge.c
+ * presents a game frame once the game has set a mode). */
 #include "port/gfx.h"
 
 static OSViMode *vi_mode;

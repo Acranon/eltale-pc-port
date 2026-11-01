@@ -6,7 +6,7 @@
  * - the renderer, in eltale_host.dll (port/render/): GPU buffers, the recordings, the shaders.
  *
  * The exe gets the renderer's function table from the DLL (ElHost_RenderApi) and calls through it;
- * without a native renderer (RT64, headless runs) the adapter never calls it. Plain C, plain data:
+ * without the renderer (headless runs with no --dump-frames) the adapter never calls it. Plain C, plain data:
  * every struct is copied by the callee, nothing is kept by pointer.
  *
  * The flow, per game tick (one graphics task):

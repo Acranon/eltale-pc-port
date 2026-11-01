@@ -2,12 +2,12 @@
 
 Goal: replace RT64 with our own renderer that draws the game from its own data, and switch over
 completely, with no N64-style drawing left in play (unlike KF4, which still leans on the GS for some
-kinds). RT64 stays only as a fallback while the new renderer grows, and paraLLEl-RDP only as a
-pixel reference for tests. Both go once the owner has checked the new renderer in game.
+kinds). Since R8 it is the only renderer: RT64 is gone, and paraLLEl-RDP stays only as a pixel
+reference for tests.
 
 Read first: [SURVEY.md](SURVEY.md) (how the game draws: draw kinds, the feature census, camera and
-frame, the HUD) and [HOST.md](HOST.md) (what RT64 does for us today, what comes from KF4, the
-technology choice).
+frame, the HUD) and [HOST.md](HOST.md) (the pre-R0 survey: what RT64 did for the port, what comes from KF4,
+the technology choice).
 
 ## Decisions
 
@@ -143,6 +143,9 @@ warm-up, the N64 dither, the presets; branch nr/options), merged on native/rende
 - **Shader warm-up:** **done** (R7b): the pipeline list made at start, as in KF4, so first visits don't freeze.
 
 ### R8: Retire
+**Done 2026-11-01** (branch nr/r8): the native renderer is the only one (`--window` plays with it; HOST_LAYER.md
+has the build and the checks), and the Linux build is in (`tools/build_linux.sh`; NATIVE_DRAW.md, "What is left").
+
 - Remove RT64 and the frame image from the play build (keep the frame image only for the test
   reference).
 - Linux `.so` and a Linux build.
@@ -160,7 +163,7 @@ warm-up, the N64 dither, the presets; branch nr/options), merged on native/rende
    - **Everything on:** 240 fps, widescreen, the lot. This is the default.
 
    Every feature is also its own switch in the F1 menu. The presets only set them.
-4. **RT64 stays as a fallback until R8.**
+4. **RT64 stays as a fallback until R8** (done: R8 removed it).
 
 The finished renderer should look like today's picture plus the modern extras: widescreen, high
 frame rate, MSAA, draw distance and shader warm-up.

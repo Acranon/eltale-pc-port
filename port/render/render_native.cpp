@@ -1,4 +1,4 @@
-// --renderer native (port/host/host.h's Renderer): our own renderer on Granite (Vulkan), in
+// The renderer (port/host/host.h's Renderer): our own renderer on Granite (Vulkan), in
 // eltale_host.dll: the Granite device (made as King's Field IV's gsn.cpp makes its own: Context then
 // Device, the window's surface and swapchain extensions on), one picture image of the game's size, and
 // the presenter (present_vk.cpp). In gameplay the picture is the newest recording the game made
@@ -299,11 +299,6 @@ public:
         show(overlay, first ? "native_menu" : nullptr);
     }
 
-    uint32_t wires() const override {
-        return FEATURE_SCALING | FEATURE_VSYNC | FEATURE_BORDER | FEATURE_THREE_POINT | FEATURE_N64_FOG | FEATURE_FRAME_RATE |
-               FEATURE_RESOLUTION | FEATURE_MSAA | FEATURE_DRAW_DISTANCE | FEATURE_N64_DITHER | FEATURE_SHADER_WARMUP |
-               FEATURE_WIDESCREEN;
-    }
 
     // the MSAA counts the GPU can draw (colour and depth) as bits 2, 4, 8
     uint32_t msaa_supported() const override {
@@ -323,7 +318,6 @@ public:
 
     void graphics_page_extra() override {
         ImGui::Spacing();
-        ImGui::TextDisabled("Drawn by the native renderer (--renderer native).");
         // the pictures between ticks: what was shown, and what could not be made (no hidden safety nets)
         const render::PictureStats &p = render::native_draw().picture_stats();
         const render::InterpStats &st = render::native_draw().interp_stats();

@@ -1,10 +1,9 @@
 /* eltale_host.dll: the PC side of the game behind a C interface (docs/renderer/HOST_LAYER.md).
  *
  * The host owns the window (SDL3), the keyboard and controllers, the sound output, the data folder
- * and settings.json, the F1 menu (Dear ImGui) and the renderer, chosen at start:
- * - EL_RENDERER_RT64: RT64 (eltale_rt64.dll, port/rt64) draws each graphics task from a frame image;
- * - EL_RENDERER_NATIVE: our own Vulkan renderer (port/render, Granite). In R0 it presents a clear
- *   colour in gameplay and the CPU-drawn screens (the Controller Pak manager) as one texture.
+ * and settings.json, the F1 menu (Dear ImGui) and the renderer: our own Vulkan renderer (port/render,
+ * Granite; docs/renderer/NATIVE_DRAW.md), which draws the game from the recordings its draw sites make
+ * (ElHost_RenderApi) and shows the CPU-drawn screens (the Controller Pak manager) as one texture.
  *
  * It is a DLL because the menu's Reset restores the exe's writable sections (port/p0/host.c): the
  * window, sound and GPU state must live outside the exe. The exe loads it at run time
@@ -29,8 +28,6 @@
 extern "C" {
 #endif
 
-enum { EL_RENDERER_RT64 = 0, EL_RENDERER_NATIVE = 1 };
-
 /* ElHost_Poll's answers */
 enum { EL_POLL_QUIT = 0, EL_POLL_RUN = 1, EL_POLL_RESET = 2, EL_POLL_RESET_PAK_MANAGER = 3 };
 
@@ -41,19 +38,10 @@ typedef struct ElHostVi {
 } ElHostVi;
 
 /* Open the window and the renderer. Returns 0 on success. */
-ELHOST_API int ElHost_Init(const char *title, int width, int height, int renderer);
+ELHOST_API int ElHost_Init(const char *title, int width, int height);
 
-/* The renderer that is up (EL_RENDERER_*). */
-ELHOST_API int ElHost_Renderer(void);
-
-/* Draw one graphics task (RT64 only; the native renderer ignores it in R0). `rdram` is an 8 MiB
- * big-endian N64 RDRAM image; `ucode`, `ucode_data` and `dl` are the task's physical addresses. */
-ELHOST_API void ElHost_DrawTask(const uint8_t *rdram, uint32_t ucode, uint32_t ucode_data, uint32_t dl);
-
-/* RT64: leave [start, start + bytes) of its RDRAM alone in later DrawTask calls (framebuffers, Z). */
-ELHOST_API void ElHost_KeepRange(uint32_t start, uint32_t bytes);
-
-/* Show the game's frame the VI registers point at. While the menu is open the game waits in here. */
+/* Show the game's newest picture (the VI registers of the frame the game shows; the renderer draws
+ * from its recordings). While the menu is open the game waits in here. */
 ELHOST_API void ElHost_Present(const ElHostVi *vi);
 
 /* The game is about to sleep `ns` nanoseconds until its next event (its pacing, port/p0/host.c): the
@@ -61,8 +49,7 @@ ELHOST_API void ElHost_Present(const ElHostVi *vi);
 ELHOST_API void ElHost_Wait(uint64_t ns);
 
 /* Show a screen the CPU drew: `pixels` are 320x240 RGBA5551 in host order (the Controller Pak
- * manager). The native renderer uploads it as one texture; RT64 is drawn through the exe's copy
- * display list instead (ElHost_DrawTask then ElHost_Present). */
+ * manager), uploaded as one texture. */
 ELHOST_API void ElHost_PresentCpuFrame(const uint16_t *pixels, int width, int height);
 
 /* Handle window events. EL_POLL_RUN to carry on, EL_POLL_QUIT once the window was closed or Quit
@@ -105,7 +92,7 @@ ELHOST_API void ElHost_Shutdown(void);
  * on success. No SDL, no menu, no sound. */
 ELHOST_API int ElHost_InitHeadless(void);
 
-/* The native renderer's function table (a `const ElRenderApi *`), or null with RT64. */
+/* The native renderer's function table (a `const ElRenderApi *`), or null before it is up. */
 ELHOST_API const void *ElHost_RenderApi(void);
 
 /* Pictures for the compare tools: the frames `spec` names (as ELTALE_DUMP_IMAGE: "a,b,c" or

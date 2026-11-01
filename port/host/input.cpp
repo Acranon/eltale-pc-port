@@ -71,6 +71,8 @@ bool relative_on;
 float acc_dx, acc_dy, acc_wheel;
 int reset_clicks, zoom_steps; // edges since the last tick
 int capture_action = -1, capture_slot;
+bool alt_enter_held;        // Alt+Enter pressed, Enter not let go yet
+uint64_t alt_enter_until;    // SDL_GetTicks: Enter left alone until then
 const bool hidden_window = std::getenv("ELTALE_HIDDEN_WINDOW") != nullptr;
 
 int8_t axis(Sint16 v, bool invert) {
@@ -222,12 +224,21 @@ void load_test_script() {
         std::memset(&e, 0, sizeof e);
         bool ok = true;
         if (cmd == "key_down" || cmd == "key_up") {
+            // "KEY | alt repeat": the event's modifiers and repeat flag (as SDL would set them)
+            std::string flags;
+            if (const size_t bar = rest.find('|'); bar != std::string::npos) {
+                flags = rest.substr(bar + 1);
+                rest.erase(bar);
+                while (!rest.empty() && rest.back() == ' ') rest.pop_back();
+            }
             const SDL_Scancode sc = SDL_GetScancodeFromName(rest.c_str());
             ok = sc != SDL_SCANCODE_UNKNOWN;
             e.type = cmd == "key_down" ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
             e.key.scancode = sc;
             e.key.key = SDL_GetKeyFromScancode(sc, SDL_KMOD_NONE, false);
             e.key.down = cmd == "key_down";
+            if (flags.find("alt") != std::string::npos) e.key.mod |= SDL_KMOD_LALT;
+            e.key.repeat = flags.find("repeat") != std::string::npos;
         } else if (cmd == "mouse_down" || cmd == "mouse_up") {
             const int b = mouse_button_from_name(rest.c_str());
             ok = b != 0;
@@ -396,11 +407,20 @@ bool input_event(const SDL_Event &e) {
         SDL_CloseGamepad(pad);
         pad = nullptr;
     }
+    // Alt+Enter is the fullscreen switch (menu.cpp), never Start: from its press, Enter is not a key of the game's
+    // until it is let go and a moment has passed. (Let go of Alt first and the key's repeats come without Alt;
+    // the switch can move the focus, and SDL then sends the held Enter again as a new press.)
+    if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT)) {
+        alt_enter_held = true;
+        alt_enter_until = SDL_GetTicks() + 400;
+    }
+    const bool alt_enter = (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) &&
+                           e.key.scancode == SDL_SCANCODE_RETURN && (alt_enter_held || SDL_GetTicks() < alt_enter_until);
+    if (alt_enter && e.type == SDL_EVENT_KEY_UP) alt_enter_held = false;
     // what is held, whatever else happens to the event
     if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && e.key.scancode < SDL_SCANCODE_COUNT) {
-        // (Alt+Enter is the fullscreen switch, not Start)
-        if (!(e.type == SDL_EVENT_KEY_DOWN && (e.key.mod & SDL_KMOD_ALT) && e.key.scancode == SDL_SCANCODE_RETURN))
-            keys[e.key.scancode] = e.type == SDL_EVENT_KEY_DOWN;
+        if (alt_enter) keys[e.key.scancode] = false;
+        else keys[e.key.scancode] = e.type == SDL_EVENT_KEY_DOWN;
     }
     if ((e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) && e.button.button < 8)
         mouse_buttons[e.button.button] = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -412,7 +432,7 @@ bool input_event(const SDL_Event &e) {
         update_capture();
         return true;
     }
-    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) pressed(BIND_KEY | e.key.scancode);
+    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && !alt_enter) pressed(BIND_KEY | e.key.scancode);
     if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) pressed(BIND_MOUSE | e.button.button);
     if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) pressed(BIND_PAD_BUTTON | e.gbutton.button);
     if (e.type == SDL_EVENT_MOUSE_MOTION && looking()) {

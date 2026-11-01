@@ -8,7 +8,7 @@ fits, so Smooth pixel edges goes through the presenter's area filter), and the l
     python tools/warm_test.py --rom ROM --check       # the shipped list covers everything (exit 1 if not)
     python tools/warm_test.py --rom ROM --regen [--fresh]   # make port/render/nd_pipeline_list.h again
 
-Each case is one run of the game (--renderer native, a look's switches at that MSAA, volume 0) in a data folder of
+Each case is one run of the game (the window, a look's switches at that MSAA, volume 0) in a data folder of
 its own; P1_PIPELINES at the end counts the pipelines made ahead and those a draw waited for (made in play, the
 time they took: the hitches). The driver's own disk cache is turned off and pointed at an empty folder
 (__GL_SHADER_DISK_CACHE=0, __GL_SHADER_DISK_CACHE_PATH: NVIDIA), so a pipeline not in our cache is compiled from
@@ -86,7 +86,7 @@ def run(args, case, look, msaa, data, warm):
     # edges shows the picture through the presenter's area filter and its pipeline ("p") is made and listed too
     env.update(ELTALE_HIDDEN_WINDOW="1", ELTALE_WINDOW_SIZE=WINDOW_SIZE, ELTALE_DATA_DIR=str(data), __GL_SHADER_DISK_CACHE="0",
                __GL_SHADER_DISK_CACHE_PATH=str(data / "glcache"), ELTALE_WARM="1" if warm else "0", **env_extra)
-    cmd = [args.exe, "--window", "--renderer", "native", "--fast", *argv, "--rom", args.rom]
+    cmd = [args.exe, "--window", "--fast", *argv, "--rom", args.rom]
     r = subprocess.run(cmd, env=env, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     line = next((l for l in r.stdout.splitlines() if l.startswith("P1_PIPELINES")), "no P1_PIPELINES (exit %d)" % r.returncode)
     ok = next((l for l in r.stdout.splitlines() if l.startswith("P1_OS_OK")), None)

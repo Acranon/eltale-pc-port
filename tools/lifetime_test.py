@@ -106,7 +106,7 @@ def case_reset(args):
     env = dict(os.environ, ELTALE_HIDDEN_WINDOW="1", ELTALE_DATA_DIR=str(d / "data"), ELTALE_MENU_TEST="900:reset:900",
                ELTALE_FLASH="1",
                ELTALE_DUMP_FRAMES="250-460,10001-10060,10250-10460", ELTALE_DUMP_BETWEEN="4", ELTALE_INTERP_ENDS="1")
-    rc, out = run([args.exe, "--window", "--renderer", "native", "--rom", args.rom, "--input",
+    rc, out = run([args.exe, "--window", "--rom", args.rom, "--input",
                    str(ROOT / "tests/title-new-game.input"), "--dump-frames", str(d / "dump")], env)
     (d / "out.txt").write_text(out)
     good, notes = rc == 0, []

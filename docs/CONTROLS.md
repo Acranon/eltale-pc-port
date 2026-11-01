@@ -29,7 +29,8 @@ a controller slot.
 | Camera reset | middle mouse button, keypad 5 | |
 
 Fixed keys: F1 (or the controller's Back) the menu, F2 quick save, F4 quick load, F11 or Alt+Enter
-fullscreen, F8 the flash recorder (debug).
+fullscreen, F8 the flash recorder (debug). Alt+Enter only switches fullscreen, never presses Start: from
+its press, Enter is not a game key until it is let go and 400 ms have passed (port/host/input.cpp).
 
 ## Rebinding
 
@@ -85,11 +86,15 @@ eye and the point looked at) for every tick the view is applied.
   0.006 rad across and 0.004 up and down, wheel steps with + zooming in, flags 1 = reset; once each).
   `tools/interp_test.py` runs both (`mouse`, `mouse-battle`): ends exact, no flashes.
 - `ELTALE_INPUT_TEST=FILE` (host, with `ELTALE_HIDDEN_WINDOW=1`): events put in SDL's own queue at pad
-  read N, `N key_down NAME` / `key_up` (SDL scancode names: W, Space, Left Shift, PageUp, Keypad 4),
+  read N, `N key_down NAME` / `key_up` (SDL scancode names: W, Space, Left Shift, PageUp, Keypad 4; an
+  optional `| alt repeat` suffix sets the event's Alt modifier and repeat flag),
   `mouse_down left|middle|right|x1|x2` / `mouse_up`, `motion DX DY`, `wheel N`. They go through the whole
   host path (bindings, mouse look, the camera keys). Nothing reaches the desktop, and a hidden window never
-  takes the mouse (relative mode is skipped). `tests/host-mouse.events` plays New Game with the keyboard,
-  then the mouse camera.
+  takes the mouse (relative mode is skipped) and stays windowed when fullscreen is toggled.
+  `tests/host-mouse.events` plays New Game with the keyboard, then the mouse camera.
+  `tests/alt-enter.events` presses Alt+Enter in the intro and `tests/enter.events` Enter alone:
+  `tests/host_checks.sh` prints `ALT_ENTER OK` when the first run ends as a run with no keys does and the
+  second does not.
 - `ELTALE_MENU_PAGE=controls` opens the menu on the Controls page (with `ELTALE_MENU_TEST` and
   `ELTALE_PRESENT_DUMP`, a picture of it).
 

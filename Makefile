@@ -18,7 +18,9 @@ ifeq ($(P1_OS),1)
 GAME_SRC += $(shell find work/src/overlays/title -name '*.c')
 GAME_SRC += $(shell find work/src/overlays/ending -name '*.c')
 GAME_SRC += $(shell find work/src/overlays/pakmenu -name '*.c')
-OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c port/data/magic.c port/gfx/vi.c port/gfx/host_bridge.c $(wildcard game/native_draw/*.c) port/p0/quicksave.c port/p0/mouse_camera.c
+OS_SRC += port/os/fiber.c port/os/kernel.c port/os/controller.c port/os/pak.c port/os/math_glue.c port/data/map_area.c port/data/anim.c port/gfx/frame_image.c port/data/common.c port/data/enemy.c port/data/magic.c port/gfx/vi.c port/gfx/host_bridge.c port/p0/quicksave.c port/p0/mouse_camera.c port/text/en_text.c port/text/en_images.c
+# the native renderer's game side: one file per kind of draw (docs/renderer/NATIVE_DRAW.md)
+ND_SRC := $(wildcard game/native_draw/*.c)
 # libultra's sinf/cosf keep their double constants as big-endian word pairs: the host libm's instead
 GU_SRC += $(filter-out %/sinf.c %/cosf.c,$(wildcard decomp/src/libultra/gu/*.c))
 VI_SRC := decomp/src/libultra/io/vitbl.c
@@ -33,12 +35,15 @@ endif
 GAME_OBJ := $(patsubst work/src/%.c,$(OUT)/obj/game/%.o,$(GAME_SRC))
 HOST_OBJ := $(patsubst port/p0/%.c,$(OUT)/obj/host/%.o,$(HOST_SRC))
 OS_OBJ := $(patsubst port/%.c,$(OUT)/obj/port/%.o,$(OS_SRC))
+ND_OBJ := $(patsubst game/native_draw/%.c,$(OUT)/obj/native_draw/%.o,$(ND_SRC))
 GU_OBJ := $(patsubst decomp/src/libultra/gu/%.c,$(OUT)/obj/gu/%.o,$(GU_SRC))
 VI_OBJ := $(patsubst decomp/src/libultra/io/%.c,$(OUT)/obj/io/%.o,$(VI_SRC))
 AUDIO_OBJ := $(patsubst work/src/libultra/audio/%.c,$(OUT)/obj/audio/%.o,$(AUDIO_SRC))
-BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(GU_OBJ) $(VI_OBJ) $(AUDIO_OBJ)
+BASE_OBJ := $(GAME_OBJ) $(HOST_OBJ) $(OS_OBJ) $(ND_OBJ) $(GU_OBJ) $(VI_OBJ) $(AUDIO_OBJ)
 ifeq ($(P1_OS),1)
 MAP_OBJ := $(OUT)/host_address_map.o
+# English text and pictures, made from the ROM (tools/build_windows.py does the same)
+P1_DATA := $(OUT)/text/en.tsv $(OUT)/en_images.inc
 endif
 OBJ := $(BASE_OBJ) $(MAP_OBJ)
 
@@ -55,13 +60,20 @@ CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasin
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
 LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm -ldl
 
-.PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean
+.PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean linux
 p0: assets $(BIN)
 
 assets:
 	@test -n "$(ROM)" || (echo 'Set ROM=/path/to/baserom.jp.z64 or ELTALE_ROM' && exit 2)
 	$(PYTHON) tools/check_rom.py "$(ROM)"
 	$(PYTHON) decomp/tools/extract_assets.py decomp/assets.yaml "$(ROM)" $(OUT)/assets
+
+$(OUT)/text/en.tsv: translations/en.v2.tsv decomp/assets.yaml tools/text/runtime_text.py
+	$(PYTHON) tools/text/runtime_text.py translations/en.v2.tsv decomp/assets.yaml $@
+
+$(OUT)/en_images.inc: $(wildcard tools/images/*.py tools/text/*.py) | assets
+	@mkdir -p $(dir $@)
+	$(PYTHON) tools/images/build_en_images.py "$(ROM)" $@
 
 $(OUT)/include/PR/gbi.h: decomp/include/ultra64/PR/gbi.h tools/gen_host_gbi.py
 	$(PYTHON) tools/gen_host_gbi.py $@
@@ -81,7 +93,11 @@ $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/add
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(OUT)/obj/port/%.o: port/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
+$(OUT)/obj/port/%.o: port/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h $(P1_DATA)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(OUT)/obj/native_draw/%.o: game/native_draw/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
@@ -109,7 +125,7 @@ $(OUT)/host_address_map.o: $(OUT)/host_address_map.c
 $(OUT)/abs.rsp: $(OBJ) tools/gen_abs_symbols.py
 	$(PYTHON) tools/gen_abs_symbols.py $@ $(OBJ)
 
-$(BIN): $(OBJ) $(OUT)/abs.rsp
+$(BIN): $(OBJ) $(OUT)/abs.rsp $(P1_DATA)
 	$(CC) $(OBJ) @$(OUT)/abs.rsp $(LDFLAGS) -o $@
 
 p0-test: p0 abi-test endian-test
@@ -139,6 +155,10 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	$(OUT)/gu-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/pak_test.c port/os/pak.c -o $(OUT)/pak-test
 	$(OUT)/pak-test $(OUT)/test.mpk
+
+# Linux: out/p1-linux/eltale-p1 and libeltale_host.so (+ libSDL3.so.0) beside it (tools/build_linux.sh)
+linux:
+	bash tools/build_linux.sh --rom "$(ROM)"
 
 census:
 	@mkdir -p $(OUT)

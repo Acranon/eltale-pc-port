@@ -13,6 +13,18 @@ The route is the one that worked for King's Field IV (kfiv-decomp + holyland):
 There's no emulator, no recompiler, and no RT64 / N64ModernRuntime / Rainchus recomp layer. It's ours
 from top to bottom. Nobody else is doing this: every other project targets the US Quest 64.
 
+## Status (2026-11-01)
+
+- **Decomp:** `eltale-decomp` rebuilds the ROM byte for byte (874 of 896 functions matching, the rest
+  equivalent C) and is named; the port builds from it (`decomp/` submodule plus `patches/`).
+- **Port:** the game plays in a window on Windows, with sound, keyboard, mouse and controller, the F1
+  menu and quick saves (docs/P1_OS_STATUS.md).
+- **Renderer (P2):** our own native renderer is the only one: every kind drawn from the game's data,
+  240 pictures a second, widescreen, resolution, MSAA, draw distance, shader warm-up
+  (docs/renderer/PLAN.md, R0-R8 done). RT64 is gone; paraLLEl-RDP is kept as the tests' pixel reference.
+- **Linux:** builds (`tools/build_linux.sh`) and matches Windows headless; its window is not yet tried.
+- **Translation (P3):** the English text and pictures are in.
+
 > Replaces the 2026-10-04 plan (an N64Recomp build on our own runtime). Its research, the translation
 > plan and the enhancement list carry over. The recompiler step is dropped: holyland showed that a
 > matching decomp, compiled natively, gives a far better base for a renderer and mods.

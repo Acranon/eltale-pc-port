@@ -3,6 +3,17 @@
 Brief: `~/eltale-notes/P1_OS.md` (2026-10-28). The P0 build remains the
 regression target while the P1 OS replaces its synchronous host stand-in.
 
+## Where it is (2026-11-01)
+
+- The game plays in a window (`--window`, `tools\play.cmd`), in English or Japanese,
+  with sound, keyboard, mouse and controller, the F1 menu, F2/F4 quick saves and reset.
+- The native renderer (port/render, Granite/Vulkan, in eltale_host.dll) is the only renderer: it draws
+  the game from its own data (docs/renderer/NATIVE_DRAW.md). RT64 is gone since the renderer's R8.
+  The frame image and paraLLEl-RDP (docs/renderer/REFERENCE.md) are kept for tests only.
+- Windows is the main platform. Linux builds (`tools/build_linux.sh`, docs/renderer/HOST_LAYER.md,
+  "Build") and gives the same headless results; its window is not yet tried.
+- Checks: `tests/p1_checks.sh` (headless) and `tests/host_checks.sh exe rom` (a hidden window).
+
 ## OS1 foundation
 
 - `port/os/fiber.c` adapts Holyland's fixed-slot x64 fiber switch for Windows
@@ -117,13 +128,6 @@ make P1_OS=1 OUT=out/p1 p1-os-run ROM=/path/to/baserom.jp.z64 FRAMES=100 INPUT=t
   path is verified independently. Game save record byte order is also still
   the separate endian pass named in the brief.
 
-## Remaining P1 work
-
-- Decode and relocate the map area data that gameplay reads after the title,
-  then drive a save and load through the in-game menu.
-- Native audio synthesis and rendering remain the later P1 slices. Their
-  sequence and SFX calls are quiescent stand-ins for the headless OS path.
-
 ## P1 step 1: New Game reaches gameplay (Claude, 2026-10-28)
 
 `tests/title-new-game.input` (Start every 30 VIs) now goes boot, intro, title,
@@ -234,12 +238,12 @@ Update 3: the common block is closed.
   (then vertices), CameraPreset is 8. The boss defs read back right (HP 200 to
   2300, attack lists back to back from 0x803AB670).
 - Renderer: RT64 first (it already draws this game in the Quest 64 recomp), then
-  our own native renderer later, as for KF4.
+  our own native renderer, as for KF4 (done: docs/renderer/PLAN.md).
 
 ## P1 step 2: RT64 in a window (Claude, 2026-10-28)
 
-(Since the native renderer's R0 the window, input, sound and menu are eltale_host.dll's, and RT64's
-DLL only draws: docs/renderer/HOST_LAYER.md.)
+(RT64 is gone since the native renderer's R8: the window, input, sound, menu and the native renderer
+are eltale_host.dll's, docs/renderer/HOST_LAYER.md.)
 
 `--window` draws with RT64 (third_party/rt64, pinned to the Quest 64 recomp's
 commit aa047b8). RT64 is C++ built with clang-cl, so it lives in its own DLL with
@@ -280,7 +284,7 @@ audio frame; the RSP runs them and the AI plays the output. Plan:
    against an LLE run (the Quest 64 recomp's RSPRecomp output of the same
    microcode, generated from the user's ROM, never committed).
 4. **Output**: osAiSetNextBuffer hands the interleaved 16-bit stereo buffer to
-   SDL audio in eltale_rt64 (a queue at the AI frequency the game sets); the
+   SDL audio in the host (a queue at the AI frequency the game sets); the
    virtual AI timing stays as it is, so headless runs are unchanged.
 5. **Checks**: the US envelope bug from PLAN.md (1 µs releases; PAL values are
    the fix), and a headless hash of each audio frame's output.
@@ -321,8 +325,8 @@ The VI count per frame changed a little with the audio thread running (frame
 Sound steps 3 and 4 done: port/audio/aspmain.c runs each audio task's aspMain
 command list (ABI 1) on the CPU (ADPCM, resampler with the microcode's own
 filter table read from its data, envelope mixer, mixer, interleave, pole
-filter, buffer moves). With a window, eltale_rt64 plays each AI buffer through
-SDL audio. Audio is now on by default (`--no-audio` / `AUDIO=0` for the
+filter, buffer moves). With a window, the host (port/host/audio.cpp) plays each
+AI buffer through SDL audio. Audio is now on by default (`--no-audio` / `AUDIO=0` for the
 stand-ins). Headless: the 700-frame New Game run plays 1429 AI buffers (23.8 s at
 22047 Hz, no clipping) with output hash 65d1f0a0a39d3ea5 on Windows and Linux;
 `ELTALE_AUDIO_WAV=path` writes the output as a WAV. Not yet: a sample-for-sample
@@ -336,7 +340,7 @@ polynomial constants as `{hi, lo}` word pairs, which are wrong doubles on a
 little-endian host, so guPerspectiveF and every rotation came out NaN. Linux had
 been linking glibc's sinf/cosf instead and was fine. Both builds now leave those
 two files out and use the host libm. The opening scene (throne room, Spirit King,
-the hero) now draws in the RT64 window.
+the hero) now draws in the window.
 
 Also from this hunt:
 - `ELTALE_DUMP_IMAGE=<frame>` (with ELTALE_FRAME_IMAGE=1) writes the frame image
@@ -429,7 +433,7 @@ Envelope check (PLAN's "US envelope bug"):
 - That is the retail data, so it is left as is. A gentler release could be a
   modern option later.
 
-Window sound output (eltale_rt64): the old code queued buffers to SDL with no
+Window sound output (port/host/audio.cpp): the old code queued buffers to SDL with no
 cushion and cleared the whole queue when it passed 1 s. Both are audible:
 - the queue running dry on a frame hitch;
 - the jump when it was cleared.
@@ -571,10 +575,9 @@ buffer with the CPU, which the RT64 path does not show; stubs.c returns 0
 (0x80200000/0x80225800, native u16 stores). Two port changes:
 - PakMenu_DrawChar read its 4bpp font as u32 words: on a little-endian host the nibbles came out
   in the wrong order. It reads big-endian words now.
-- Showing a CPU-drawn screen: the RT64 bridge treats any framebuffer other than the game's two as
-  CPU-drawn. `Port_BuildCpuFrameImage` puts its pixels big-endian into the frame image with a
-  display list (at the gfx frame area, unused at boot) that copies them into game framebuffer 0 with
-  40 texture rectangles of 6 rows; that is drawn and shown.
+- Showing a CPU-drawn screen: the host bridge (port/gfx/host_bridge.c) treats any framebuffer other
+  than the game's two as CPU-drawn, and the native renderer shows its pixels as one texture
+  (`P1_NATIVE_CPU_FRAME` in tests/host_checks.sh: the same hashes as `P1_CPU_FRAME`).
 - `--pak-manager` holds Start on the first controller read; the menu has "Reset to the Controller
   Pak manager". Headless: `P1_CPU_FRAME n state hash` per screen (ELTALE_DUMP_CPU_FRAMES=1 writes
   out/cpu_frame_N.ppm). tests/pak-manager-delete.input deletes a save: last screen
@@ -584,13 +587,13 @@ buffer with the CPU, which the RT64 path does not show; stubs.c returns 0
 (`%APPDATA%\eltale\controller-pak.mpk`, or ELTALE_DATA_DIR). Before this, window play kept saves
 in memory only.
 
-**Menu** (since R0 in port/host, eltale_host.dll: docs/renderer/HOST_LAYER.md; before, port/rt64/menu.cpp, in eltale_rt64.dll): F1 or the controller's Back button. ImGui
-through RT64's own Inspector class (D3D12 or Vulkan backends) drawn from RT64's present hook. The
-game pauses while it is open (ElRt64_Present keeps re-presenting the frame). Pages: Game (resume,
-reset, reset to the Pak manager, save folder, quit), Audio (volume, mute in background), Graphics
-(fullscreen F11/Alt+Enter, RT64 resolution, MSAA, scaling filter, three-point filtering, frame
-rate), Controls (fixed bindings for now). Settings in settings.json in the data folder (RT64's
-UserConfiguration JSON under "graphics"). Host pacing no longer races to catch up after a pause
+**Menu** (port/host, eltale_host.dll: docs/renderer/HOST_LAYER.md): F1 or the controller's Back
+button. Dear ImGui, drawn over the picture by the native renderer's presenter. The game pauses while
+it is open (ElHost_Present keeps re-presenting the picture). Pages: Game (resume, reset, reset to the
+Pak manager, save folder, quit), Audio (volume, mute in background), Graphics (fullscreen F11 or
+Alt+Enter, the preset and every picture switch), Controls (every binding: docs/CONTROLS.md). Settings
+in settings.json in the data folder (version 2; a file from the RT64 builds still loads, its picture
+at the default preset: HOST_LAYER.md). Host pacing no longer races to catch up after a pause
 (Port_HostPace rebases when more than 100 ms behind).
 
 **Reset** (Windows): `Port_HostSnapshot` copies the exe's writable PE sections and RDRAM just

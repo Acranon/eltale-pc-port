@@ -1,6 +1,8 @@
-// The data folder and settings.json (host.h). settings.json is versioned: version 2 (R0) has the
-// picture's own switches and a preset; version 1 (no "version", eltale_rt64's menu) kept RT64's
-// UserConfiguration under "graphics", which is read once into the switches it maps to.
+// The data folder and settings.json (host.h). settings.json is versioned: version 2 has the picture's
+// own switches and a preset. A file from the RT64 builds (version 1: no "version", RT64's own options
+// under "graphics") keeps its sound, window, language, font and controls; its graphics were RT64's, so
+// the picture starts at the default preset (Everything on). Keys this build does not know (RT64's,
+// a "renderer") are ignored, and dropped the next time the menu saves.
 #include "host.h"
 
 #include <cstdio>
@@ -141,21 +143,6 @@ static void read_graphics(const cJSON *j, Graphics &g) {
     read_bool(item(j, "shader_warmup"), g.shader_warmup);
 }
 
-// Version 1's "graphics": RT64's UserConfiguration (its JSON names); the switches it had, the rest
-// as Everything on
-static void read_rt64_graphics(const cJSON *j, Graphics &g) {
-    read_choice(item(j, "resolution"), g.resolution, { "Original", "WindowIntegerScale", "Manual" });
-    if (cJSON_IsNumber(item(j, "resolutionMultiplier")))
-        g.resolution_scale = clampi((int)(item(j, "resolutionMultiplier")->valuedouble + 0.5), 1, 8);
-    int aa = -1;
-    read_choice(item(j, "antialiasing"), aa, { "None", "MSAA2X", "MSAA4X", "MSAA8X" });
-    if (aa >= 0) g.msaa = aa == 0 ? 1 : 1 << aa;
-    read_choice(item(j, "filtering"), g.scaling, { "Nearest", "Linear", "AntiAliasedPixelScaling" });
-    read_bool(item(j, "threePointFiltering"), g.three_point);
-    read_choice(item(j, "refreshRate"), g.frame_rate, { "Original", "Display", "Manual" });
-    read_int(item(j, "refreshRateTarget"), g.frame_rate_target, 30, 240);
-}
-
 // "controls": per action (input.cpp's names) a list of three binding names ("" none: keyboard/mouse, keyboard/mouse,
 // controller); an action left out keeps its defaults
 static void read_controls(const cJSON *j, Controls &c) {
@@ -203,9 +190,9 @@ void load_settings() {
         s.preset = preset != PRESET_CUSTOM && preset_graphics(preset) == s.graphics ? preset : matching_preset(s.graphics);
     } else if (cJSON_IsObject(g)) {
         s.graphics = preset_graphics(PRESET_EVERYTHING);
-        read_rt64_graphics(g, s.graphics);
-        s.preset = matching_preset(s.graphics);
-        std::fprintf(stderr, "[host] settings.json: RT64's graphics options taken over (%s)\n", preset_names[s.preset]);
+        s.preset = PRESET_EVERYTHING;
+        std::fprintf(stderr, "[host] settings.json: RT64's graphics options left out (the picture: %s)\n",
+                     preset_names[s.preset]);
     }
     cJSON_Delete(j);
 }

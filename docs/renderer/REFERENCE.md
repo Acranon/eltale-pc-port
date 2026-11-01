@@ -13,7 +13,7 @@ ELTALE_DUMP_IMAGE=a,b,c   ------->   over the frame image  --(RDP FIFO)-->  RDRA
 out/frame_N.bin (8 MiB + root DL)
 ```
 
-- **The frame image** (port/gfx/frame_image.c, docs/P1_OS_STATUS.md) is the game's RDRAM as the N64
+- **The frame image** (port/gfx/frame_image.c, tests only: made when `ELTALE_FRAME_IMAGE` is set) is the game's RDRAM as the N64
   would hold it for one graphics task: 8 MiB big-endian, then the root display list's address (4 bytes
   big-endian).
 - **port/rsp** (`rsp.h`, `rsp.c`) is the RSP interpreter that used to live in port/audio/rsp_lle.c: the

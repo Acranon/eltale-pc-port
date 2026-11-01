@@ -47,7 +47,7 @@ def run(args, hz):
             env["ELTALE_PRESENT_SIM"] = "1"
         if args.save:
             env["ELTALE_QUICK_LOAD_AT"] = str(args.load_at)
-        cmd = [args.exe, "--window", "--renderer", "native", "--frames", str(args.frames), "--input",
+        cmd = [args.exe, "--window", "--frames", str(args.frames), "--input",
                str(ROOT / args.input), "--rom", args.rom]
         r = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         ok = next((l for l in r.stdout.splitlines() if l.startswith("P1_OS_OK")), "no P1_OS_OK (exit %d)" % r.returncode)

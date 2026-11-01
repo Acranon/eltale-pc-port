@@ -1,5 +1,8 @@
 # Eltale native renderer: the host side and what we can reuse (research, 2026-10-31)
 
+> The survey made before R0. RT64 is gone since R8: the host ([HOST_LAYER.md](HOST_LAYER.md)) and the
+> native renderer ([NATIVE_DRAW.md](NATIVE_DRAW.md)) do everything section 1 lists.
+
 This covers the host layer and reuse. The game's own draw code is surveyed separately.
 Sources read:
 - Eltale (C:\code\eltale): PLAN.md (P1, P2), docs/P1_OS_STATUS.md, port/rt64/*, port/gfx/*, port/os/kernel.c (hooks), port/p0/host.c (pacing, reset), port/p0/boot_probe.c (main loop), port/audio/rsp_lle.c, tests/p1_checks.sh, tools/build_rt64.cmd, tools/build_windows.py, tools/play.cmd, Makefile.

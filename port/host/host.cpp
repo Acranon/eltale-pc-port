@@ -1,5 +1,5 @@
 // eltale_host.dll's C interface (eltale_host.h): the window, events and poll codes, and the present
-// flow, with the game paused here while the F1 menu is open (its own loop, whichever renderer draws).
+// flow, with the game paused here while the F1 menu is open (its own loop).
 #include "host.h" // (ELTALE_HOST_BUILD: set by CMake, so the entry points are exported)
 #include "nd_renderer.h"
 
@@ -16,7 +16,6 @@ namespace {
 
 SDL_Window *win;
 std::unique_ptr<Renderer> current;
-int renderer_kind = -1;
 bool quit_requested;
 bool has_focus = true;
 
@@ -79,25 +78,25 @@ bool fatal_called() { return fatal_done; }
 
 void set_fullscreen(bool on) {
     settings.fullscreen = on;
-    if (win) SDL_SetWindowFullscreen(win, on);
+    // (a hidden window, ELTALE_HIDDEN_WINDOW, is a test's: it stays hidden and windowed)
+    if (win && !std::getenv("ELTALE_HIDDEN_WINDOW")) SDL_SetWindowFullscreen(win, on);
 }
 
 } // namespace host
 
 using namespace host;
 
-extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height, int renderer) {
+extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
         std::fprintf(stderr, "[host] SDL_Init failed: %s\n", SDL_GetError());
         return -1;
     }
     load_settings();
-    current.reset(renderer == EL_RENDERER_NATIVE ? make_native_renderer() : make_rt64_renderer());
-    renderer_kind = renderer == EL_RENDERER_NATIVE ? EL_RENDERER_NATIVE : EL_RENDERER_RT64;
+    current.reset(make_native_renderer());
     const bool hidden = std::getenv("ELTALE_HIDDEN_WINDOW") != nullptr;
-    // R7: a 16:9 picture (the native renderer's widescreen) starts in a 16:9 window as high as the 4:3 one
-    // would be, made smaller if the display's usable area is not that large
-    if (renderer_kind == EL_RENDERER_NATIVE && settings.graphics.widescreen == 1) {
+    // R7: a 16:9 picture (widescreen) starts in a 16:9 window as high as the 4:3 one would be, made smaller if
+    // the display's usable area is not that large
+    if (settings.graphics.widescreen == 1) {
         width = height * 16 / 9;
         SDL_Rect area;
         if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &area) && area.w > 0 && area.h > 0) {
@@ -126,16 +125,6 @@ extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height, 
     if (settings.fullscreen) set_fullscreen(true);
     std::fprintf(stderr, "[host] %s renderer, data folder %s\n", current->name(), data_dir().c_str());
     return 0;
-}
-
-extern "C" ELHOST_API int ElHost_Renderer(void) { return renderer_kind; }
-
-extern "C" ELHOST_API void ElHost_DrawTask(const uint8_t *rdram, uint32_t ucode, uint32_t ucode_data, uint32_t dl) {
-    if (current) current->draw_task(rdram, ucode, ucode_data, dl);
-}
-
-extern "C" ELHOST_API void ElHost_KeepRange(uint32_t start, uint32_t bytes) {
-    if (current) current->keep_range(start, bytes);
 }
 
 extern "C" ELHOST_API void ElHost_Present(const ElHostVi *vi) {
@@ -189,7 +178,6 @@ extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t by
 
 extern "C" ELHOST_API int ElHost_InitHeadless(void) {
     current.reset(make_native_renderer());
-    renderer_kind = EL_RENDERER_NATIVE;
     if (!current->init_headless()) {
         std::fprintf(stderr, "[host] the native renderer could not be set up without a window\n");
         current.reset();
@@ -200,7 +188,7 @@ extern "C" ELHOST_API int ElHost_InitHeadless(void) {
 }
 
 extern "C" ELHOST_API const void *ElHost_RenderApi(void) {
-    return current && renderer_kind == EL_RENDERER_NATIVE ? render::native_draw().api() : nullptr;
+    return current ? render::native_draw().api() : nullptr;
 }
 
 extern "C" ELHOST_API void ElHost_SetDump(const char *dir, const char *spec) {

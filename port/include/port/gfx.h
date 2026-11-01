@@ -14,10 +14,6 @@ typedef struct PortFrameStats {
  * the next call. */
 const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *stats);
 
-/* The image of a screen the CPU drew into `fb` (native u16 pixels, 320x240), with a display list
- * (*root_n64) that copies it into `target`. */
-const u8 *Port_BuildCpuFrameImage(u32 fb, u32 target, u32 *root_n64);
-
 /* A Port_GfxTaskHook that builds each frame's image and logs its statistics. */
 void Port_FrameImageTrace(OSTask *task, unsigned frame);
 
@@ -28,8 +24,8 @@ typedef struct PortViRegs {
 } PortViRegs;
 int Port_ViRegs(u32 framebuffer, PortViRegs *regs);
 
-/* port/gfx/host_bridge.c: the window (eltale_host). Pick the renderer first ("rt64" or "native";
- * -1 for neither), then start: 0 on success. */
+/* port/gfx/host_bridge.c: the window (eltale_host). --renderer: "native" (the only one; "rt64" is
+ * taken as native), -1 for anything else. Start: 0 on success. */
 int Port_WindowSetRenderer(const char *name);
 int Port_WindowStart(void);
 /* After the scheduler stopped: 2 if the menu asked for a reset, 3 for a reset into the Controller
