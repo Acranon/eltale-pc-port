@@ -769,7 +769,10 @@ kept_materials= kept_texels= stale=` is printed at exit when any of these happen
 
 Before the fix the reset case fails: no tick is drawn after the reset under its own number, and the recorder shows
 the play scene for 10 pictures after the reset (a mean difference of 0.2 levels from the last picture before it;
-black and the logo are ~50 off). tests/host_checks.sh runs it with the native renderer.
+black and the logo are ~50 off). tests/host_checks.sh runs it with the native renderer. Since the flash recorder
+is lazy (nr/present) the case sets `ELTALE_FLASH=1` so it records from the start; and the pictures of the reset's own
+retrace count neither before nor after it (one between the last two ticks before the reset can still be shown in
+that retrace, about 1 run in 8: the game's thread takes the reset during its tick; the picture after it is black).
 
 ## Widescreen (R7a, 2026-11-01)
 

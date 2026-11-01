@@ -101,8 +101,10 @@ def case_reset(args):
                 "graphics": {"preset": "custom", "frame_rate": "fixed", "frame_rate_target": 120, "widescreen": "off",
                              "resolution": "original", "msaa": 1, "vsync": False}}
     (d / "data/settings.json").write_text(json.dumps(settings))
-    # the menu at the 900th retrace (in play, ~tick 440), Reset 30 later, Quit 900 after it (back in play)
+    # the menu at the 900th retrace (in play, ~tick 440), Reset 30 later, Quit 900 after it (back in play); the flash
+    # recorder on from the start (ELTALE_FLASH: it is off until a first F8 otherwise), so the F8 after the reset writes it
     env = dict(os.environ, ELTALE_HIDDEN_WINDOW="1", ELTALE_DATA_DIR=str(d / "data"), ELTALE_MENU_TEST="900:reset:900",
+               ELTALE_FLASH="1",
                ELTALE_DUMP_FRAMES="250-460,10001-10060,10250-10460", ELTALE_DUMP_BETWEEN="4", ELTALE_INTERP_ENDS="1")
     rc, out = run([args.exe, "--window", "--renderer", "native", "--rom", args.rom, "--input",
                    str(ROOT / "tests/title-new-game.input"), "--dump-frames", str(d / "dump")], env)
@@ -150,8 +152,10 @@ def case_reset(args):
         # the play scene went on for ~10 pictures, a mean difference under 1 level from the last before the reset;
         # what follows a reset, black then the logo, is ~50 levels off it)
         shown = [l.split() for l in (flash[-1] / "pictures.txt").read_text().splitlines() if l and not l.startswith("#")]
+        # (the pictures of the reset's own retrace are neither: one between the last two ticks before it can still be
+        # shown in it, as the game's thread takes the reset during that retrace's tick)
         before = [f for f in shown if int(f[1]) + float(f[2]) < int(reset_vi.group(1))]
-        after = [f for f in shown if int(f[1]) + float(f[2]) >= int(reset_vi.group(1))]
+        after = [f for f in shown if int(f[1]) > int(reset_vi.group(1))]
         stale = []
         if before:
             last = np.asarray(Image.open(flash[-1] / before[-1][0]).convert("RGB"), dtype=np.int16)
