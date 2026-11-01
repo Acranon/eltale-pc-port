@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 7
+#define EL_RENDER_API_VERSION 8
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -120,7 +120,13 @@ typedef struct ElRdCamera {
     uint16_t persp_norm;
     float near_plane, far_plane, fovy, aspect;
     float eye[3], at[3];    /* the inputs, for R6's pictures between */
+    uint32_t flags;         /* EL_RDCAM_* (v8) */
 } ElRdCamera;
+
+/* ElRdCamera.flags. ORBIT: the player turns or zooms the view with the mouse camera (port/mouse_camera.h):
+ * between two such ticks the eye goes round the point looked at (yaw, pitch and distance interpolated)
+ * and only a jump of that point or of the field of view is a cut, not the turn. */
+enum { EL_RDCAM_ORBIT = 1 };
 
 /* Lights3 as the game fills it: ambient, then 3 directional lights (world-space directions) */
 typedef struct ElRdLights {

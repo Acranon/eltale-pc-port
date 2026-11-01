@@ -88,6 +88,12 @@ ELHOST_API void ElHost_Notice(const char *text);
  * OSContPad.button, stick -80..80 (y up). Call after ElHost_Poll. */
 ELHOST_API void ElHost_GetPad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
 
+/* The mouse camera's input since the last call (port/mouse_camera.h; docs/CONTROLS.md): the turn (dx right, dy
+ * down) in mouse counts at the default sensitivity, from the mouse while the right button is held or mouse look
+ * is on, and from the camera keys; wheel steps (+ zooms in); flags 1 = reset (middle button or the reset key).
+ * Call after ElHost_Poll, with ElHost_GetPad. */
+ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, int *flags);
+
 /* Play one AI buffer: interleaved 16-bit stereo, host order, at `rate` Hz. */
 ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate);
 

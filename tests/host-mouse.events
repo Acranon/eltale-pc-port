@@ -1,0 +1,178 @@
+# The host's input path (port/host/input.cpp) with SDL events from ELTALE_INPUT_TEST (a hidden window: tests only):
+# TICK = pad reads (about 2 VIs). New Game (Enter), A through the opening (Space; English has more pages), then
+# right-drag turns, motion with no button (ignored), the wheel, W to walk (relative to the view), the camera keys
+# (Z, PageUp), mouse look on (Tab) with motion and off, motion again (ignored), a middle-click reset, W again.
+10 key_down Return
+12 key_up Return
+25 key_down Return
+27 key_up Return
+40 key_down Return
+42 key_up Return
+55 key_down Return
+57 key_up Return
+70 key_down Return
+72 key_up Return
+85 key_down Return
+87 key_up Return
+100 key_down Return
+102 key_up Return
+115 key_down Return
+117 key_up Return
+130 key_down Return
+132 key_up Return
+145 key_down Return
+147 key_up Return
+160 key_down Return
+162 key_up Return
+175 key_down Return
+177 key_up Return
+190 key_down Return
+192 key_up Return
+205 key_down Return
+207 key_up Return
+220 key_down Return
+222 key_up Return
+235 key_down Return
+237 key_up Return
+250 key_down Return
+252 key_up Return
+265 key_down Return
+267 key_up Return
+280 key_down Return
+282 key_up Return
+295 key_down Return
+297 key_up Return
+310 key_down Return
+312 key_up Return
+325 key_down Return
+327 key_up Return
+340 key_down Return
+342 key_up Return
+365 key_down Space
+367 key_up Space
+380 key_down Space
+382 key_up Space
+395 key_down Space
+397 key_up Space
+410 key_down Space
+412 key_up Space
+425 key_down Space
+427 key_up Space
+440 key_down Space
+442 key_up Space
+455 key_down Space
+457 key_up Space
+470 key_down Space
+472 key_up Space
+485 key_down Space
+487 key_up Space
+500 key_down Space
+502 key_up Space
+515 key_down Space
+517 key_up Space
+530 key_down Space
+532 key_up Space
+545 key_down Space
+547 key_up Space
+560 key_down Space
+562 key_up Space
+575 key_down Space
+577 key_up Space
+590 key_down Space
+592 key_up Space
+605 key_down Space
+607 key_up Space
+620 key_down Space
+622 key_up Space
+635 key_down Space
+637 key_up Space
+650 key_down Space
+652 key_up Space
+665 key_down Space
+667 key_up Space
+680 key_down Space
+682 key_up Space
+695 key_down Space
+697 key_up Space
+710 key_down Space
+712 key_up Space
+725 key_down Space
+727 key_up Space
+740 key_down Space
+742 key_up Space
+755 key_down Space
+757 key_up Space
+770 key_down Space
+772 key_up Space
+785 key_down Space
+787 key_up Space
+800 key_down Space
+802 key_up Space
+815 key_down Space
+817 key_up Space
+830 key_down Space
+832 key_up Space
+845 key_down Space
+847 key_up Space
+860 key_down Space
+862 key_up Space
+875 key_down Space
+877 key_up Space
+890 key_down Space
+892 key_up Space
+905 key_down Space
+907 key_up Space
+920 key_down Space
+922 key_up Space
+935 key_down Space
+937 key_up Space
+950 key_down Space
+952 key_up Space
+965 key_down Space
+967 key_up Space
+980 key_down Space
+982 key_up Space
+995 key_down Space
+997 key_up Space
+1040 mouse_down right
+1042 motion 30 0
+1044 motion 30 0
+1046 motion 30 0
+1048 motion 30 0
+1050 motion 30 0
+1052 motion 30 0
+1054 motion 30 0
+1056 motion 30 0
+1058 motion 30 0
+1060 motion 30 0
+1062 motion 30 0
+1064 motion 30 0
+1066 motion 30 0
+1068 motion 30 0
+1070 motion 30 0
+1074 mouse_up right
+1076 motion 200 0
+1080 wheel -2
+1090 key_down W
+1140 key_up W
+1150 key_down Z
+1170 key_up Z
+1172 key_down PageUp
+1180 key_up PageUp
+1190 key_down Tab
+1192 key_up Tab
+1194 motion -20 5
+1196 motion -20 5
+1198 motion -20 5
+1200 motion -20 5
+1202 motion -20 5
+1204 motion -20 5
+1206 motion -20 5
+1208 motion -20 5
+1212 key_down Tab
+1214 key_up Tab
+1216 motion 300 0
+1230 mouse_down middle
+1232 mouse_up middle
+1240 key_down W
+1280 key_up W

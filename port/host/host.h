@@ -39,6 +39,32 @@ extern const char *const preset_names[PRESET_COUNT];
 Graphics preset_graphics(int preset);
 int matching_preset(const Graphics &g); // PRESET_CUSTOM when none matches
 
+// The controls (input.cpp, docs/CONTROLS.md): each action has three bindings, two keyboard/mouse slots and a
+// controller one. A binding is a code: 0 none, else BIND_* | the SDL number.
+enum Action {
+    ACT_STICK_UP, ACT_STICK_DOWN, ACT_STICK_LEFT, ACT_STICK_RIGHT, ACT_WALK,
+    ACT_A, ACT_B, ACT_Z, ACT_START, ACT_L, ACT_R,
+    ACT_C_UP, ACT_C_DOWN, ACT_C_LEFT, ACT_C_RIGHT,
+    ACT_D_UP, ACT_D_DOWN, ACT_D_LEFT, ACT_D_RIGHT,
+    ACT_LOOK_HOLD, ACT_LOOK_TOGGLE, ACT_CAM_LEFT, ACT_CAM_RIGHT, ACT_CAM_UP, ACT_CAM_DOWN, ACT_ZOOM_IN, ACT_ZOOM_OUT,
+    ACT_CAM_RESET,
+    ACT_COUNT
+};
+enum { BIND_SLOTS = 3, BIND_PAD_SLOT = 2 };
+enum : int {
+    BIND_KEY = 0x10000,       // | SDL_Scancode
+    BIND_MOUSE = 0x20000,     // | SDL mouse button (1 left .. 5 X2)
+    BIND_PAD_BUTTON = 0x30000, // | SDL_GamepadButton
+    BIND_PAD_AXIS = 0x40000,  // | SDL_GamepadAxis << 1 | 1 for the negative way
+    BIND_KIND = 0xFF0000,
+};
+struct Controls {
+    int bind[ACT_COUNT][BIND_SLOTS];
+    int mouse_sensitivity = 100; // percent
+    bool invert_y = false;       // mouse and camera keys: up looks down
+    Controls();                  // the defaults
+};
+
 struct Settings {
     int volume = 70; // percent
     bool mute_in_background = false;
@@ -47,6 +73,7 @@ struct Settings {
     int font = 0;        // the English font: 0 the game's own, then port/text/en_fonts.h's
     int preset = PRESET_EVERYTHING;
     Graphics graphics = preset_graphics(PRESET_EVERYTHING);
+    Controls controls;
 };
 extern Settings settings;
 
@@ -63,9 +90,22 @@ bool focused();
 void window_pixels(int *w, int *h);
 
 // ---- input.cpp ----------------------------------------------------------------------------------
-void input_event(const SDL_Event &e); // controllers plugged in and out
+// Every event: the keys, mouse buttons and controllers held, the mouse camera's motion, a rebinding. True
+// when a rebinding took it (the menu must not see it).
+bool input_event(const SDL_Event &e);
 void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
+void input_camera(float *dx, float *dy, int *wheel, int *flags);
 void input_shutdown();
+// ELTALE_INPUT_TEST: queue the script's events that are due (SDL's own queue, this process only)
+void input_test_pump();
+// The Controls page: names, and rebinding (the next key, button or stick push goes to action's slot)
+const char *action_label(int action);
+const char *action_key(int action); // settings.json's name
+std::string binding_name(int code);  // settings.json's
+std::string binding_label(int code); // the menu's (friendlier controller names)
+int binding_from_name(const char *name);
+void input_capture(int action, int slot);
+bool input_capturing(int *action = nullptr, int *slot = nullptr);
 
 // ---- audio.cpp ----------------------------------------------------------------------------------
 void audio_queue(const int16_t *samples, uint32_t bytes, uint32_t rate);
@@ -126,7 +166,7 @@ Renderer *renderer();
 
 // ---- menu.cpp: the F1 menu, the start-up hint and notices ---------------------------------------
 namespace menu {
-enum Request { NONE, QUIT, RESET, RESET_PAK_MANAGER };
+enum Request { NONE, QUIT, RESET, RESET_PAK_MANAGER, RESET_CONTROLS /* (the menu's own) */ };
 bool init();     // the ImGui context, fonts and style; the renderer's side (Renderer::imgui_init)
 void shutdown();
 bool handle_event(const SDL_Event &e); // true when the menu used it

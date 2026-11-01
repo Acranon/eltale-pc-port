@@ -22,6 +22,7 @@
 
 #include "game/core/main.h"
 #include "game/camera/camera.h"
+#include "port/mouse_camera.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -193,6 +194,9 @@ void nd_frame_end(unsigned frame) {
  * under fovy degrees: the half-width of a 4:3 picture plus a margin. A wider picture shows more at each
  * side: the cone grows by that much (the half-width at this aspect minus the half-width at 4:3). */
 float nd_billboard_cone(float fovy) {
+    /* the mouse camera's view (port/mouse_camera.h) sees past any cone round the yaw (a pitched view sees
+     * what is behind and beside it): every billboard in range */
+    if (Port_MouseCameraActive()) return 181.0f;
     if (!ND_WIDE()) return fovy;
     const double t = tan(fovy * 0.008726646259971648); /* tan(fovy / 2) */
     const double extra = atan(t * nd_aspect) - atan(t * (4.0 / 3.0));
@@ -249,6 +253,7 @@ void nd_camera(struct GfxFrameData *f, const void *shake_mtx) {
     c.aspect = nd_aspect;
     c.eye[0] = camera_state.eyeX; c.eye[1] = camera_state.eyeY; c.eye[2] = camera_state.eyeZ;
     c.at[0] = camera_state.atX; c.at[1] = camera_state.atY; c.at[2] = camera_state.atZ;
+    c.flags = Port_MouseCameraActive() ? EL_RDCAM_ORBIT : 0;
     api->camera(&c);
 }
 

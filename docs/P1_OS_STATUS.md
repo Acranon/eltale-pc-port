@@ -769,3 +769,14 @@ name panel showed garbage, then the enemy walked to the edge of its circle and k
   at once, where before it stood hurt for 8960 frames and walked for 13824 (VI 53599 to 100931). With only
   `Port_AnimSetLength` reading raw again, the build gives the old three values exactly, so nothing else
   changed them. Linux not rerun (its Makefile is stale).
+
+## Keyboard, mouse and the mouse camera (2026-11-01)
+
+Full keyboard play with Quest 64 Enhanced's keys, every binding (keyboard, mouse buttons, controller)
+changeable on the F1 menu's Controls page and kept in settings.json, and Quest 64 Enhanced's mouse camera
+(right-drag or Tab to turn, wheel to zoom, middle click to reset; movement follows the view; floor and
+outdoor wall stops; billboards not culled by direction under it). See docs/CONTROLS.md. Input scripts take
+`mouse VI DX DY WHEEL FLAGS` rows; `ELTALE_INPUT_TEST` drives the host's SDL path in a hidden window;
+`ELTALE_MOUSE_LOG=1` prints `P1_MOUSE_CAMERA`. With no mouse input every check is unchanged (New Game
+74b8baf63f9c1889, map tour 46b61f5a7d79c61c / audio a2d2e81245d538d4, quick save and load as before).
+

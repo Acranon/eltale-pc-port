@@ -31,6 +31,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CASES = [
     ("ng", {}, ["--frames", "700", "--input", "tests/title-new-game.input"], "200-700", None),
     ("walk", {}, ["--frames", "900", "--input", "tests/interp-walk.input"], "600-900", None),
+    # the mouse camera (port/p0/mouse_camera.c): turns, zooms, a reset and fast turns round the player
+    ("mouse", {}, ["--frames", "950", "--input", "tests/mouse-camera.input"], "620-950", None),
+    ("mouse-battle", {"ELTALE_QUICK_LOAD_AT": "100"}, ["--frames", "560", "--input", "tests/mouse-battle.input"],
+     "110-560", "battle-stuck"),
     ("flames", {}, ["--frames", "700", "--input", "tests/title-new-game.input"], "225-330", None),
     ("spells", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2"},
      ["--frames", "1600", "--input", "tests/battle-spells.input"], "60+100/40", "battle-stuck"),

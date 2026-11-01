@@ -1,5 +1,6 @@
 #include "common.h"
 #include "port/controller.h"
+#include "port/mouse_camera.h"
 #include "port/os.h"
 
 #include <stdint.h>
@@ -16,6 +17,16 @@ typedef struct InputRow {
 } InputRow;
 static InputRow rows[MAX_INPUT_ROWS];
 static unsigned row_count, next_row;
+/* `mouse VI DX DY WHEEL FLAGS`: the mouse camera's input (port/mouse_camera.h) on the read at that VI, once
+ * (turn counts, wheel steps, flags 1 = reset); not repeated */
+enum { MAX_MOUSE_ROWS = 4096 };
+typedef struct MouseRow {
+    uint64_t vi;
+    float dx, dy;
+    int wheel, flags;
+} MouseRow;
+static MouseRow mouse_rows[MAX_MOUSE_ROWS];
+static unsigned mouse_count, next_mouse;
 /* `repeat FROM PERIOD`: after the last row, the rows from VI FROM on play again every PERIOD VIs */
 static unsigned repeat_first;
 static uint64_t repeat_period, repeat_offset;
@@ -24,6 +35,7 @@ static u8 channels = 4;
 
 int Port_ControllerLoadScript(const char *path) {
     row_count = next_row = 0;
+    mouse_count = next_mouse = 0;
     repeat_period = repeat_offset = 0;
     memset(&current_pad, 0, sizeof current_pad);
     if (!path) return 0;
@@ -52,6 +64,17 @@ int Port_ControllerLoadScript(const char *path) {
         unsigned long long vi;
         int buttons;
         int x, y;
+        float mdx, mdy;
+        int wheel, mflags;
+        if (sscanf(line, "mouse %llu %f %f %d %d", &vi, &mdx, &mdy, &wheel, &mflags) == 5) {
+            if (mouse_count == MAX_MOUSE_ROWS || (mouse_count && vi <= mouse_rows[mouse_count - 1].vi)) {
+                fprintf(stderr, "input script %s:%u: too many or unordered mouse rows\n", path, lineno);
+                fclose(file);
+                return -1;
+            }
+            mouse_rows[mouse_count++] = (MouseRow){ (uint64_t)vi, mdx, mdy, wheel, mflags };
+            continue;
+        }
         if (sscanf(line, "%llu %i %d %d", &vi, &buttons, &x, &y) != 4 ||
             row_count == MAX_INPUT_ROWS || buttons < 0 || buttons > 0xFFFF ||
             x < -128 || x > 127 || y < -128 || y > 127 ||
@@ -69,8 +92,31 @@ int Port_ControllerLoadScript(const char *path) {
 /* Set by the host when a window gives live input (port/gfx/host_bridge.c). Used when no script
  * was loaded. */
 void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
+/* Set by the host too: the mouse camera's input since the last read (port/mouse_camera.h) */
+void (*Port_LiveCamera)(float *dx, float *dy, int *wheel, int *flags);
+
+static void update_camera(void) {
+    float dx = 0.0f, dy = 0.0f;
+    int wheel = 0, flags = 0;
+    if (Port_LiveCamera && row_count == 0 && mouse_count == 0) {
+        Port_LiveCamera(&dx, &dy, &wheel, &flags);
+    } else {
+        uint64_t now = Port_OsViCount();
+        while (next_mouse < mouse_count && mouse_rows[next_mouse].vi <= now) {
+            const MouseRow *m = &mouse_rows[next_mouse++];
+            fprintf(stderr, "P1_INPUT vi=%llu mouse=%g,%g wheel=%d flags=%d\n", (unsigned long long)now, m->dx, m->dy,
+                    m->wheel, m->flags);
+            dx += m->dx;
+            dy += m->dy;
+            wheel += m->wheel;
+            flags |= m->flags;
+        }
+    }
+    Port_CameraInputSet(dx, dy, wheel, flags);
+}
 
 static void update_pad(void) {
+    update_camera();
     if (Port_LivePad && row_count == 0) {
         u16 before = current_pad.button;
         Port_LivePad(&current_pad.button, &current_pad.stick_x, &current_pad.stick_y);
