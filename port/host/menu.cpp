@@ -292,6 +292,11 @@ void notice(const char *text) {
     notice_until = SDL_GetTicks() + 4000;
 }
 
+bool notice_shown() {
+    std::lock_guard<std::mutex> lock(notice_mutex);
+    return up && !open && SDL_GetTicks() < notice_until && !notice_text.empty();
+}
+
 Request take_request() {
     Request r = request;
     request = NONE;
