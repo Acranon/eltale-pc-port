@@ -4,8 +4,8 @@ frame_3450 0
 frame_3700 116
 frame_4450 11
 frame_450 0
-frame_6450 71
+frame_6450 67
 frame_7200 0
-frame_8200 236
-frame_9950 1685
-sum 2119
+frame_8200 232
+frame_9950 1676
+sum 2102

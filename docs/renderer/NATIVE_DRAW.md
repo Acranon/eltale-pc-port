@@ -129,13 +129,31 @@ Graphics page: the native renderer now wires *N64 border*, *N64 texture filterin
 python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves --native [KINDS] [--write-baseline]
 ```
 
-Each run of `tests/render_frames.txt` is one game with `ELTALE_ND_COMPARE=1 ELTALE_DL_KINDS=<kinds>
---dump-frames`: eltale-rdpref draws the reference of those kinds alone (`<work>/<run>/png`), the native
-renderer writes its own (`native`), `render_compare.py` counts the solid differences against
-`tests/render_baselines/<run>.txt` (`diff` pictures). About 20 s for all five runs.
+Each run of `tests/render_frames.txt` and `tests/render_frames_actor.txt` is one game with
+`ELTALE_ND_COMPARE=1 ELTALE_DL_KINDS=<kinds> --dump-frames`: eltale-rdpref draws the reference of those
+kinds alone (`<work>/<run>/png`), the native renderer writes its own (`native`), `render_compare.py`
+counts the solid differences against `tests/render_baselines/<set>/<run>.txt` (`diff` pictures). KINDS
+defaults to every kind done (set `all`); the sets are in [REFERENCE.md](REFERENCE.md), "Native
+baselines". About a minute for all six runs.
 
-R2's numbers (map objects, 47 frames; solid = differing pixels whose 3x3 neighbourhood also differs, at
-5 bits with one step of tolerance):
+**All kinds together (R3 merged, 2026-11-01; `tests/render_baselines/all/`)**:
+
+| run | frames | solid sum | worst |
+|---|---|---|---|
+| ng | 7 | 692 | 174 (225, the throne room's dither) |
+| tour | 18 | 6,973 | 2,653 (24633, map 29's lava near the camera) |
+| ending | 9 | 2,102 | 1,676 (9950, the harbour water, near-clipped) |
+| battle | 7 | 1,367 | 312 (820) |
+| menu | 6 | 298 | 121 (620) |
+| chests | 7 | 1,720 | 1,529 (12651, the map's floor near the camera; map alone counts 2,332) |
+
+Against `map,actor` (the two big kinds) every frame is the same within 4 pixels except battle 100
+(126 against 60): the player's shadow on the bottom of the player's own cloak. The reference's decal
+test passes there (the cloak touches the ground; the RDP's stored dz is the cloak triangle's), the
+native one, with the memory's dz estimated from neighbouring depths, does not. Named, left for later.
+
+R2's numbers, map objects alone (47 frames; solid = differing pixels whose 3x3 neighbourhood also
+differs, at 5 bits with one step of tolerance; R3's decal test lowered tour to 7,501 and ending to 2,110):
 
 | run | frames | solid sum | worst |
 |---|---|---|---|
@@ -240,9 +258,8 @@ callers' sections. The game still does the culling (1,500 units, the ±fovy cone
   `MapObj_EmitDropSprite` only allocate sprites. The sprite pool draws them (`Effect_UpdateAndDrawSprites`,
   whose step callbacks set the env colour), so they are R4's effect kind.
 
-Compare: `frame_test.py --native billboard --baselines tests/render_baselines/billboard` (the kind
-alone against a reference of the kind alone; a directory of its own so the parallel R3 branches don't
-collide on the files):
+Compare: `frame_test.py --native billboard` (the kind alone against a reference of the kind alone;
+`tests/render_baselines/billboard/`):
 
 | run | solid sum | worst |
 |---|---|---|
@@ -273,8 +290,8 @@ matrix (`Math_MtxFAlignYToVector(floor normal)`, position, `Math_MtxFScaleAxes(s
 - **Ids**: `Shadow_Queue` has no owner argument, but every caller passes its object's `x` (`obj->x`,
   `p->actor.x`, `s->x`, `player_shadow_pos.x`). shadow.h (P1 only) turns `Shadow_Queue(x, ...)` into
   `Shadow_QueueOwned(&(x), x, ...)`, which keeps the owner beside the queue: the id is
-  `EL_KIND_SHADOW << 56 | owner address` (no caller file changed; a build after changing shadow.h needs
-  `--full-compile`: the build does not follow headers). R6 inputs: `xform = EL_RDX_ALIGN_Y`, `pos`, `rot`
+  `EL_KIND_SHADOW << 56 | owner address` (no caller file changed; tools/build_windows.py compiles every file on each build, so a header
+  change needs nothing special). R6 inputs: `xform = EL_RDX_ALIGN_Y`, `pos`, `rot`
   = the floor normal, `scale`.
 - **Decal** (a core change, commit "the RDP's two-sided decal test"): the RDP passes a decal only where
   `|z - z in memory| <= dz max` (the new and the stored pixel's `|dz/dx| + |dz/dy|`, the larger, rounded
@@ -285,8 +302,7 @@ matrix (`Math_MtxFAlignYToVector(floor normal)`, position, `Math_MtxFScaleAxes(s
   (`Draw.fog.w`: depth is near/w, and the N64's screen z is affine in 1/w). The window is kept one N64
   pixel's slope wide at any picture size. The memory's dz is estimated from the neighbouring depths.
 
-Compare, `--native map,shadow` (baselines in `tests/render_baselines/map_shadow/`, so the map-only
-ones stay as they are): ng 764 (worst 191, the throne room's dither), tour 7,491 (worst 3,291, map 29's
+Compare, `--native map,shadow` (`tests/render_baselines/map+shadow/`): ng 764 (worst 191, the throne room's dither), tour 7,491 (worst 3,291, map 29's
 lava), ending 2,110, battle 1,291, menu 288. Against map alone the shadows add 1 solid pixel per ng
 frame and 3 on battle frame 100; tour frame 30344 (a shadow the RDP hides) is 0. The decal test also
 lowered map alone (tour 7,504 -> 7,501, ending 2,119 -> 2,110: map decals).
@@ -327,12 +343,10 @@ comes to `nd_actor_node` with the Mtx it loaded and the list it called; a list i
   animation change is a new set: snap), `frame | ticks << 16`, `node | AnimNode.flags << 8 (1 billboard)
   | Anim_DrawModel's flags << 16`, and the list drawn (a dlSeq swap: snap).
 
-Compare (`--native actor`, a reference of the actor sections alone; baselines in
-`tests/render_baselines/actor/`, `--baselines` names the folder):
+Compare (`--native actor`, a reference of the actor sections alone; `tests/render_baselines/actor/`):
 
 ```
-python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves --native actor --baselines tests/render_baselines/actor
-python tools/frame_test.py --rom ROM --list tests/render_frames_actor.txt --native actor --baselines tests/render_baselines/actor
+python tools/frame_test.py --rom ROM --saves C:/code/eltale/out/bugsaves --native actor
 ```
 
 | run | frames | solid sum | worst |

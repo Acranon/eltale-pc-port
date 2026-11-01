@@ -86,6 +86,7 @@ how to add a kind, the material coverage and the compare numbers (`frame_test.py
 - **First kind:** map objects (static, wave, spline, spinners, translucent, scrolling textures).
 
 ### R3: 3D kinds (parallel worktrees, one per kind)
+**Done** (2026-11-01, merged on native/render): all five kinds native; numbers in NATIVE_DRAW.md ("Compare", all kinds together) and the baseline sets in REFERENCE.md ("Native baselines").
 - **Backdrop:** a cylinder kept at the eye, with the day-phase palette fade.
 - **Actors:** one shared walker for AnimSet node trees (the player, NPCs, chests, enemies, bosses),
   with billboard nodes and display-list flipbooks.

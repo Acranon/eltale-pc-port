@@ -14,12 +14,14 @@ The frame images (8 MiB each) are deleted at the end unless --keep-bins. PNGs st
 (default out/frame_test), outside git. Prints FRAME_TEST lines and FRAME_TEST_OK / FRAME_TEST_FAIL.
 
 --native [KINDS] (docs/renderer/NATIVE_DRAW.md): the native renderer's pass instead. Each run is one game:
-the kinds drawn natively (default "map") keep their display-list commands too (ELTALE_ND_COMPARE=1) while
+the kinds drawn natively (default "all": every kind done, NATIVE_KINDS below) keep their display-list commands too (ELTALE_ND_COMPARE=1) while
 every other kind's are dropped (ELTALE_DL_KINDS), so the frame image holds only what the native renderer
 draws; eltale-rdpref draws that reference into <work>/<run>/png and the native renderer writes its own
 pictures (--dump-frames, 1x, the N64 look) into <work>/<run>/native. tools/render_compare.py counts the
-differences per frame against tests/render_baselines/<run>.txt (--write-baseline writes them); diff
-pictures go to <work>/<run>/diff. Work folder default out/frame_test_native. Needs eltale_host.dll and
+differences per frame against tests/render_baselines/<set>/<run>.txt (<set> = "all", or the kinds joined
+by "+", e.g. map+shadow; --baselines overrides; --write-baseline writes them); diff pictures go to
+<work>/<run>/diff. The native pass runs tests/render_frames.txt and tests/render_frames_actor.txt by
+default (--list, repeatable, overrides). Work folder default out/frame_test_native. Needs eltale_host.dll and
 SDL3.dll next to the exe (tools/build_host.py, then copy out/host/*.dll).
 """
 
@@ -35,6 +37,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXE = ".exe" if sys.platform == "win32" else ""
+# the kinds the native renderer draws so far (render.h EL_KIND_* names): what "--native all" means
+NATIVE_KINDS = ["map", "billboard", "backdrop", "actor", "shadow"]
 
 
 def parse_list(path: Path):
@@ -146,7 +150,9 @@ def main() -> int:
     ap.add_argument("--rom", type=Path, required=True)
     ap.add_argument("--exe", type=Path, default=ROOT / f"out/p1-windows/eltale-p1{EXE}")
     ap.add_argument("--rdpref", type=Path, default=ROOT / f"out/rdpref/eltale-rdpref{EXE}")
-    ap.add_argument("--list", type=Path, default=ROOT / "tests/render_frames.txt")
+    ap.add_argument("--list", type=Path, action="append",
+                    help="run list (repeatable; default tests/render_frames.txt, with --native also "
+                         "tests/render_frames_actor.txt)")
     ap.add_argument("--baseline", type=Path, default=ROOT / "tests/render_ref.txt")
     ap.add_argument("--work", type=Path, default=ROOT / "out/frame_test")
     ap.add_argument("--saves", type=Path, default=ROOT / "out/bugsaves",
@@ -158,16 +164,31 @@ def main() -> int:
     ap.add_argument("--keep-bins", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
     ap.add_argument("--sheet", type=Path, help="write a contact sheet of every picture here")
-    ap.add_argument("--native", nargs="?", const="map", default=None, metavar="KINDS",
-                    help="the native renderer's pass: these kinds (default map) against a reference of them alone")
-    ap.add_argument("--baselines", type=Path, default=ROOT / "tests/render_baselines")
+    ap.add_argument("--native", nargs="?", const="all", default=None, metavar="KINDS",
+                    help="the native renderer's pass: these kinds (default all done kinds) against a reference "
+                         "of them alone")
+    ap.add_argument("--baselines", type=Path,
+                    help="baseline folder of the native pass (default tests/render_baselines/<set>)")
     args = ap.parse_args()
+    if args.native:
+        kinds = NATIVE_KINDS if args.native == "all" else args.native.split(",")
+        bad = [k for k in kinds if k not in NATIVE_KINDS]
+        if bad:
+            raise SystemExit(f"frame_test: not a native kind: {' '.join(bad)} (done: {' '.join(NATIVE_KINDS)})")
+        args.native = ",".join(kinds)
+        if args.baselines is None:
+            s = "all" if sorted(kinds) == sorted(NATIVE_KINDS) else "+".join(kinds)
+            args.baselines = ROOT / "tests/render_baselines" / s
+    if not args.list:
+        args.list = [ROOT / "tests/render_frames.txt"]
+        if args.native:
+            args.list.append(ROOT / "tests/render_frames_actor.txt")
     if args.native and args.work == ROOT / "out/frame_test":
         args.work = ROOT / "out/frame_test_native"
     args.exe, args.rdpref, args.work = args.exe.resolve(), args.rdpref.resolve(), args.work.resolve()
     args.saves = args.saves.resolve()
 
-    runs = parse_list(args.list)
+    runs = [r for path in args.list for r in parse_list(path)]
     if args.runs:
         names = args.runs.split(",")
         runs = [r for r in runs if r["name"] in names]

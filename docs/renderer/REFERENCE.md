@@ -143,8 +143,8 @@ python tools/render_compare.py REF_DIR TEST_DIR [--out DIFF_DIR] [--name TEST] \
   differences red, the rest yellow).
 - A **baseline** is numbers only: `frame_N <solid>` lines and `sum <total>`. With `--baseline` the run
   fails (exit 1, `RENDER_COMPARE_BASELINE WORSE`) when any frame or the sum gets worse; `--write-baseline`
-  records the current numbers. Keep them in `tests/render_baselines/<test>.txt` (R2 adds the first, once
-  the native renderer can dump pictures). KF4's rule: no frame gets worse without a reason you can name.
+  records the current numbers. Keep them in `tests/render_baselines/<set>/<test>.txt` ("Native baselines"
+  below). KF4's rule: no frame gets worse without a reason you can name.
 - Checked on perturbed copies of the battle pictures: +-1 step noise everywhere counts 0, a wrong
   20x20 block counts 324 (18x18), a 1-pixel shift counts only the solid edge areas.
 
@@ -189,8 +189,29 @@ an emulator (mupen64plus/ares with paraLLEl) shows for this game:
 
 `frame_test.py --native [KINDS]` runs the same list with the native renderer: the reference is drawn
 from a frame image holding only those kinds' commands (`ELTALE_DL_KINDS`), the native pictures come from
-`--dump-frames`, and `render_compare.py` checks them against `tests/render_baselines/<run>.txt`. See
+`--dump-frames`, and `render_compare.py` checks them against a baseline. See
 [NATIVE_DRAW.md](NATIVE_DRAW.md).
+
+### Native baselines (R3 on)
+
+`tests/render_baselines/<set>/<run>.txt`, numbers only (`frame_N <solid>`, `sum`), one folder per set
+of kinds drawn natively together:
+
+| set | kinds | what it guards |
+|---|---|---|
+| `all/` | map, billboard, backdrop, actor, shadow (every kind done) | **the main one**: the picture as played |
+| `map/` | map objects alone | the loader and materials (R2's numbers, now with the decal test) |
+| `billboard/`, `backdrop/`, `actor/` | the kind alone | a kind's own regressions, not hidden by the map (backdrop is 0 everywhere) |
+| `map+shadow/` | map and shadows | shadows are decals: alone they have no ground to pass against |
+
+Runs: every run of `tests/render_frames.txt` (47 frames) and `tests/render_frames_actor.txt` (chests:
+7 frames of the map tour with chests and point-sampled NPCs), 54 frames per set.
+
+`frame_test.py --native` with no KINDS means `all` (NATIVE_KINDS in frame_test.py: add a kind there
+when it is done), runs both lists, and checks `tests/render_baselines/all/`. `--native K1,K2` checks
+`tests/render_baselines/K1+K2/` (kinds in the order given: `map,shadow` -> `map+shadow/`); `--list` and
+`--baselines` override. A new kind: write its isolated set if it can stand alone, then rewrite `all/`
+(`--native --write-baseline`) and name the reason for every frame that got worse.
 
 ## What R2 needs from this
 

@@ -172,7 +172,8 @@ def main() -> None:
     if args.full_compile:
         all_sources = sorted((ROOT / "work/src/game").rglob("*.c")) + \
                       sorted((ROOT / "work/src/overlays").rglob("*.c"))
-        full_flags = [flag for flag in flags if flag != "-DELTALE_P0_BOOT_PROBE"]
+        # P1's game sources call the port's hooks (port/boot_probe.h): keep the probe there
+        full_flags = list(flags) if args.p1_os else [flag for flag in flags if flag != "-DELTALE_P0_BOOT_PROBE"]
         full_flags += ["-Wno-deprecated-non-prototype", "-Wno-pointer-sign"]
         full_objects: list[Path] = []
         for index, source in enumerate(all_sources):
