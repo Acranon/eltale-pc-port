@@ -18,7 +18,9 @@
  * draws pictures between the last two).
  *
  * Resources are loaded once and kept (meshes, textures, palettes, in GPU buffers that only grow). When
- * a buffer is full, the loader calls resources_reset and loads again what it needs. */
+ * a buffer is full, the loader calls resources_reset and loads again what it needs: the renderer keeps
+ * (moved down, renumbered) what the recordings still name, so the items already recorded stay good. The
+ * game's Reset calls reset: everything goes, recordings too (the next picture is a cut). */
 #ifndef PORT_RENDER_H
 #define PORT_RENDER_H
 
@@ -28,7 +30,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 8
+#define EL_RENDER_API_VERSION 9
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -260,6 +262,8 @@ typedef struct ElRenderApi {
     uint32_t (*mesh_upload)(const ElRdMeshDesc *mesh);                  /* -> mesh id */
     /* a palette's entries (raw 16-bit, RGBA5551 or IA16 by the material's TLUT mode) */
     void (*palette)(uint32_t id, const uint16_t *entries, uint32_t count);
+    /* the buffers are full: the ids and offsets handed out so far are void (the renderer keeps, renumbered,
+     * what its recordings use: the items already recorded, this tick's too, stay as they are) */
     void (*resources_reset)(void);
 
     /* The tick */
@@ -291,6 +295,10 @@ typedef struct ElRenderApi {
      * Graphics page's widescreen switch). The game asks at each tick's start and builds its perspective,
      * its billboard cone and the HUD's clip for it; 2D stays in 320x240 units, placed by its anchor. */
     float (*aspect)(void);
+
+    /* v9: the game was reset (the F1 menu's Reset): the resources and every recording, finished or being
+     * made, are dropped; the next recording is shown as it is (a cut: no picture between across a reset) */
+    void (*reset)(void);
 } ElRenderApi;
 
 #ifdef __cplusplus

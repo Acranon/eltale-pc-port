@@ -12,6 +12,8 @@
 #     P1_NATIVE_CPU_FRAME (the same screens read back from the GPU: the same hashes) and PNGs in
 #     out/host_checks/native (ELTALE_PRESENT_DUMP); rt64 "[rt64] overlay drawn" (the menu reached RT64);
 #   quick save and load: P1_QUICKSAVE and P1_QUICKLOAD as tests/p1_checks.sh's.
+#   native also: tools/lifetime_test.py (a plain Reset in play in a hidden window, and full buffers
+#     headless; NATIVE_DRAW.md "Resets and full buffers"): a line per case, OK or FAIL.
 set -u
 exe=$1
 rom=$2
@@ -43,4 +45,8 @@ for r in ${3:-rt64 native}; do
     ELTALE_DATA_DIR=$d ELTALE_QUICK_LOAD_AT=100 run --renderer "$r" --fast --frames 200 \
         --input tests/intro-to-title.input | grep 'P1_QUICKLOAD'
     rm -rf "$d"
+    if [ "$r" = native ]; then
+        echo "$r reset and full buffers:"
+        python tools/lifetime_test.py --exe "$exe" --rom "$rom" | grep -v '^        '
+    fi
 done

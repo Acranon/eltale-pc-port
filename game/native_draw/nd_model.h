@@ -37,8 +37,13 @@ void nd_model_frame_end(void);
 /* A ROM DMA wrote [host, host + bytes): drop the meshes made from it. */
 void nd_model_forget(uintptr_t host, uint32_t bytes);
 
-/* Drop everything (the menu's reset, or the renderer's buffers are full). */
+/* The renderer's buffers are full: drop the caches (meshes, textures, 2D materials; the palette ids stay
+ * unless they ran out) and start the renderer's buffers again; what is drawn next is loaded again. Items
+ * already recorded keep what they name (the renderer keeps it: NATIVE_DRAW.md "Resets and full buffers"). */
 void nd_model_reset(void);
+
+/* The game's Reset: drop everything, palettes and the renderer's recordings too. */
+void nd_model_reset_all(void);
 
 /* For other loaders (the 2D core, nd_2d.c), sharing the renderer's texel buffer and palette ids:
  * - texels (RGBA8 or palette indices, as ElRdTile) by content -> their offset; ~0u when the buffers

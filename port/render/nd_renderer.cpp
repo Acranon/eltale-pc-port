@@ -8,6 +8,10 @@
 // group's material. The pipeline state (depth test and write, decal bias, cull, the blend with the
 // picture) comes from the material's othermode and geometry bits; everything else is the shaders'
 // (shaders/nd.vert, shaders/nd.frag).
+//
+// Lifetimes (NATIVE_DRAW.md "Resets and full buffers"): a full buffer (resources_reset) keeps what the
+// recordings name, renumbered, so items recorded before it stay good; the game's Reset (reset) drops the
+// recordings with the resources. render() checks each item's ids and skips (and counts) one that is stale.
 #include "nd_renderer.h"
 
 #include "nd_interp.h"
@@ -15,6 +19,7 @@
 #include "png.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -59,6 +64,13 @@ static_assert(sizeof(GpuDraw) == 256, "GpuDraw");
 struct Push {
     uint32_t draw, material, options, pad;
 };
+
+uint64_t fnv(const void *p, size_t n, uint64_t seed = 0) {
+    const uint8_t *b = static_cast<const uint8_t *>(p);
+    uint64_t h = UINT64_C(0xCBF29CE484222325) ^ seed;
+    for (size_t i = 0; i < n; i++) h = (h ^ b[i]) * UINT64_C(0x100000001B3);
+    return h;
+}
 
 uint32_t pack(const uint8_t *c) {
     return uint32_t(c[0]) | uint32_t(c[1]) << 8 | uint32_t(c[2]) << 16 | uint32_t(c[3]) << 24;
@@ -142,6 +154,7 @@ uint32_t api_texture_upload(const uint32_t *t, uint32_t n) { return instance.tex
 uint32_t api_mesh_upload(const ElRdMeshDesc *m) { return instance.mesh_upload(m); }
 void api_palette(uint32_t id, const uint16_t *e, uint32_t n) { instance.palette(id, e, n); }
 void api_resources_reset() { instance.resources_reset(); }
+void api_reset() { instance.reset(); }
 void api_frame_begin(const ElRdFrameInfo *i) { instance.frame_begin(i); }
 void api_camera(const ElRdCamera *c) { instance.camera(c); }
 void api_lights(const ElRdLights *l) { instance.lights(l); }
@@ -160,7 +173,7 @@ float api_aspect() { return instance.aspect(); }
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
-    api_material_2d, api_draw_2d, api_frame_phase, api_draw_distance, api_aspect,
+    api_material_2d, api_draw_2d, api_frame_phase, api_draw_distance, api_aspect, api_reset,
 };
 
 } // namespace
@@ -196,6 +209,13 @@ void NativeDraw::GpuBuffer::write(size_t offset, const void *data, size_t bytes)
     std::memcpy(shadow.data() + offset, data, bytes);
     dirty_lo = std::min(dirty_lo, offset);
     dirty_hi = std::max(dirty_hi, offset + bytes);
+}
+
+void NativeDraw::GpuBuffer::move(size_t from, size_t to, size_t bytes) {
+    if (from == to || !bytes) return;
+    std::memmove(shadow.data() + to, shadow.data() + from, bytes);
+    dirty_lo = std::min(dirty_lo, to);
+    dirty_hi = std::max(dirty_hi, to + bytes);
 }
 
 void NativeDraw::GpuBuffer::upload(CommandBuffer &cmd) {
@@ -256,6 +276,7 @@ bool NativeDraw::init(Device &dev) {
         return false;
     palettes.write(0, std::vector<uint32_t>(PALETTE_CAP).data(), PALETTE_CAP * 4);
     palettes.used = PALETTE_CAP * 4;
+    small_buffers();
     return ensure_targets(W, H, 1);
 }
 
@@ -313,6 +334,7 @@ float NativeDraw::aspect_of_1x(float aspect) {
 
 void NativeDraw::shutdown() {
     if (interp && (interp->stats.plans || pstats.newest || pstats.between)) print_stats();
+    print_lifetime();
     depth.reset();
     depth_before.reset();
     msaa_color.reset();
@@ -354,18 +376,36 @@ bool NativeDraw::want_dump(uint32_t frame) const {
 
 // ---- resources ----------------------------------------------------------------------------------------
 
+// (after a full buffer: the same content as something kept is that, so the loader's loading again what it draws
+// takes no room for what the recordings kept, and keeps its ids)
 uint32_t NativeDraw::texture_upload(const uint32_t *t, uint32_t count) {
+    if (!kept_texture_index.empty()) {
+        auto r = kept_texture_index.equal_range(fnv(t, size_t(count) * 4, count));
+        for (auto k = r.first; k != r.second; ++k)
+            if (k->second.count == count && !std::memcmp(texels.shadow.data() + size_t(k->second.first) * 4, t, size_t(count) * 4))
+                return k->second.first;
+    }
     const size_t at = texels.append(t, size_t(count) * 4);
-    return at == SIZE_MAX ? ~0u : uint32_t(at / 4);
+    if (at == SIZE_MAX) return ~0u;
+    textures.push_back({ uint32_t(at / 4), count });
+    return uint32_t(at / 4);
 }
 
 uint32_t NativeDraw::mesh_upload(const ElRdMeshDesc *d) {
+    if (!kept_mesh_index.empty()) {
+        auto r = kept_mesh_index.equal_range(mesh_hash(*d));
+        for (auto k = r.first; k != r.second; ++k)
+            if (same_mesh(*d, k->second)) return k->second;
+    }
     if (vertices.used + size_t(d->vertex_count) * sizeof(ElRdVertex) > vertices.capacity ||
         materials.used + size_t(d->material_count) * sizeof(GpuMaterial) > materials.capacity)
         return ~0u;
     Mesh m = {};
     m.first = uint32_t(vertices.append(d->vertices, size_t(d->vertex_count) * sizeof(ElRdVertex)) / sizeof(ElRdVertex));
+    m.vertex_count = d->vertex_count;
     const uint32_t mat0 = uint32_t(material_cpu.size());
+    m.material_first = mat0;
+    m.material_count = d->material_count;
     for (uint32_t i = 0; i < d->material_count; i++) upload_material(d->materials[i]);
     m.group_first = uint32_t(groups.size());
     m.group_count = d->group_count;
@@ -378,6 +418,15 @@ uint32_t NativeDraw::mesh_upload(const ElRdMeshDesc *d) {
 
 // one material into the materials buffer (the caller checked the room) -> its index
 uint32_t NativeDraw::upload_material(const ElRdMaterial &s) {
+    const uint32_t index = uint32_t(material_cpu.size());
+    material_cpu.push_back(s);
+    write_material(index, s);
+    materials.used = size_t(index + 1) * sizeof(GpuMaterial);
+    return index;
+}
+
+// the GPU's copy of material `index`
+void NativeDraw::write_material(uint32_t index, const ElRdMaterial &s) {
     GpuMaterial g = {};
     g.combine0 = s.combine[0];
     g.combine1 = s.combine[1];
@@ -393,12 +442,15 @@ uint32_t NativeDraw::upload_material(const ElRdMaterial &s) {
     g.flags = s.flags;
     g.tile[0] = gpu_tile(s.tile[0]);
     g.tile[1] = gpu_tile(s.tile[1]);
-    materials.append(&g, sizeof g);
-    material_cpu.push_back(s);
-    return uint32_t(material_cpu.size() - 1);
+    materials.write(size_t(index) * sizeof g, &g, sizeof g);
 }
 
 uint32_t NativeDraw::material_2d(const ElRdMaterial *m) {
+    if (!kept_rect_index.empty()) {
+        auto r = kept_rect_index.equal_range(fnv(m, sizeof *m));
+        for (auto k = r.first; k != r.second; ++k)
+            if (!std::memcmp(&material_cpu[k->second], m, sizeof *m)) return k->second;
+    }
     if (materials.used + sizeof(GpuMaterial) > materials.capacity) return ~0u;
     return upload_material(*m);
 }
@@ -444,12 +496,266 @@ void NativeDraw::palettes_of(uint64_t want) {
     palette_serial = want;
 }
 
+// A buffer is full: the loader drops its caches and loads again what it draws. The ids and offsets handed out
+// so far are void for the game, but the recordings (the last ticks, those waiting for their task, and the one
+// being made: its items before the full buffer) still name them: those resources are kept, the rest dropped.
 void NativeDraw::resources_reset() {
+    if (device) device->wait_idle(); // (the GPU may still read the buffers: they are rewritten)
+    keep_recorded();
+}
+
+// The game's Reset: the resources and every recording go (the game boots again; the window shows the clear
+// colour until its first recording, which is shown as it is: no picture between across the reset)
+void NativeDraw::reset() {
     if (device) device->wait_idle();
+    palettes_of(0); // (the palette buffer the newest's: the recordings that could put older ones back go)
+    hist.clear();
+    pending.clear();
+    building = Recording();
+    in_frame = false;
+    state = {};
+    state_dirty = true;
+    phase = 0;
+    planned_a = planned_b = 0;
+    planned_ok = false;
+    planned_why = nullptr;
     vertices.used = materials.used = texels.used = 0;
     meshes.clear();
     groups.clear();
     material_cpu.clear();
+    textures.clear();
+    frame_base = (frame_last / 10000 + 1) * 10000;
+    // a black picture until the game's first recording (the N64's screen at a reset; not the window's clear colour,
+    // which would show for the few pictures before it). It has no camera: no picture between it and the next.
+    Recording black;
+    black.frame = frame_base;
+    black.vi = vi_now;
+    black.time = double(vi_now);
+    black.serial = ++serial;
+    hist.push_back(std::move(black));
+    std::printf("P1_ND_RESET vi=%llu frame_base=%u\n", (unsigned long long)vi_now, frame_base);
+    std::fflush(stdout);
+    kept_texture_index.clear();
+    kept_mesh_index.clear();
+    kept_rect_index.clear();
+    life.resets++;
+}
+
+void NativeDraw::keep_recorded() {
+    constexpr uint32_t NONE = ~0u, USED = ~1u;
+    std::vector<uint32_t> mesh_to(meshes.size(), NONE), mat_to(material_cpu.size(), NONE);
+    std::vector<uint8_t> rect_material(material_cpu.size(), 0);
+    auto each_recording = [&](auto &&f) {
+        for (Recording &r : hist) f(r);
+        for (Recording &r : pending) f(r);
+        if (in_frame) f(building);
+    };
+    // what the recordings name: meshes (3D and 2D) and 2D rectangles' materials; a kept mesh keeps its materials
+    each_recording([&](Recording &r) {
+        for (const Recording::Item &it : r.items) {
+            if (it.item2d < 0) {
+                if (it.draw.mesh < mesh_to.size()) mesh_to[it.draw.mesh] = USED;
+                continue;
+            }
+            if (size_t(it.item2d) >= r.items2d.size()) continue;
+            const ElRd2D &d = r.items2d[size_t(it.item2d)];
+            if (d.mesh == EL_RD2D_RECT) {
+                if (d.material < mat_to.size()) mat_to[d.material] = USED, rect_material[d.material] = 1;
+            } else if (d.mesh < mesh_to.size()) {
+                mesh_to[d.mesh] = USED;
+            }
+        }
+    });
+    for (size_t i = 0; i < meshes.size(); i++)
+        if (mesh_to[i] == USED)
+            for (uint32_t k = 0; k < meshes[i].material_count; k++)
+                if (size_t(meshes[i].material_first) + k < mat_to.size()) mat_to[meshes[i].material_first + k] = USED;
+    // the texture uploads the kept materials sample (a tile's texels lie in one upload)
+    auto texture_of = [&](uint32_t texel) -> size_t {
+        auto t = std::upper_bound(textures.begin(), textures.end(), texel,
+                                  [](uint32_t v, const Texture &x) { return v < x.first; });
+        if (t == textures.begin()) return SIZE_MAX;
+        --t;
+        return texel - t->first < t->count ? size_t(t - textures.begin()) : SIZE_MAX;
+    };
+    std::vector<uint32_t> tex_to(textures.size(), NONE);
+    for (size_t m = 0; m < mat_to.size(); m++)
+        if (mat_to[m] == USED)
+            for (const ElRdTile &t : material_cpu[m].tile)
+                if (t.format != EL_RDT_NONE) {
+                    const size_t x = texture_of(t.texels);
+                    if (x != SIZE_MAX) tex_to[x] = USED;
+                }
+    // everything kept moves down to the buffers' start in its order (a move never overwrites what is yet to
+    // move): texels, then materials (their tiles' offsets moved too), then vertices, groups and meshes
+    std::vector<Texture> kept_textures;
+    uint32_t nt = 0;
+    for (size_t x = 0; x < textures.size(); x++) {
+        if (tex_to[x] != USED) continue;
+        texels.move(size_t(textures[x].first) * 4, size_t(nt) * 4, size_t(textures[x].count) * 4);
+        tex_to[x] = nt;
+        kept_textures.push_back({ nt, textures[x].count });
+        nt += textures[x].count;
+    }
+    uint32_t nm = 0;
+    for (size_t m = 0; m < mat_to.size(); m++) {
+        if (mat_to[m] != USED) continue;
+        ElRdMaterial s = material_cpu[m];
+        for (ElRdTile &t : s.tile)
+            if (t.format != EL_RDT_NONE) {
+                const size_t x = texture_of(t.texels);
+                if (x != SIZE_MAX) t.texels = tex_to[x] + (t.texels - textures[x].first);
+            }
+        mat_to[m] = nm;
+        material_cpu[nm] = s;
+        write_material(nm, s);
+        nm++;
+    }
+    std::vector<Mesh> kept_meshes;
+    std::vector<Group> kept_groups;
+    uint32_t nv = 0;
+    for (size_t i = 0; i < meshes.size(); i++) {
+        if (mesh_to[i] != USED) continue;
+        const Mesh old = meshes[i];
+        Mesh n = old;
+        n.first = nv;
+        vertices.move(size_t(old.first) * sizeof(ElRdVertex), size_t(nv) * sizeof(ElRdVertex),
+                      size_t(old.vertex_count) * sizeof(ElRdVertex));
+        n.group_first = uint32_t(kept_groups.size());
+        for (uint32_t k = 0; k < old.group_count && size_t(old.group_first) + k < groups.size(); k++) {
+            Group g = groups[old.group_first + k];
+            g.first = g.first - old.first + nv;
+            g.material = g.material < mat_to.size() ? mat_to[g.material] : NONE;
+            kept_groups.push_back(g);
+        }
+        n.group_count = uint32_t(kept_groups.size()) - n.group_first;
+        n.material_first = old.material_count && old.material_first < mat_to.size() ? mat_to[old.material_first] : 0;
+        mesh_to[i] = uint32_t(kept_meshes.size());
+        kept_meshes.push_back(n);
+        nv += old.vertex_count;
+    }
+    // the recordings name the new numbers (one that named nothing kept names nothing: render() skips it)
+    each_recording([&](Recording &r) {
+        for (Recording::Item &it : r.items) {
+            if (it.item2d < 0) {
+                it.draw.mesh = it.draw.mesh < mesh_to.size() ? mesh_to[it.draw.mesh] : NONE;
+                continue;
+            }
+            if (size_t(it.item2d) >= r.items2d.size()) continue;
+            ElRd2D &d = r.items2d[size_t(it.item2d)];
+            if (d.mesh == EL_RD2D_RECT) d.material = d.material < mat_to.size() ? mat_to[d.material] : NONE;
+            else d.mesh = d.mesh < mesh_to.size() ? mesh_to[d.mesh] : NONE;
+        }
+    });
+    life.flushes++;
+    life.kept_meshes += kept_meshes.size();
+    life.kept_materials += nm;
+    life.kept_texels += nt;
+    std::fprintf(stderr, "[nd] buffers full: kept the recordings' %zu meshes (%u vertices), %u materials, %u texels\n",
+                 kept_meshes.size(), nv, nm, nt);
+    meshes = std::move(kept_meshes);
+    groups = std::move(kept_groups);
+    material_cpu.resize(nm);
+    textures = std::move(kept_textures);
+    vertices.used = size_t(nv) * sizeof(ElRdVertex);
+    materials.used = size_t(nm) * sizeof(GpuMaterial);
+    texels.used = size_t(nt) * 4;
+    planned_a = planned_b = 0; // (the interpolator's plan named the old numbers: planned again)
+    // what was kept, by content: the loader loads again what it draws, and gets these
+    kept_texture_index.clear();
+    kept_mesh_index.clear();
+    kept_rect_index.clear();
+    for (const Texture &x : textures)
+        kept_texture_index.emplace(fnv(texels.shadow.data() + size_t(x.first) * 4, size_t(x.count) * 4, x.count), x);
+    for (uint32_t id = 0; id < meshes.size(); id++) {
+        std::vector<ElRdGroup> g;
+        const ElRdMeshDesc d = mesh_desc(id, g);
+        kept_mesh_index.emplace(mesh_hash(d), id);
+    }
+    for (size_t m = 0; m < rect_material.size(); m++)
+        if (rect_material[m] && mat_to[m] < material_cpu.size())
+            kept_rect_index.emplace(fnv(&material_cpu[mat_to[m]], sizeof(ElRdMaterial)), mat_to[m]);
+}
+
+// A kept mesh as the loader described it (groups relative to the mesh, into `g`)
+ElRdMeshDesc NativeDraw::mesh_desc(uint32_t id, std::vector<ElRdGroup> &g) const {
+    const Mesh &m = meshes[id];
+    g.clear();
+    for (uint32_t k = 0; k < m.group_count; k++) {
+        const Group &x = groups[m.group_first + k];
+        g.push_back({ x.first - m.first, x.count, x.material - m.material_first });
+    }
+    ElRdMeshDesc d = {};
+    d.vertices = reinterpret_cast<const ElRdVertex *>(vertices.shadow.data()) + m.first;
+    d.vertex_count = m.vertex_count;
+    d.groups = g.data();
+    d.group_count = m.group_count;
+    d.materials = m.material_count ? &material_cpu[m.material_first] : nullptr;
+    d.material_count = m.material_count;
+    std::memcpy(d.bounds, m.bounds, sizeof d.bounds);
+    return d;
+}
+
+uint64_t NativeDraw::mesh_hash(const ElRdMeshDesc &d) {
+    uint64_t h = fnv(d.vertices, size_t(d.vertex_count) * sizeof(ElRdVertex), d.vertex_count);
+    h = fnv(d.groups, size_t(d.group_count) * sizeof(ElRdGroup), h);
+    h = fnv(d.materials, size_t(d.material_count) * sizeof(ElRdMaterial), h);
+    return fnv(d.bounds, sizeof d.bounds, h);
+}
+
+bool NativeDraw::same_mesh(const ElRdMeshDesc &d, uint32_t id) const {
+    std::vector<ElRdGroup> g;
+    const ElRdMeshDesc k = mesh_desc(id, g);
+    return d.vertex_count == k.vertex_count && d.group_count == k.group_count && d.material_count == k.material_count &&
+           !std::memcmp(d.vertices, k.vertices, size_t(d.vertex_count) * sizeof(ElRdVertex)) &&
+           !std::memcmp(d.groups, k.groups, size_t(d.group_count) * sizeof(ElRdGroup)) &&
+           (!d.material_count || !std::memcmp(d.materials, k.materials, size_t(d.material_count) * sizeof(ElRdMaterial))) &&
+           !std::memcmp(d.bounds, k.bounds, sizeof d.bounds);
+}
+
+// ELTALE_ND_SMALL_BUFFERS=n (a test): the vertex, material and texel buffers hold n KiB each, so they fill in play
+// and resources_reset runs often
+void NativeDraw::small_buffers() {
+    const char *e = std::getenv("ELTALE_ND_SMALL_BUFFERS");
+    if (!e || std::atol(e) <= 0) return;
+    const size_t bytes = size_t(std::atol(e)) * 1024;
+    vertices.capacity = std::min(bytes, vertices.capacity);
+    materials.capacity = std::min(bytes, materials.capacity);
+    texels.capacity = std::min(bytes, texels.capacity);
+    small = true;
+    std::fprintf(stderr, "[nd] small buffers: %zu vertices, %zu materials, %zu texels\n", vertices.capacity / sizeof(ElRdVertex),
+                 materials.capacity / sizeof(GpuMaterial), texels.capacity / 4);
+}
+
+// P1_ND_LIFETIME at exit: the resets, the full buffers and what they kept, the stale items render() skipped
+void NativeDraw::print_lifetime() const {
+    if (!life.resets && !life.flushes && !life.stale && !small) return;
+    std::printf("P1_ND_LIFETIME resets=%llu flushes=%llu kept_meshes=%llu kept_materials=%llu kept_texels=%llu stale=%llu\n",
+                (unsigned long long)life.resets, (unsigned long long)life.flushes, (unsigned long long)life.kept_meshes,
+                (unsigned long long)life.kept_materials, (unsigned long long)life.kept_texels, (unsigned long long)life.stale);
+    std::fflush(stdout);
+}
+
+// Does the item name resources that are there? (its state, its 2D item, its mesh's groups, their materials and
+// vertices, a rectangle's material)
+bool NativeDraw::item_ok(const Recording &rec, const Recording::Item &it) const {
+    if (it.state >= rec.states.size()) return false;
+    uint32_t id = it.draw.mesh;
+    if (it.item2d >= 0) {
+        if (size_t(it.item2d) >= rec.items2d.size()) return false;
+        const ElRd2D &d = rec.items2d[size_t(it.item2d)];
+        if (d.mesh == EL_RD2D_RECT) return d.material < material_cpu.size();
+        id = d.mesh;
+    }
+    if (id >= meshes.size()) return false;
+    const Mesh &m = meshes[id];
+    if (size_t(m.group_first) + m.group_count > groups.size()) return false;
+    const size_t vertex_count = vertices.used / sizeof(ElRdVertex);
+    for (uint32_t k = 0; k < m.group_count; k++) {
+        const Group &g = groups[m.group_first + k];
+        if (g.material >= material_cpu.size() || size_t(g.first) + g.count > vertex_count) return false;
+    }
+    return true;
 }
 
 // ---- recording -----------------------------------------------------------------------------------
@@ -513,7 +819,11 @@ void NativeDraw::frame_end(uint32_t frame) {
         in_frame = false;
         r = std::move(building);
     }
-    r.frame = frame;
+    // (after a game Reset the game counts from 1 again: the recordings go on from the next 10000, so the dumps
+    // and P1_ lines name the ticks before and after a reset apart)
+    r.frame = frame + frame_base;
+    frame = r.frame;
+    frame_last = frame;
     r.vi = vi_now;
     r.time = double(vi_now) + double(phase);
     phase = 0;
@@ -646,6 +956,13 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
         const ElRdCamera &cam = rec->camera;
         for (size_t i = 0; i < rec->items.size(); i++) {
             const Recording::Item &it = rec->items[i];
+            if (!item_ok(*rec, it)) {
+                // a stale item (ids from before a reset or a full buffer): never drawn. A debug build stops here
+                assert(!"native draw: an item names a mesh or material that is not there");
+                life.stale++;
+                options[i] = OPT_SKIP;
+                continue;
+            }
             const Recording::State &s = rec->states[it.state];
             GpuDraw &g = gd[i];
             std::memset(&g, 0, sizeof g);

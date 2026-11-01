@@ -334,6 +334,7 @@ typedef struct {
 static Palette *palettes;
 static uint32_t palette_count, palette_cap;
 static uint8_t *palette_used;
+static int palettes_full; /* the 4096 palette ids are used up: the next reset drops them too */
 
 static uint16_t palette_id(int first_entry, int count) {
     Palette p;
@@ -360,7 +361,7 @@ static uint16_t palette_id(int first_entry, int count) {
     p.key = fnv(p.fixed, sizeof p.fixed, p.key);
     for (uint32_t i = 0; i < palette_count; i++)
         if (palettes[i].key == p.key) return (uint16_t)i;
-    if (palette_count >= 4096) { resources_full = 1; return 0; }
+    if (palette_count >= 4096) { resources_full = palettes_full = 1; return 0; }
     palettes = grow(palettes, &palette_cap, palette_count + 1, sizeof(Palette));
     uint32_t cap = palette_cap;
     palette_used = realloc(palette_used, cap);
@@ -664,17 +665,30 @@ static void free_mesh(NdMesh *m) {
     free(m);
 }
 
-void nd_model_reset(void) {
+static void drop_caches(int palettes_too) {
     for (int i = 0; i < 1024; i++) {
         while (mesh_table[i]) { NdMesh *m = mesh_table[i]; mesh_table[i] = m->next; free_mesh(m); }
     }
     for (int i = 0; i < 4096; i++) {
         while (tex_table[i]) { TexEntry *e = tex_table[i]; tex_table[i] = e->next; free(e); }
     }
-    palette_count = 0;
+    if (palettes_too) palette_count = 0, palettes_full = 0;
     mesh_count = 0;
-    nd_2d_reset(); /* the 2D core's textures, materials and palettes go too (nd_2d.c) */
+    nd_2d_reset(); /* the 2D core's textures and materials go too (nd_2d.c) */
+}
+
+/* The renderer's buffers are full: the meshes, textures and materials are loaded again as they are drawn
+ * (the renderer keeps what its recordings already name: this tick's items so far stay good). The palette
+ * ids stay (they are not in the buffers, and the kept materials name them), unless they are what ran out. */
+void nd_model_reset(void) {
+    drop_caches(palettes_full);
     if (api) api->resources_reset();
+}
+
+/* The game's Reset: everything goes, the renderer's recordings too */
+void nd_model_reset_all(void) {
+    drop_caches(1);
+    if (api) api->reset();
 }
 
 extern void *gfx_segment1_base;
@@ -745,7 +759,7 @@ const NdMesh *nd_model_get(uint32_t dl, const void *entry) {
     NdMesh *m = convert(dl, entry);
     if (!m && resources_full) {
         /* the renderer's buffers are full: start them again (the rest load as they are drawn) */
-        fprintf(stderr, "nd_model: the renderer's buffers are full: loading everything again\n");
+        fprintf(stderr, "nd_model: the renderer's buffers are full: loading again what is drawn\n");
         nd_model_reset();
         resources_full = 0;
         m = convert(dl, entry);
@@ -804,7 +818,7 @@ static uint32_t palette_intern(Palette *pp) {
     p.key = fnv(p.fixed, sizeof p.fixed, p.key);
     for (uint32_t i = 0; i < palette_count; i++)
         if (palettes[i].key == p.key) { palette_used[i] = 1; return i; }
-    if (palette_count >= 4096) return ~0u;
+    if (palette_count >= 4096) { palettes_full = 1; return ~0u; }
     palettes = grow(palettes, &palette_cap, palette_count + 1, sizeof(Palette));
     palette_used = realloc(palette_used, palette_cap);
     palettes[palette_count] = p;
