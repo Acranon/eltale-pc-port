@@ -126,9 +126,19 @@ technology choice).
 - Linux `.so` and a Linux build.
 - Update PLAN.md, P1_OS_STATUS.md and the README.
 
-## Decisions for the owner
-1. The 8-pixel border (the game's scissor is 304x224 inside 320x240): keep it, or draw the full
-   screen (modern default)?
-2. Effects that flicker on odd and even ticks, in pictures between: hold each tick's look, or blend?
-3. The N64 look switches (3-point filtering, N64 fog, dither): modern by default, switch for N64?
-4. Keep RT64 until R8 as a play fallback, or drop it as soon as R5 passes?
+## Owner decisions (2026-10-31)
+1. **No 8-pixel border.** The game's scissor is 304x224 inside 320x240. Draw to the edge of the
+   screen by default.
+2. **Flicker matches the current look.** Effects that flicker on odd and even ticks (the candle
+   flames) look as they do now, including in pictures between. The owner checks this by eye.
+3. **Three presets, as in KF3:**
+   - **Classic:** like the N64. 30 fps, 4:3, the border, 3-point filtering, N64 fog and dither.
+   - **Classic + visuals:** improved picture only (resolution, MSAA, filtering, draw distance),
+     with the game's look and timing kept.
+   - **Everything on:** 240 fps, widescreen, the lot. This is the default.
+
+   Every feature is also its own switch in the F1 menu. The presets only set them.
+4. **RT64 stays as a fallback until R8.**
+
+The finished renderer should look like today's picture plus the modern extras: widescreen, high
+frame rate, MSAA, draw distance and shader warm-up.
