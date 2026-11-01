@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 4
+#define EL_RENDER_API_VERSION 5
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -267,6 +267,10 @@ typedef struct ElRenderApi {
      * (~0u when full: then resources_reset). draw_2d: a rectangle or a 2D mesh, in order with draw. */
     uint32_t (*material_2d)(const ElRdMaterial *material);
     void (*draw_2d)(const ElRd2D *item);
+
+    /* R6: where in its retrace the next frame_end comes (0..1, the game's virtual clock): the recording's
+     * time, from which pictures between ticks are timed */
+    void (*frame_phase)(float phase);
 } ElRenderApi;
 
 #ifdef __cplusplus

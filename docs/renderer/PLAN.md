@@ -112,6 +112,10 @@ every run (New Game, map tour, ending, battle, spells, menus, save menu, intro).
   shows that 0 display-list commands reach any renderer. From here RT64 is only a fallback.
 
 ### R6: Pictures between ticks
+**Done 2026-11-01** (branch nr/interp): see [NATIVE_DRAW.md](NATIVE_DRAW.md), "Pictures between ticks" (the design,
+what interpolates and what snaps, the fallback, the tools, flash_find over New Game, a walk, the flames, spells,
+the map tour and the ending: 0 flagged; pacing at 240 even, the game at 60 retraces a second).
+
 - Gameplay runs at 30 ticks a second (2 retraces). Interpolate:
   - the camera;
   - actor transforms and the animation frame as a fraction;

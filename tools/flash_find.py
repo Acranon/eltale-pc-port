@@ -8,10 +8,12 @@ frame_<a>_<ppp>.png the pictures between tick a and the next at ppp/1000), or a 
 
 Default (KF4's --frames): each picture between is compared with the two ticks around it and with their blend at
 its time. It is off where it differs by more than --level (24) from the blend and from every pixel within --reach
-(6: half of 12 pixels a tick, a fast sprite near the camera) of its place in both ticks: a shard, a hole, a flash, something at neither tick's place (a thin thing that
-moves, a candle while the camera turns, is near its place in both and is not counted). Only off pixels whose whole 3 x 3 neighbourhood is off count (solid shapes, not the edges
-a turn leaves). --neighbours instead compares each picture with the pictures k before and after it (k up to 8) where
-those two agree (KF4's first mode; for a flash recorder's folder without times).
+(6: half of 12 pixels a tick, a fast sprite near the camera) of its place in both ticks: a shard, a hole, a
+flash, something at neither tick's place (a thin thing that moves, a candle while the camera turns, is near its
+place in both and is not counted). Only off pixels whose whole 3 x 3 neighbourhood is off count (solid shapes,
+not the edges a turn leaves). --neighbours instead compares each picture with the pictures k before and after it
+(k up to 8) where those two agree (KF4's first mode; for a flash recorder's folder, whose pictures are at any
+phase: its retrace-own pictures are not ticks).
 
 A picture whose off share is at least --threshold (0.2% by default) is flagged. Runs of pictures are split where
 the tick numbers jump (a sampled dump). The flagged pictures go into a contact sheet (FOLDER/flashes.png, or

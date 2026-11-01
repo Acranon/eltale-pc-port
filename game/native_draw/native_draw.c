@@ -179,6 +179,8 @@ void nd_frame_end(unsigned frame) {
     if (!nd_kinds || !in_frame) return;
     in_frame--;
     nd_model_frame_end();
+    /* the virtual clock's place in its retrace (port/os/kernel.c: retraces every 781,250 counts from 0) */
+    api->frame_phase((float)(osGetTime() % 781250u) / 781250.0f);
     api->frame_end(frame);
 }
 

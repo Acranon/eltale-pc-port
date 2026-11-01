@@ -172,6 +172,7 @@ public:
         vi++;
         render::native_draw().set_vi(vi);
         vi_wall = (vi_wall > 0 && std::fabs(now - (vi_wall + VI_SECONDS)) < 0.004) ? vi_wall + VI_SECONDS : now;
+        cpu_shown = false;
         if (log) std::fprintf(log, "V %.6f %llu\n", now, (unsigned long long)vi);
         if (!between_on()) {
             // original timing: the newest recording at each retrace (none yet: the clear colour)
@@ -188,7 +189,7 @@ public:
     }
 
     void wait(uint64_t ns) override {
-        if (!between_on()) return;
+        if (!between_on() || cpu_shown) return;
         const double deadline = wall() + double(ns) * 1e-9, interval = 1.0 / rate();
         for (;;) {
             const double now = wall();
@@ -207,6 +208,7 @@ public:
         render::native_draw().set_vi(vi);
         vi_wall = wall();
         next_due = 0;
+        cpu_shown = true; // (no pictures between over it: wait() waits for the game's frames again)
         // the RGBA5551 screen into the picture, as RGBA8 (each 5 bits widened, so they come back exact)
         CommandBufferHandle cmd = begin();
         uint32_t *out = static_cast<uint32_t *>(cmd->update_image(*picture));
@@ -348,7 +350,9 @@ private:
         const bool first = !cleared;
         cleared = true;
         show(overlay, first && !dump_dir.empty() ? "native_clear" : nullptr);
-        if (menu::take_flash_key()) flash_write();
+        // F8, or ELTALE_FLASH_AT=N (a test): the flash recorder at the Nth picture
+        static const long flash_at = std::getenv("ELTALE_FLASH_AT") ? std::atol(std::getenv("ELTALE_FLASH_AT")) : 0;
+        if (menu::take_flash_key() || (flash_at > 0 && flash_count == uint64_t(flash_at))) flash_write();
     }
 
     void count_rate(double now) {
@@ -498,6 +502,7 @@ private:
     uint64_t rate_count = 0;
     FILE *log = nullptr;
     bool sim = false;
+    bool cpu_shown = false;  // the last retrace showed a CPU-drawn screen (the Controller Pak manager)
     std::vector<ImageHandle> flash;
     std::vector<double> flash_v;
     uint64_t flash_count = 0;

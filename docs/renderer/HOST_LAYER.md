@@ -85,7 +85,7 @@ never initialised.
 | MSAA | off | 4x | 4x | wired | later |
 | Scaling to the window | sharp | smooth pixel edges | smooth pixel edges | wired | wired (sharp/linear) |
 | N64 three-point filtering | on | on | on | wired | later |
-| Frame rate | original 30 | original 30 | fixed 240 | wired (RT64's interpolation) | later (R6) |
+| Frame rate | original 30 | original 30 | fixed 240 | wired (RT64's interpolation) | wired (R6: pictures between ticks) |
 | Vsync | on | on | on | — | wired |
 | Widescreen | off | off | on | later | later (R7) |
 | N64 border (8 px) | on | off | off | later | later |
@@ -152,6 +152,7 @@ N64 border, N64 texture filtering and N64 fog switches. See [NATIVE_DRAW.md](NAT
 - Not done in R0:
   - shaders and `tools/build_shaders.py`;
   - the pipeline list;
-  - the flash recorder (F8) and the present queue with due times (KF4's video.c pacing);
+  - the flash recorder (F8) and the present queue with due times (KF4's video.c pacing): done in R6
+    (NATIVE_DRAW.md, "Pictures between ticks");
   - a true headless (windowless) Granite device;
   - the Linux .so.

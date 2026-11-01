@@ -41,6 +41,7 @@ struct Recording {
     ElRdFrameInfo info = {};
     uint64_t vi = 0;     // the retraces presented when it was finished (its time: R6's pictures between)
     uint64_t serial = 0; // counts recordings
+    double time = 0;     // vi plus the game's virtual clock's phase in that retrace at frame_end
     ElRdCamera camera = {};
     bool has_camera = false;
     std::vector<State> states;
@@ -70,14 +71,16 @@ public:
     // the newest finished recording (null before the first)
     const Recording *latest() const { return hist.empty() ? nullptr : &hist.back(); }
     // The picture for the time v, in retraces presented (set_vi's count, with the fraction since the
-    // last): a recording is due BETWEEN_DELAY retraces after it was finished, and between two due
+    // last): a recording is due BETWEEN_DELAY retraces after it was finished (its time: the retrace and the
+    // game's virtual clock's phase in it), and between two due
     // times the picture is the pair's picture between (nd_interp.h). `between` false: the newest as is.
     const Recording *picture(double v, bool between);
     void set_vi(uint64_t vi) { vi_now = vi; }
     const PictureStats &picture_stats() const { return pstats; }
     const InterpStats &interp_stats() const;
     void print_stats() const;
-    static constexpr double BETWEEN_DELAY = 2.0;
+    // two retraces (a gameplay tick) and a quarter for the time the game's thread takes to build one
+    static constexpr double BETWEEN_DELAY = 2.25;
     // Draw `rec` into `picture` (320x240 RGBA8, GENERAL layout), with its own depth buffer
     void render(Vulkan::CommandBuffer &cmd, Vulkan::Image &picture, const Recording *rec, const DrawOptions &opt);
 
@@ -102,6 +105,7 @@ public:
     void frame_end(uint32_t frame);
     uint32_t material_2d(const ElRdMaterial *material);
     void draw_2d(const ElRd2D *item);
+    void frame_phase(float p) { phase = p; }
 
 private:
     struct Mesh {
@@ -140,6 +144,7 @@ private:
     std::deque<Recording> pending; // built, waiting for their graphics task's number
     bool state_dirty = true, in_frame = false;
     uint64_t vi_now = 0, serial = 0;
+    float phase = 0;
     uint64_t palette_serial = 0; // whose palettes the palette buffer holds (0: the newest)
     std::unique_ptr<Interp> interp;
     uint64_t planned_a = 0, planned_b = 0; // the pair the interpolator has planned (serials)

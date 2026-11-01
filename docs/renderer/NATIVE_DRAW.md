@@ -566,11 +566,146 @@ all/`, rewritten 2026-11-01):
 No frame got worse than the R4 baselines; menu (298 -> 125), ng (692 -> 499) and ending fell, as the 2D
 now covers 3D differences. What is left is the 3D kinds' (near-plane clipping, dither).
 
+## Pictures between ticks (R6, port/render/nd_interp.cpp)
+
+Gameplay runs at 30 ticks a second (a recording every 2 retraces); the menus, the title, the intro and the
+ending at up to 60. With the Graphics page's **frame rate** other than *Original*, the window shows pictures
+at the fixed rate (60-240) or the display's, each made from the two recordings around its time. The game
+does not change at all: everything happens in the DLL, from recordings the game already made, while the
+game's thread waits for its next event. Original (the Classic presets) is the game's timing exactly as
+before: the newest recording at each retrace.
+
+### Time and pacing (render_native.cpp, nd_renderer.cpp `NativeDraw::picture`)
+
+- **When a recording is due.** Each recording is stamped with its time: the retraces presented when it was
+  finished plus the game's virtual clock's phase in that retrace (render.h v5 `frame_phase`, from
+  `osGetTime()` at `nd_frame_end`; a gameplay tick finishes ~0.3-0.5 of a retrace after its retrace). It is
+  due `BETWEEN_DELAY` = 2.25 retraces later: one tick (2 retraces) so that the pair a picture needs is
+  always there, and a quarter for the real time the game's thread takes to build it. That is ~1.4 retraces
+  more latency than Original, the price of never guessing ahead. A picture at time v (retraces, with the
+  fraction since the last) shows the pair (a, b) with a due <= v < b due, at t = (v - a due) / (b due - a due);
+  past the newest's due time (the game late with its next tick) it shows the newest as it is.
+- **A present queue with due times** (KF4's): pictures are due on a grid at the rate; the retrace hook shows
+  one when one is due, and `ElHost_Wait(ns)` (called from `Port_HostPace` in port/p0/host.c just before the game
+  thread sleeps until its next event) shows those that come due meanwhile, with a high-resolution timer to
+  half a millisecond before and a yield loop after. A picture more than one interval late is left out
+  (counted), never shown late after a newer one. Game ticks stay on the VI schedule.
+- **Vsync modes** (present_vk.cpp): Original with vsync is FIFO; pictures between with vsync use mailbox (the
+  newest picture at each refresh, never a wait that would hold the game's thread), FIFO if there is none;
+  vsync off (and hidden windows) immediate.
+- **The visible fallback.** When a picture between can't be made it shows the recording a as it is, and
+  counts why: `early` (nothing due yet: the start, a reset), `gap` (the pair is more than 4 retraces apart:
+  a load, a pause), `mode` (the game mode changed), `camera` (one has no camera), `cut` (a camera cut,
+  below). The F1 Graphics page shows the pictures a second, how many were left out late, the counts per
+  reason, and the plan and build times; `P1_INTERP` prints them at exit.
+
+### What interpolates and what snaps
+
+Interpolated (matched in b by stable id; the k-th item of an id in a with the k-th in b):
+
+| What | How |
+|---|---|
+| camera | eye (from the view matrix, so the height oscillation is in it) and the point looked at, lerped; `guLookAtReflectF` and `guPerspectiveF` (fovy, near, far lerped) rebuilt; the LookAt (texgen) from the rebuilt view |
+| shake | **snaps**: a's shake until b's own picture (it is a per-tick jolt: lerping it would smear it) |
+| map objects: wave, spline, spinner, translucent, scrolling | the root rebuilt from the inputs (`guPosition` degrees, `Math_MtxFRotScaleTrans` radians), angles the short way round |
+| billboards | the root with the yaw turned by the interpolated camera's yaw (a's yaw + the camera's turn since a) |
+| actors (each node) | root = `Math_MtxFRotScaleTrans(actor rot, scale, pos)` from the lerped inputs; the node chain (the node's matrix with the root taken out) by polar decomposition: rotation slerped, stretch and translation lerped |
+| effects | sprites and markers: `Math_MtxFAimAt(pos -> the interpolated eye)` with the roll and scales as the local part; streaks, ring segments and aligned sprites: `Math_MtxFAlignYToVector(lerped direction)` + pos; model effects as actors (their root per effect flag 4) |
+| shadows | `Math_MtxFAlignYToVector(floor normal)` + pos, the scale as the local part |
+| fade quad | its env colour lerped (the ramp) |
+| effect colours that ramp | an effect's env colour going one way over the last three ticks (a sprite fading in or out) is lerped |
+| HUD (meters, element levels, markers, floating numbers, spell name) and pictures | rectangles lerped when they keep their material and move at most 24 pixels; 2D meshes (the compass, the element glows) by their model matrix's decomposition |
+| full-screen fills (a picture's fade) | colours lerped |
+
+Every matrix uses the correction form `M(t) = lerp(Ma, Mb, t) + R(t) - lerp(R(0), R(1), t)` with R the rebuild
+(`local(t) * root(t)`): t = 0 gives a's matrix and t = 1 b's, bit for bit, whatever the rebuild's rounding, and
+between them the rebuild's path (an arc where an actor turns, the slerped pose).
+
+**The animation frame.** The node matrices between are the slerp of the two ticks' node chains, not the
+game's TCB spline evaluated at a fractional frame: calling the game's math (anim.c) with a fractional frame
+would mean running game code per picture from the DLL against state that has moved on. At 30 ticks a second
+the frame advances by one key-time step per tick, and over one tick the spline is close to a rotation at
+constant speed, which the slerp is. Loops (the last frame to the first) slerp across: their poses meet.
+
+Snapped (a's as it is until b's own picture, never blended):
+
+- meshes: animation switches (a new AnimSet: the chain keeps a's pose while the root still moves), dlSeq
+  flipbooks, effect and display-list flipbooks, the candle flames' frames;
+- colours: the flame and effect flicker (the state's colours are a's: what the owner sees today), a colour
+  that goes back and forth;
+- births (items only in b appear at b's picture) and deaths (items only in a stay until b's picture);
+- teleports: a root or a matrix that jumps more than 200 units in a tick, a change of xform, a matrix that
+  cannot be decomposed;
+- camera cuts: the eye or the point looked at moving more than 40 units in a tick, the view turning more than
+  ~26 degrees, the eye's distance changing by a fifth, the field of view by 15 degrees: the whole picture is
+  a's (counted as `cut`). (Walking moves the eye 1-5 units a tick; a battle's camera cut 80.)
+- text windows and menus (`EL_KIND_TEXT`, `EL_KIND_MENU`), and 2D items that change material or jump;
+- anything without a match in the other recording.
+
+Known: run-time palettes (`map_clock_tlut`, the backdrop's fade, map 29's rotating palette) are resources, not
+part of a recording: a picture between uses the newest palettes (a few pixels in the dumps; see the tests).
+
+### Tools and tests
+
+| Tool | What |
+|---|---|
+| `ELTALE_DUMP_BETWEEN=N` (with `--dump-frames`) | headless: for each tick dumped, also the N - 1 pictures between it and the tick before, `frame_<a>_<ppp>.png` (ppp = t x 1000) |
+| `ELTALE_INTERP_ENDS=1` | also `ends_<a>_0.png` (the interpolator at t = 0) and `P1_INTERP_ENDS frame= differ_at_0= differ_at_1=`: the matrices and camera that differ bit for bit at t = 0 from a's and at t = 1 from b's |
+| `ELTALE_DUMP_FRAMES` | now also ranges `A-B` and runs `F+S/R` (R ticks every S from F) |
+| `ELTALE_INTERP_LOG=1` | a line per plan with the camera's moves (`P1_INTERP_CAMERA`: for the cut thresholds) |
+| tools/interp_ends.py | `ends_<a>_0.png` against `frame_<a>.png` |
+| tools/flash_find.py | KF4's: each picture between against its two ticks and their blend; off where it is more than 24 levels from the blend and from every pixel within 6 of its place in both ticks (a shard, a hole, a flash; a thin thing that moves is near its place in both), 3x3 solid, flagged at 0.2% of the picture; contact sheet `flashes.png`. Reads F8 folders too |
+| tools/interp_test.py | the suite: New Game, a walk that turns (tests/interp-walk.input), the throne-room flames, a battle with spells (battle-stuck save), the map tour sampled, the ending sampled: ends + interp_ends + flash_find, and the run's `P1_OS_OK`/audio |
+| tools/interp_strip.py | a PNG grid or GIF of a range of ticks with their pictures between (the owner's strips) |
+| tools/pace_test.py | real time in a hidden window at given rates: pictures a second, interval spread and worst, retraces a second (60 = the game's speed), the picture kinds; `--sim` (`ELTALE_PRESENT_SIM=1`) the schedule alone |
+| `ELTALE_PRESENT_LOG=file` | `P wall v kind` per picture shown, `V wall vi` per retrace |
+| F8 (or `ELTALE_FLASH_AT=N`: at the Nth picture, a test) | the flash recorder: the last 64 pictures shown (kept on the GPU) to `<data folder>/flash_<vi>_<date>/` with `pictures.txt` (retrace and phase); `flash_find.py --neighbours` reads it |
+
+### Results (2026-11-01)
+
+`python tools/interp_test.py --rom ROM` (4 pictures a tick, ELTALE_INTERP_ENDS):
+
+| case | ticks dumped | pictures between | ends (bit for bit) | interp_ends | flash_find |
+|---|---|---|---|---|---|
+| ng (New Game 200-700: the title, the fade, the throne room) | 500 | 1,500 | 0 / 0 | 0 of 499 differ | 0 flagged |
+| walk (tests/interp-walk.input 600-900: a walk that turns) | 301 | 900 | 0 / 0 | 0 of 300 | 0 |
+| flames (the throne room's candles 225-330) | 106 | 315 | 0 / 0 | 0 of 105 | 0 |
+| spells (battle-stuck, battle-spells.input, 40 of every 100 ticks) | 625 | 1,872 | 0 / 0 | 0 of 610 | 0 |
+| tour (the map tour, 8 of every 1,000 ticks) | 238 | 630 | 0 / 0 | 0 of 209 | 0 |
+| ending (12 of every 500 ticks) | 240 | 660 | 0 / 0 | 0 of 220 | 0 |
+
+Every run keeps the game's own frame count and audio (New Game be0b67b7b718648e, the map tour 30374 frames
+a2d2e81245d538d4): the pictures between are the DLL's alone. flash_find was checked on injected faults (a 12x30
+and an 18x18 patch in two pictures between: both flagged); before the camera-cut rule, the spells run's battle
+camera cut (eye 80 units, distance 106 -> 70 in one tick) was flagged in 15 places, and before the palettes per
+recording map 29's lava (its palette turns every tick) differed by ~10,000 pixels at t = 0.
+
+**Cost** (headless, `P1_INTERP`): planning a pair (matching, decompositions, the ends) 27-83 us on average
+(worst 280 us, a battle with spells: ~150 items); building a picture between (the moving items' matrices,
+the camera) 1.6-5.6 us on average (worst ~120 us, a first touch of the caches). Drawing it costs what a tick's
+picture costs.
+
+**Pacing** (`python tools/pace_test.py`, hidden window, tests/interp-walk.input, the second half: play):
+
+| rate | pictures a second | interval (spread, worst) | retraces a second | between / newest / as is |
+|---|---|---|---|---|
+| 240 | 240.0 | 4.17 ms (0.11, 6.63) | 60.00 | 5,945 / 215 / 0 |
+| 144 | 144.0 | 6.94 ms (0.10, 8.91) | 60.00 | 3,560 / 136 / 0 |
+| 120 | 120.0 | 8.33 ms (0.07, 9.26) | 60.00 | 2,992 / 88 / 0 |
+| 60 | 60.0 | 16.67 ms (0.19, 17.80) | 60.00 | 1,540 / 0 / 0 |
+| Original | 60.0 | 16.67 ms (0.01, 16.99) | 60.00 | (the newest at each retrace) |
+
+(One 60 Hz run had a 2.5 s stall of the whole process, the game's retraces too: the computer, not the pacing;
+run again it was even.) The "newest" pictures are where the game's next tick was not there yet: with a delay
+of exactly 2 retraces that was a quarter of them (a tick is finished 0.3-0.5 of a retrace after its retrace); with the recordings
+timed by the virtual clock and 2.25 retraces, 3.5%, in runs of 2-3 pictures where the game itself took a
+retrace longer for a tick (as Original shows it too).
+
 ## What is left after R5
 
 - Every kind draws natively under `--renderer native`; the display-list census is 0 (R5's gate). RT64 and
   the frame image are only the fallback and the reference (R8 removes them from play).
-- Pictures between ticks (R6): the recording keeps what it needs (ids, inputs); `render` draws one.
+- Pictures between ticks: R6, above.
 - Resolution scale, MSAA, widescreen (R7): the picture and depth images are 320x240; the half-pixel
   move and the 8-pixel border scale with it.
 - The pipeline list / warm-up (R7): one program, few pipeline states.

@@ -147,11 +147,12 @@ void api_draw(const ElRdDraw *d) { instance.draw(d); }
 void api_frame_end(uint32_t f) { instance.frame_end(f); }
 uint32_t api_material_2d(const ElRdMaterial *m) { return instance.material_2d(m); }
 void api_draw_2d(const ElRd2D *d) { instance.draw_2d(d); }
+void api_frame_phase(float p) { instance.frame_phase(p); }
 
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
-    api_material_2d, api_draw_2d,
+    api_material_2d, api_draw_2d, api_frame_phase,
 };
 
 } // namespace
@@ -439,6 +440,8 @@ void NativeDraw::frame_end(uint32_t frame) {
     }
     r.frame = frame;
     r.vi = vi_now;
+    r.time = double(vi_now) + double(phase);
+    phase = 0;
     r.serial = ++serial;
     hist.push_back(std::move(r));
     while (hist.size() > 3) hist.pop_front();
@@ -476,7 +479,7 @@ const Recording *NativeDraw::picture(double v, bool between) {
     // the newest recording due by v
     int k = -1;
     for (int i = int(hist.size()) - 1; i >= 0; i--)
-        if (double(hist[size_t(i)].vi) + BETWEEN_DELAY <= v) { k = i; break; }
+        if (hist[size_t(i)].time + BETWEEN_DELAY <= v) { k = i; break; }
     if (k < 0) { // none due yet: the oldest kept (a start, after a reset)
         pstats.fallback++;
         pstats.early++;
@@ -487,7 +490,7 @@ const Recording *NativeDraw::picture(double v, bool between) {
         return &hist.back();
     }
     const Recording &a = hist[size_t(k)], &b = hist[size_t(k) + 1];
-    const double span = double(b.vi) - double(a.vi), t = (v - (double(a.vi) + BETWEEN_DELAY)) / span;
+    const double span = b.time - a.time, t = (v - (a.time + BETWEEN_DELAY)) / span;
     if (t <= 0) { pstats.newest++; return &a; }
     if (span > 4) { pstats.fallback++; pstats.gap++; return &a; } // a pause, a load: no picture between
     if (planned_a != a.serial || planned_b != b.serial) {
