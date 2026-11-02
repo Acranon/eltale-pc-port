@@ -32,6 +32,10 @@ OUT/<case>-43 and -169/pictures).
   300, an element at 99). (The orb's fullest is 99%: at the level's whole exp the game levels up at once.) In every picture no bar's fill lies outside its frame's inside, a full bar fills it to the
   end and an empty one leaves it empty; the Next-spirit orb and the Options sliders draw nothing outside their places
   (the same pixels round them in all three cases); the Options button's label is inside the button.
+- labels: the Options dialog's words (Text Speed, Sound, Slow, Fast, Soft, Loud) against the English pictures the build
+  made (OUT/en_images.inc next to the exe): every texel, all rows, drawn in the dialog and on the game's own Options page
+  (the switch off: Start, Z), at 4:3 and 16:9, and in the dialog at 16:9 at scale 4 with MSAA 4 (each texel a whole
+  4 x 4 block); the four choices whole in their pictures (each letter's shadow, one right and down, inside it).
 """
 
 import argparse
@@ -184,6 +188,10 @@ CASES = [
     dict(name="bars-over", frames=180, rows=START + OPEN + ["spellkey 240 0x2000"], pictures=[118, 150],
          stats=dict(hp="max+20", mp="half", defense=300, agility=128, elements=(99, 25, 49, 1), level=0, exp=5, text_delay=2, bgm=2),
          expect=[("P1_PAUSE_OPEN", "region=0"), ("P1_PAUSE_VIEW", "options .*modal=1")], check="bars"),
+    # the Options dialog's words (the English pictures): the same texels as the game's own Options page draws, every
+    # row, at 1x and at 4x with MSAA; the four choices whole (check_labels)
+    dict(name="labels", frames=180, rows=START + OPEN + ["spellkey 240 0x2000"], pictures=[150],
+         expect=[("P1_PAUSE_VIEW", "options .*modal=1")], check="labels"),
     dict(name="persist", frames=180, quick_save=330, rows=START + OPEN + [
         "230 0x8000 0 0", "234 0 0 0",   # the marker at the cross
         "260 0x1000 0 0", "264 0 0 0",   # closed (F2 at VI 330 saves)
@@ -359,6 +367,83 @@ def check_places(work: Path, kind):
     return problems
 
 
+# the Options words: (en_images name, the unified dialog's place from its x / y, the game's page's from its x / y)
+LABELS = {"menu_sprite_86": ((68, 30), (108, 60)), "menu_sprite_87": ((193, 30), (233, 60)),
+          "menu_sprite_42": ((68, 77), (108, 107)), "menu_sprite_41": ((193, 77), (233, 107)),
+          "menu_sprite_34": ((9, 29), (49, 59)), "menu_sprite_35": ((13, 74), (53, 104))}
+CHOICES = ("menu_sprite_86", "menu_sprite_87", "menu_sprite_42", "menu_sprite_41")
+GOLD = lambda c: c[0] > c[2] + 60 and c[0] > 120
+
+
+def en_pictures(exe: Path, rom: Path):
+    """the English pictures the build put in (OUT/en_images.inc next to the exe), in the menu sprites' palette"""
+    sys.path.insert(0, str(ROOT / "tools/images"))
+    import build_en_images as B
+    inc = (exe.parent / "en_images.inc").read_text()
+    data = rom.read_bytes()
+    out = {}
+    for name in LABELS:
+        _, fmt, w, h, stride, shown, tlut, _ = B.TARGETS[name]
+        pal = B.palette(data, tlut, 256)
+        m = re.search(r"en_img_%s\[\d+\] = \{([^}]*)\}" % name, inc)
+        idx = [int(v) for v in m.group(1).split(",") if v.strip()]
+        out[name] = [[pal[idx[y * stride + x]] for x in range(shown)] for y in range(h)]
+    return out
+
+
+def labels_runs(args, work: Path, saves: Path):
+    """the game's own Options page (the switch off: Start, then Z slides to it) at 4:3 and 16:9; the unified dialog
+    at 16:9 dumped at scale 4 with MSAA 4"""
+    page = dict(name="labels-page", frames=200, rows=START + OPEN + ["240 0x2000 0 0", "244 0 0 0"], pictures=[175])
+    for kind in ("43", "169"):
+        run(page, args, kind, work, saves, extra_env={"ELTALE_PAUSE_MENU": "0"})
+    case = next(c for c in CASES if c["name"] == "labels")
+    run(case, args, "169", work, saves, extra_env={"ELTALE_DUMP_SCALE": "4", "ELTALE_DUMP_MSAA": "4"}, label="169-s4m4")
+
+
+def check_labels(args, work: Path, kind, pics):
+    """every texel of the Options dialog's words drawn, all their rows (nothing cut by a rectangle, a tile or a
+    scissor): the same as the build's picture and as the game's page draws it; at 16:9 also each texel a whole 4 x 4
+    block at scale 4 with MSAA. And the four choices whole in the picture: each letter's shadow (one right, one down)
+    inside it"""
+    from PIL import Image
+    W = LAYOUT[kind]["W"]
+    mx, ox = (W - 240) // 2, (W - 320) // 2
+    shots = [("dialog", work / f"labels-{kind}/pictures/frame_150.png", 1, lambda a, b: (mx + a[0], 66 + a[1])),
+             ("page", work / f"labels-page-{kind}/pictures/frame_175.png", 1, lambda a, b: (ox + b[0], b[1]))]
+    if kind == "169":
+        shots.append(("dialog 4x", work / "labels-169-s4m4/pictures/frame_150.png", 4, shots[0][3]))
+    problems = []
+    for what, path, k, at in shots:
+        px = Image.open(path).convert("RGB").load()
+        for name, (a, b) in LABELS.items():
+            x0, y0 = at(a, b)
+            pic = pics[name]
+            bad, rows = 0, set()
+            for y, line in enumerate(pic):
+                for x, c in enumerate(line):
+                    if c[3] < 128:
+                        continue
+                    block = {px[(x0 + x) * k + i, (y0 + y) * k + j] for i in range(k) for j in range(k)}
+                    if len(block) > 1 or max(abs(u - v) for u, v in zip(next(iter(block)), c)) > 8:
+                        bad += 1
+                        rows.add(y)
+            if bad:
+                problems.append(f"{kind}: {what}: {name}: {bad} texels not drawn as the picture's (rows {sorted(rows)})")
+    for name in CHOICES if kind == "43" else ():  # (the pictures: once)
+        pic = pics[name]
+        H, Wd = len(pic), len(pic[0])
+        ink = {(x, y) for y in range(H) for x in range(Wd) if pic[y][x][3] >= 128 and GOLD(pic[y][x])}
+        rows = {y for _, y in ink}
+        lost = [(x, y) for x, y in ink if (x + 1, y + 1) not in ink
+                and not (x + 1 < Wd and y + 1 < H and pic[y + 1][x + 1][3] >= 128)]
+        if not ink or lost:
+            problems.append(f"{name}: letters cut at the picture's edge or without their shadow ({len(lost)} texels)")
+        elif max(rows) - min(rows) + 2 > H or max(rows) + 1 >= H:
+            problems.append(f"{name}: the letters and their shadow do not fit its {H} rows")
+    return problems
+
+
 def check_compass(out, label):
     """every shown dot: the bearing is atan2(dx, dz) from the player to the marker, the angle is it less the camera's
     yaw (wrapped), the dot 18 out at that angle (x = 18 sin, y = 18 cos: down the screen when the marker is behind)"""
@@ -472,6 +557,10 @@ def main():
                                        case["name"] == "bars-empty")
             if case["name"] == "bars-over":
                 problems += check_places(work, "43") + check_places(work, "169")
+        if case.get("check") == "labels":
+            labels_runs(args, work, saves)
+            pics = en_pictures(args.exe, args.rom)
+            problems += check_labels(args, work, "43", pics) + check_labels(args, work, "169", pics)
         if case.get("then"):
             t = case["then"]
             ot, _ = run(case, args, "43", work, saves, rows=t["rows"], data_from=d169 / "data", frames=t["frames"], label="then")

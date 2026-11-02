@@ -98,10 +98,18 @@ shrinking, so the bars are near the game's 52 at 16:9.
 | Region arrows, the hand cursor, + and - | sprites 6, 7 (wobbling as on the pages), 1, 0x16, 0x17 |
 | The map pictures | `menu_map_picture_dma` (the ROM's 244 x 185 CI8 maps and the four name panels), read into the port's own copies (the map page loads them into RDRAM at 0x801C0000, which cutscenes use too) |
 | The player's pin, the marker and its shadow | sprites 0x2C, 4, 0x55 (the map page's) |
-| Sliders | sprites 0x24, 0x25, the knobs 0x26-0x28, Slow / Fast / Soft / Loud 0x56, 0x57, 0x2A, 0x29 |
+| Sliders | sprites 0x24, 0x25, the knobs 0x26-0x28, Slow / Fast / Soft / Loud 0x56, 0x57, 0x2A, 0x29 (in English: see below) |
 | The backdrop | the menu's background strips (`Menu_DrawBackground`), over the whole picture and dimmed |
 | Region name, "Next spirit", button labels | the HUD's spell-name font (`D_803A8748`, its Latin letters: English only) |
 | The compass's cyan diamond | the HUD atlas's red diamond (s 0, t 0x32), each texel's brightness made cyan |
+
+**Slow, Fast, Soft and Loud** are 26 x 9 pictures. Their English used to be the art in `art/en` shrunk 8 times
+(208 x 72 to 26 x 9), which left the letters' first and last rows half covered: those rows were dropped or blended
+into the art's dark outline, so the words looked cut off at the top and bottom (worst in "Soft"). The game's pages
+and this dialog drew all 9 rows (the same texels as the picture at 1x and as whole 4 x 4 blocks at scale 4 with
+MSAA): the cut was in the picture. `tools/images/build_en_images.py` (`small_label`) now draws these four words in a
+pixel font (RetroSans) in the original's style: solid letters in its golds, brightest at the top, its grey shadow one
+pixel right and down, every row inside the picture and the letters' bottom on the original's.
 
 Ours (made in code): flat fills (the dim layer, the plates' bevels, the outlines), the close cross and a 7 x 7 gear.
 In Japanese the labels in the HUD font are left out (it has no kana there); everything else is the game's.
@@ -210,7 +218,10 @@ click, Close), `same` (a walk with the switch on and off: the same quick save an
 `bars-empty`, `bars-over` (the quick save's stats changed: every bar full, empty, partly full and past its cap, the
 orb at 99%, 0% and 62%, the sliders at both ends and the middle: no fill pixel outside a frame's inside, full fills to
 its end, empty is empty, nothing drawn round the orb or the sliders differs between the cases, and the Options label
-is clear of its button's edge).
+is clear of its button's edge), `labels` (the Options dialog's words, Text Speed, Sound and the four choices, against
+the build's English pictures, `OUT/en_images.inc`: every texel drawn, all their rows, in the dialog and on the game's
+own Options page with the switch off, at 4:3 and 16:9, and at 16:9 at scale 4 with MSAA 4 as whole 4 x 4 blocks; and
+the four choices whole in their pictures: every letter with its shadow inside the picture).
 `PAUSE_MENU_TEST OK`.
 
 `ELTALE_PAUSE_LOG=1` prints `P1_PAUSE_OPEN`, `_VIEW`, `_MARK`, `_OPTION`, `_PRESS`, `_CLOSED`, `_COMPASS`, `_SAVE`.
