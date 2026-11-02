@@ -9,7 +9,7 @@
 #include "port/fiber.h"
 #include "port/p0/host.h"
 #include <stdarg.h>
-#define PORT_ASAN 0
+#include "port/sanitize.h"
 
 #ifdef _WIN32
 #include <windows.h>
