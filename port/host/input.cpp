@@ -58,6 +58,9 @@ const ActionInfo actions[ACT_COUNT] = {
     { "zoom_out", "Zoom out", 0 },
     { "camera_reset", "Camera reset", 0 },
     { "map", "Area map (open/close)", 0 },
+    { "map_zoom_in", "Minimap zoom in", 0 },
+    { "map_zoom_out", "Minimap zoom out", 0 },
+    { "map_zones", "Map: battle zones (hold, cheat)", 0 },
 };
 
 // The camera keys' turn per tick, in mouse counts (port/p0/mouse_camera.c: 0.006 rad a count across, 0.004 up
@@ -150,11 +153,12 @@ void show_cursor(bool on) {
 
 // a press of `code`: the actions it is bound to that act on the press (the camera's edges)
 void pressed(int code) {
-    for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT, ACT_MAP })
+    for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT, ACT_MAP, ACT_MAP_ZOOM_IN, ACT_MAP_ZOOM_OUT })
         for (int s = 0; s < BIND_SLOTS; s++)
             if (settings.controls.bind[a][s] == code) {
                 if (menu::is_open()) continue;
                 if (a == ACT_MAP) { automap::toggle(); continue; }
+                if (a == ACT_MAP_ZOOM_IN || a == ACT_MAP_ZOOM_OUT) { automap::minimap_zoom(a == ACT_MAP_ZOOM_IN ? 1 : -1); continue; }
                 if (automap::full_open() && a != ACT_LOOK_TOGGLE) continue; // (the open map has the mouse)
                 if (a == ACT_LOOK_TOGGLE) look_toggled = !look_toggled;
                 else if (a == ACT_CAM_RESET) reset_clicks++;
@@ -388,6 +392,8 @@ void load_test_script() {
 
 } // namespace
 
+bool action_held(int action) { return action >= 0 && action < ACT_COUNT && held(action); }
+
 Controls::Controls() {
     std::memset(bind, 0, sizeof bind);
     auto key = [](SDL_Scancode s) { return BIND_KEY | s; };
@@ -423,6 +429,9 @@ Controls::Controls() {
     set(ACT_ZOOM_OUT, key(SDL_SCANCODE_MINUS), key(SDL_SCANCODE_KP_MINUS), 0);
     set(ACT_CAM_RESET, BIND_MOUSE | SDL_BUTTON_MIDDLE, key(SDL_SCANCODE_KP_5), 0);
     set(ACT_MAP, key(SDL_SCANCODE_M), 0, 0);
+    set(ACT_MAP_ZOOM_IN, key(SDL_SCANCODE_RIGHTBRACKET), 0, 0);
+    set(ACT_MAP_ZOOM_OUT, key(SDL_SCANCODE_LEFTBRACKET), 0, 0);
+    set(ACT_MAP_ZONES, key(SDL_SCANCODE_B), 0, 0);
 }
 
 const char *action_label(int a) { return a >= 0 && a < ACT_COUNT ? actions[a].label : ""; }

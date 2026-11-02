@@ -24,7 +24,7 @@ index cf65666..ce7b699 100644
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
 diff --git a/src/game/actor/anim.c b/src/game/actor/anim.c
-index fe38701..93b56e1 100644
+index fe38701..728b29a 100644
 --- a/src/game/actor/anim.c
 +++ b/src/game/actor/anim.c
 @@ -1,8 +1,14 @@
@@ -42,7 +42,22 @@ index fe38701..93b56e1 100644
  
  /*
   * Actor model animation: state changes, root motion, frame advance, and node drawing.
-@@ -43,6 +49,9 @@ typedef struct {
+@@ -10,7 +16,14 @@
+  */
+ 
+ /* This file's .bss, 8008BFC0..8008C040, in address order. */
++#ifdef ELTALE_P1_OS
++/* (port) room for every node a model marks (flag 2): the retail array holds 4 and a fifth write lands on the next
++ * variable (on the N64 the count below; in the port's layout whatever the linker put next: the native renderer's
++ * pointer, which then crashed the next draw). Only [0] is read (Player_Draw), so more room changes nothing else. */
++Vec3f anim_node_world_positions[ANIM_NODE_POSITIONS];
++#else
+ Vec3f anim_node_world_positions[4];
++#endif
+ s32 anim_node_position_count;
+ MtxF anim_billboard_mtx_scratch;
+ 
+@@ -43,6 +56,9 @@ typedef struct {
  } Struct_80020568_xf;
  
  void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
@@ -52,7 +67,7 @@ index fe38701..93b56e1 100644
      s32 i;
      s16 count;
      u16 cur;
-@@ -56,7 +65,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -56,7 +72,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
  
      count = arg1->nodeCount;
      cur = arg0->frame;
@@ -61,7 +76,7 @@ index fe38701..93b56e1 100644
      i = 0;
      while (i < count && anim->parent != 0) {
          i++;
-@@ -70,7 +79,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -70,7 +86,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
      }
      Math_EvalTcbSpline(&anim->track, (f32*)&pos, frame);
      if (arg0->animFlags & 0x200) {
@@ -70,7 +85,7 @@ index fe38701..93b56e1 100644
          frame = anim->track.last;
          while (kf->frame != frame) {
              kf++;
-@@ -102,6 +111,9 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -102,6 +118,9 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
  }
  
  void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData* frameData) {
@@ -80,7 +95,7 @@ index fe38701..93b56e1 100644
      s32 i;
      u16 frame;
      AnimNode* anims;
-@@ -114,21 +126,27 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
+@@ -114,21 +133,27 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
      scale.x = arg1->scale;
      scale.y = arg1->scale;
      scale.z = arg1->scale;
@@ -110,7 +125,17 @@ index fe38701..93b56e1 100644
      s32* tbl;
      MtxF mtx;
      Struct_80020568_xf xf;
-@@ -174,18 +192,31 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -168,24 +193,41 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+         guMtxF2L(mtx.mf, &buf->mtx[gfx_mtx_index]);
+     }
+     gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++#ifdef ELTALE_P1_OS
++    if ((anim->flags & 2) && anim_node_position_count < ANIM_NODE_POSITIONS) {
++#else
+     if (anim->flags & 2) {
++#endif
+         anim_node_world_positions[anim_node_position_count].x = mtx.mf[3][0];
+         anim_node_world_positions[anim_node_position_count].y = mtx.mf[3][1];
          anim_node_world_positions[anim_node_position_count].z = mtx.mf[3][2];
          anim_node_position_count++;
      }
@@ -145,7 +170,7 @@ index fe38701..93b56e1 100644
      for (i = 0; i < set->nodeCount; i++) {
          if (anims[i].parent == idx + 1) {
              Anim_DrawNode(&mtx, scale, flags, i, frame, total, set, anims, buf);
-@@ -194,6 +225,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -194,6 +236,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  }
  
  void Anim_AdvanceFrame(s32 arg0, Actor* arg1, AnimSet* arg2) {
@@ -156,10 +181,10 @@ index fe38701..93b56e1 100644
  
      if (temp_v0 >= arg2->length) {
 diff --git a/src/game/actor/anim.h b/src/game/actor/anim.h
-index 66c2ccd..41f83a2 100644
+index 66c2ccd..96d1b51 100644
 --- a/src/game/actor/anim.h
 +++ b/src/game/actor/anim.h
-@@ -17,17 +17,20 @@ typedef struct AnimNode {
+@@ -17,21 +17,29 @@ typedef struct AnimNode {
      /* 0x15 */ s8 dl; /* index into AnimSet.dls, -1 = none */
      /* 0x16 */ u8 flags; /* 1 billboard, 2 record the world position */
      /* 0x17 */ u8 pad17;
@@ -184,7 +209,16 @@ index 66c2ccd..41f83a2 100644
  } AnimSet; /* 0xC bytes */
  
  /* .bss 8008BFC0..8008C040 */
-@@ -43,4 +46,17 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
++#ifdef ELTALE_P1_OS
++#define ANIM_NODE_POSITIONS 16 /* (port) anim.c: the retail 4 overflowed */
++extern Vec3f anim_node_world_positions[ANIM_NODE_POSITIONS];
++#else
+ extern Vec3f anim_node_world_positions[4];
++#endif
+ extern s32 anim_node_position_count;
+ extern MtxF anim_billboard_mtx_scratch;
+ 
+@@ -43,4 +51,17 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  void Anim_AdvanceFrame(s32 arg0, struct Actor *arg1, AnimSet *arg2);
  void Anim_ApplyPivotOffset(MtxF *arg0, AnimNode *arg1);
  
@@ -2739,7 +2773,7 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..aab6088 100644
+index 89b373a..016226a 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
 @@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
@@ -2788,8 +2822,15 @@ index 89b373a..aab6088 100644
      i = npc_count;
      npc = npc_slots;
      list = npc_drawn_list;
-@@ -165,6 +168,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -162,9 +165,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+         obj = &npc->actor;
+         dz = npc->actor.z - player_state.actor.z;
+         dist = dx * dx + dz * dz;
++#ifdef ELTALE_P1_OS
++        if (dist < 90000.0f || nd_automap_truth()) { /* (the area map's truth view, a test: everyone) */
++#else
          if (dist < 90000.0f) {
++#endif
              filter = (dist < 20000.0f) ? G_TF_BILERP : G_TF_POINT;
              gDPSetTextureFilter(gfx_dl_head++, filter);
 +#ifdef ELTALE_P1_OS
@@ -2798,7 +2839,7 @@ index 89b373a..aab6088 100644
              anims = npc->def->anim_sets;
              Anim_DrawModel(0, obj, &anims[obj->animIndex], arg0);
              Anim_AdvanceFrame(obj->animStep, obj, &anims[obj->animIndex]);
-@@ -180,7 +186,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+@@ -180,7 +190,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
@@ -2811,7 +2852,7 @@ index 89b373a..aab6088 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
-@@ -392,7 +403,7 @@ void Npc_EndTalk(s32 idx) {
+@@ -392,7 +407,7 @@ void Npc_EndTalk(s32 idx) {
          npc->timer = Math_Rand(30) + 30;
      } else if (npc->def->flags & 2) {
          npc->state = 0;
@@ -3013,7 +3054,7 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..dec2883 100644
+index f2ae77c..0fd3500 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
 @@ -13,6 +13,53 @@
@@ -3222,6 +3263,35 @@ index f2ae77c..dec2883 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
+@@ -1146,6 +1266,10 @@ void SaveMenu_DrawBackground(void) {
+     Menu_DrawSprite(0x47, 0xA2, 0xA6, 0x18, 0xE);
+ }
+ 
++#ifdef ELTALE_P1_OS
++void Port_AutomapSaveEvent(int kind, s32 slot); /* game/native_draw/nd_automap.c */
++#endif
++
+ void SaveMenu_CaptureGameState(s32 arg0) {
+     SaveHeader *e = &save_menu_save_headers[arg0];
+     u8 *d;
+@@ -1189,6 +1313,9 @@ void SaveMenu_CaptureGameState(s32 arg0) {
+     for (s = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
+         *d++ = *s++;
+     }
++#ifdef ELTALE_P1_OS
++    Port_AutomapSaveEvent(0, arg0); /* the area map's fog of war: what was explored, kept with this save */
++#endif
+ }
+ 
+ void SaveMenu_RestoreGameState(s32 arg0) {
+@@ -1231,4 +1358,7 @@ void SaveMenu_RestoreGameState(s32 arg0) {
+     for (d = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
+         *d++ = *s++;
+     }
++#ifdef ELTALE_P1_OS
++    Port_AutomapSaveEvent(1, arg0); /* the area map's fog of war: what was explored with this save, back */
++#endif
+ }
 diff --git a/src/game/text/text.c b/src/game/text/text.c
 index af00459..d8882c2 100644
 --- a/src/game/text/text.c

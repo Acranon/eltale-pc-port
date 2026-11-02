@@ -15,6 +15,10 @@ struct AnimSet;
  * player's setup list and Enemy_DrawAll/Boss_Draw set bilinear, each NPC its own, chests keep the last. */
 void nd_actor_filter(int filter);
 
+/* nd_automap.c: this tick is the area map's truth view (a test, docs/AUTOMAP.md): Npc_DrawAll draws every person,
+ * not only those near the player, so the map's people marks can be checked against their models */
+int nd_automap_truth(void);
+
 /* Anim_DrawModel: the actor and the AnimSet it draws (its nodes call nd_actor_node until nd_actor_end).
  * Anim_DrawNode is also the model effects' walker (effect.c): those calls come without a begin. */
 void nd_actor_begin(const struct Actor *actor, const struct AnimSet *set, int flags);

@@ -1,0 +1,18 @@
+# The area map's battle zones and danger meter (tools/automap_test.py, docs/AUTOMAP.md), with the cheats on: the
+# user's quick save battle-stuck (map 2 area 0, a field) loads at VI 100 (ELTALE_QUICK_LOAD_AT). M opens the full map,
+# the left button is held on its "Battle zones" button (at 1280x960 its middle is about 496, 867) while W walks, then
+# let go; B (the hold key) shows them again; M closes the map. tests/automap-zones-none.events is the same walk
+# without the map, the mouse and B: the player walks the same.
+5 key_down Return
+7 key_up Return
+300 key_down M
+302 key_up M
+320 pointer 496 867
+340 mouse_down left
+360 key_down W
+400 key_up W
+420 mouse_up left
+450 key_down B
+490 key_up B
+520 key_down M
+522 key_up M

@@ -10,6 +10,7 @@ The ROM is read in place and never copied into this repository.
 import argparse
 import shutil
 import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -41,6 +42,8 @@ def main() -> None:
     global OUT
     if args.p1_os:
         OUT = ROOT / "out/p1-windows"
+    if os.environ.get("ELTALE_BUILD_OUT"):  # (another folder: build while the usual exe is running)
+        OUT = ROOT / os.environ["ELTALE_BUILD_OUT"]
     if not (ROOT / "work/src/game/core/main.c").is_file():
         raise SystemExit("run `python tools/patches.py apply` first")
     if not args.rom:

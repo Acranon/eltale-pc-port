@@ -1,0 +1,23 @@
+# The area map's fog of war (tools/automap_test.py, docs/AUTOMAP.md): the user's quick save compass-spirit (map 0
+# area 1) loads at VI 100 (ELTALE_QUICK_LOAD_AT; a save from before the fog: nothing explored). W walks, F2 quick
+# saves (its explored cells go to automap/save_<key>.fog), D walks on (more is seen), M opens the full map (a
+# picture: partly explored) and closes it, F4 quick loads (the explored cells as saved come back), M opens and closes
+# the map again (a picture). With the cheat "Show the whole map" (fog-cheat) the same pictures show it all.
+5 key_down Return
+7 key_up Return
+200 key_down W
+260 key_up W
+280 key_down F2
+282 key_up F2
+320 key_down D
+420 key_up D
+440 key_down M
+442 key_up M
+470 key_down M
+472 key_up M
+500 key_down F4
+502 key_up F4
+600 key_down M
+602 key_up M
+630 key_down M
+632 key_up M

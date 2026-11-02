@@ -1,0 +1,5 @@
+# tests/automap-zones.events without the map, its mouse and keys: the same walk (the map changes nothing).
+5 key_down Return
+7 key_up Return
+360 key_down W
+400 key_up W

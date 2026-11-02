@@ -46,7 +46,7 @@ static void (*h_shutdown)(void);
 static const void *(*h_render_api)(void);
 static void (*h_set_dump)(const char *, const char *);
 static int (*h_init_headless)(void);
-static void *h_am_area, *h_am_player; /* the area map's feed (port/automap.h) */
+static void *h_am_area, *h_am_player, *h_am_save; /* the area map's feed (port/automap.h) */
 static const char *dump_dir;
 static int quick_key;
 static unsigned quick_key_age; /* retraces since the key was pressed */
@@ -132,7 +132,7 @@ static void attach_native(void) {
         h_set_dump(dump_dir, spec ? spec : "");
     }
     nd_attach(api);
-    nd_automap_connect(h_am_area, h_am_player); /* (an older DLL without them: no map) */
+    nd_automap_connect(h_am_area, h_am_player, h_am_save); /* (an older DLL without them: no map) */
     Port_NativeTaskHook = native_task;
     Port_DmaForgetHook = nd_forget;
 }
@@ -182,6 +182,7 @@ int Port_NativeHeadlessStart(void) {
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
     h_am_area = SYM("ElHost_AutomapArea");
     h_am_player = SYM("ElHost_AutomapPlayer");
+    h_am_save = SYM("ElHost_AutomapSave");
     if (!h_init_headless || !h_render_api || !h_set_dump || !h_shutdown) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");
         return -1;
@@ -217,6 +218,7 @@ int Port_WindowStart(void) {
     h_set_dump = (void (*)(const char *, const char *))SYM("ElHost_SetDump");
     h_am_area = SYM("ElHost_AutomapArea");
     h_am_player = SYM("ElHost_AutomapPlayer");
+    h_am_save = SYM("ElHost_AutomapSave");
     if (!h_init || !h_present || !h_present_cpu || !h_poll || !h_data_dir || !h_language ||
         !h_text_font || !h_take_quick_key || !h_notice || !h_pad || !h_camera || !h_pointer || !h_audio || !h_shutdown || !h_wait) {
         fprintf(stderr, "host: eltale_host is not the one this game needs (rebuild it: tools/build_host.py)\n");

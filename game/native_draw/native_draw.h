@@ -57,7 +57,7 @@ void nd_frame_begin(void);
 void nd_frame_end(unsigned frame);
 /* The area map's feed (nd_automap.c, port/automap.h): the host's two entry points, and the tick (after
  * nd_frame_end, with the same frame number) */
-void nd_automap_connect(void *area_fn, void *player_fn);
+void nd_automap_connect(void *area_fn, void *player_fn, void *save_fn);
 void nd_automap_tick(unsigned frame);
 
 /* R7 (widescreen): the picture's shape for this tick (ElRenderApi.aspect, asked at nd_frame_begin):
