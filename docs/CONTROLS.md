@@ -113,6 +113,15 @@ is as before. Clicks never count during mouse look. The OS cursor shows when the
 a key or controller press, during mouse look (captured) and after 3 seconds still; with the F1 menu open it is
 ImGui's. "Mouse in menus" off: no pointer reaches the game.
 
+**Focus and the pointer over the window** (port/host/host.cpp `focused`, input.cpp `input_pointer`): whether the
+window has the focus and the mouse is over it come from SDL's window flags at the time they are needed
+(`SDL_WINDOW_INPUT_FOCUS`, `SDL_WINDOW_MOUSE_FOCUS`), not only from the focus and enter/leave events: a fullscreen
+switch can send a focus lost (or a mouse leave) with no focus gained (enter) after it, and a flag kept from the
+events alone then stayed false: clicks, the wheel and mouse look dead while the keys worked. Entering the window
+takes the pointer's place there at once (no motion needed). A hidden window (the tests', which the system never
+focuses) goes by the events; tools/mouse_host_test.py's focus cases send a lost focus or a leave with no gain after
+it, with `system_focus 1` / `system_mouse 1` rows (ELTALE_INPUT_TEST) standing in for the window flags.
+
 `ELTALE_MOUSE_LOG=1` prints `P1_MOUSE_HOVER` (a target pointed at and the value set), `P1_MOUSE_MENU` (a click: the
 pointer, the target, what was pressed) and `P1_MOUSE_STATE` (at the next read: the menus' state: cursors, spell,
 save, choice, title, Pak manager); `=2` also `P1_MOUSE_TARGETS` (each new set of targets: anchor, tag,

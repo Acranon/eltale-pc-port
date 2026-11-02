@@ -271,7 +271,14 @@ bool take_capture(const SDL_Event &e) {
 // The menus' pointer, its clicks and the cursor, from each event
 void pointer_event(const SDL_Event &e, bool was_looking) {
     if (e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) pointer_inside = false;
-    if (e.type == SDL_EVENT_WINDOW_MOUSE_ENTER) pointer_inside = true;
+    if (e.type == SDL_EVENT_WINDOW_MOUSE_ENTER) {
+        pointer_inside = true;
+        // where the pointer came back in, without waiting for it to move (not with mouse look's relative mode)
+        if (!relative_on && window() && SDL_GetMouseFocus() == window()) {
+            SDL_GetMouseState(&pointer_x, &pointer_y);
+            pointer_known = true;
+        }
+    }
     if (e.type == SDL_EVENT_MOUSE_MOTION && !relative_on) {
         pointer_x = e.motion.x;
         pointer_y = e.motion.y;
@@ -327,12 +334,15 @@ void pointer_event(const SDL_Event &e, bool was_looking) {
 // ---- ELTALE_INPUT_TEST ----------------------------------------------------------------------------
 // A script of events by tick (the count of pad reads): "TICK key_down NAME", "key_up NAME" (SDL scancode
 // names: W, Space, Left Shift, Keypad 4, ...), "mouse_down left|middle|right|x1|x2", "mouse_up ...",
-// "motion DX DY", "wheel N", "pointer X Y" (window coordinates). Lines starting with # are comments.
+// "motion DX DY", "wheel N", "pointer X Y" (window coordinates), the window's "focus_lost", "focus_gained",
+// "mouse_leave", "mouse_enter", and "system_focus 1|0|-", "system_mouse 1|0|-" (what SDL's window flags say from
+// then on; -: the window's own). Lines starting with # are comments.
 struct TestEvent {
     long tick;
     SDL_Event e;
 };
 std::vector<TestEvent> test_events;
+Uint32 test_user_event; // the system_focus / system_mouse rows' event (SDL_RegisterEvents)
 size_t test_next;
 long pad_reads;
 
@@ -408,6 +418,21 @@ void load_test_script() {
             e.motion.yrel = y - py;
             e.motion.x = px = x;
             e.motion.y = py = y;
+        } else if (cmd == "focus_lost" || cmd == "focus_gained" || cmd == "mouse_leave" || cmd == "mouse_enter") {
+            // the window's own events, as the system sends them (a fullscreen switch can send one without the other)
+            e.type = cmd == "focus_lost"     ? SDL_EVENT_WINDOW_FOCUS_LOST
+                     : cmd == "focus_gained" ? SDL_EVENT_WINDOW_FOCUS_GAINED
+                     : cmd == "mouse_leave"  ? SDL_EVENT_WINDOW_MOUSE_LEAVE
+                                             : SDL_EVENT_WINDOW_MOUSE_ENTER;
+        } else if (cmd == "system_focus" || cmd == "system_mouse") {
+            // "system_focus 1|0|-": what SDL's window flags say from then on (-: ask the window, which a hidden one
+            // never has), so a test can have the system say focused while the events said lost
+            const int v = rest == "1" ? 1 : rest == "0" ? 0 : rest == "-" ? -1 : -3;
+            ok = v != -3;
+            if (!test_user_event) test_user_event = SDL_RegisterEvents(1);
+            e.type = test_user_event;
+            e.user.code = cmd == "system_focus" ? 0 : 1;
+            e.user.data1 = reinterpret_cast<void *>(intptr_t(v));
         } else if (cmd == "wheel") {
             e.type = SDL_EVENT_MOUSE_WHEEL;
             ok = std::sscanf(rest.c_str(), "%d", &e.wheel.integer_y) == 1;
@@ -425,6 +450,8 @@ void load_test_script() {
             if (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) e.key.windowID = id;
             else if (e.type == SDL_EVENT_MOUSE_MOTION) e.motion.windowID = id;
             else if (e.type == SDL_EVENT_MOUSE_WHEEL) e.wheel.windowID = id;
+            else if (e.type >= SDL_EVENT_WINDOW_FIRST && e.type <= SDL_EVENT_WINDOW_LAST) e.window.windowID = id;
+            else if (e.type == test_user_event) e.user.windowID = id;
             else e.button.windowID = id;
         }
         test_events.push_back({ tick, e });
@@ -602,6 +629,11 @@ bool input_event(const SDL_Event &e) {
         if (alt_enter) keys[e.key.scancode] = false;
         else keys[e.key.scancode] = e.type == SDL_EVENT_KEY_DOWN;
     }
+    if (test_user_event && e.type == test_user_event) {
+        const int v = int(reinterpret_cast<intptr_t>(e.user.data1));
+        set_test_system(e.user.code == 0 ? v : -2, e.user.code == 1 ? v : -2);
+        return true;
+    }
     const bool was_looking = looking();
     if ((e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) && e.button.button < 8)
         mouse_buttons[e.button.button] = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -725,7 +757,11 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
     *flags = 0;
     const int left = left_clicks, right = right_clicks, up = left_ups;
     left_clicks = right_clicks = left_ups = 0;
-    if (!settings.controls.mouse_menus || !pointer_known || !pointer_inside || !focused() || menu::is_open() ||
+    // (over the window: as SDL's flags say now, so a leave with no enter after it, as a fullscreen switch can send,
+    // does not leave the pointer outside)
+    const int inside_now = system_mouse_inside();
+    const bool inside = inside_now >= 0 ? inside_now != 0 : pointer_inside;
+    if (!settings.controls.mouse_menus || !pointer_known || !inside || !focused() || menu::is_open() ||
         automap::full_open() || looking() || !window() || !renderer()) // (the open map has the mouse)
         return;
     uint32_t pw = 0, ph = 0;
