@@ -178,10 +178,10 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 # the memory-safety build (docs/MEMORY_SAFETY.md)
 # (and tools/asan_host_stub.c as libeltale_host.so: --dump-frames runs the game's native draw side without a GPU)
 asan:
-	$(MAKE) P1_OS=1 SANITIZE=1 CC=$(or $(ASAN_CC),clang-18) OUT=$(or $(ASAN_OUT),out/asan) ROM="$(ROM)" p0 		$(or $(ASAN_OUT),out/asan)/libeltale_host.so
+	$(MAKE) P1_OS=1 SANITIZE=1 CC=$(or $(ASAN_CC),clang-18) OUT=$(or $(ASAN_OUT),out/asan) ROM="$(ROM)" p0 $(or $(ASAN_OUT),out/asan)/libeltale_host.so
 
-$(OUT)/libeltale_host.so: tools/asan_host_stub.c port/include/port/render.h port/include/port/automap.h
-	$(CC) -std=gnu11 -O1 -g -fPIC -shared -fsanitize=address -fno-omit-frame-pointer -Iport/include $< -o $@
+$(OUT)/libeltale_host.so: tools/asan_host_stub.c port/render/png.c port/include/port/render.h port/include/port/automap.h
+	$(CC) -std=gnu11 -O1 -g -fPIC -shared -fsanitize=address -fno-omit-frame-pointer -Iport/include -I. tools/asan_host_stub.c port/render/png.c -lm -o $@
 
 # Linux: out/p1-linux/eltale-p1 and libeltale_host.so (+ libSDL3.so.0) beside it (tools/build_linux.sh)
 linux:

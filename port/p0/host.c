@@ -376,6 +376,9 @@ s32 osPiStartDma(OSIoMesg *mb, s32 pri, s32 direction, u32 dev_addr,
     if (Port_PiDmaHook) Port_PiDmaHook(dst, size);
     if (Port_DmaForgetHook) Port_DmaForgetHook((uintptr_t)dst, size);
 #endif
+#if PORT_ASAN
+    Port_AsanRdramLoaded(dst, size);
+#endif
     memcpy(dst, rom_bytes + dev_addr, size);
     dma_count++;
     dma_bytes += size;

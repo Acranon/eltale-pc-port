@@ -34,6 +34,8 @@ KNOWN = {
     "work/src/game/env/env.c:150": "B1 benign: a row of map_backdrop_phase_tluts[4][256] reached as an offset from row 0",
     "work/src/game/camera/camera.c:733": "B2 benign: Camera_UpdateHeightOscillation writes only .y of the Vec2f",
     "work/src/libultra/audio/env.c:540": "A1 audio (port/audio is being replaced): float to s16 out of range, as the N64",
+    # ELTALE_ASAN_RDRAM=loaded only: the port's own write, not a load the DMA hook sees
+    "Port_ImagesUpdate port/text/en_images.c": "R1 port: the English pictures written into RDRAM's common block at boot",
 }
 
 

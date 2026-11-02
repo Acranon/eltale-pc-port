@@ -23,6 +23,8 @@
 /* port/p0/asan_rdram.c: maps the 8 MiB of RDRAM at `base` inside ASan's address layout (x86-64 Linux keeps
  * its low shadow where RDRAM goes) with its shadow all addressable; NULL when it cannot */
 void *Port_AsanMapRdram(unsigned long base, size_t bytes);
+/* a ROM DMA filled [dst, dst + size): ELTALE_ASAN_RDRAM=loaded unpoisons it (port/p0/asan_rdram.c) */
+void Port_AsanRdramLoaded(void *dst, size_t size);
 #endif
 
 #endif

@@ -11,9 +11,10 @@
 #   frames  every run of tests/render_frames*.txt (battles, spells, menus, saves, chests, ...) with --dump-frames (the
 #           stub host: the game's native draw side runs), and again with ELTALE_FRAME_IMAGE (the frame image)
 #   native  the long plays with --dump-frames: New Game, ending, camera tour, map tour, English, 16:9, small buffers
-#   long    the map tour with battles left to run (ELTALE_BATTLE_LOG=2 encounters on every walk) and the saves'
-#           battles played for 20000 frames
+#   long    a battle lost (game over), the map tour with ELTALE_BATTLE_LOG=2, and each save's battle (spells cast)
+#           played for 20000 frames
 #   saves   a Controller Pak with two saves (tools/pak_two_saves.py): load the first, the save menu, the Pak manager
+#   rdram   RDRAM poisoned until loaded (ELTALE_ASAN_RDRAM=loaded): New Game, ending, tours, battles, game over, menu
 #   tools   the headless test tools against this build: spell_ui_test, mouse_menu_test, pause_menu_test, interp_test
 #           (their pass/fail is about pictures, which the stub does not make; only the reports count here)
 # Saves: the quick saves the lists name (default C:/code/eltale/out/bugsaves), copied into a scratch data folder.
@@ -102,15 +103,32 @@ for suite in "${SUITES[@]}"; do
             run native-ending-en "" 1200 ELTALE_START_MODE=5 ELTALE_LANG=en -- --frames 10000 --dump-frames "$SCRATCH/frames"
             run native-camtour "" 1200 ELTALE_START_MODE=7 -- --frames 10000 --dump-frames "$SCRATCH/frames"
             run native-maptour "" 7200 ELTALE_MAP_TOUR=1 -- --frames 300000 --dump-frames "$SCRATCH/frames"
-            run native-maptour-en-wide "" 7200 ELTALE_MAP_TOUR=1 ELTALE_LANG=en ELTALE_WIDESCREEN=16:9 ELTALE_STUB_ASPECT=1.7777778 \
+            run native-maptour-en-wide "" 7200 ELTALE_MAP_TOUR=1 ELTALE_LANG=en ELTALE_WIDESCREEN=16:9 \
                 -- --frames 300000 --dump-frames "$SCRATCH/frames"
             run native-maptour-small "" 7200 ELTALE_MAP_TOUR=1 ELTALE_ND_SMALL_BUFFERS=256 -- --frames 300000 --dump-frames "$SCRATCH/frames" ;;
         long)
+            # a battle the player does nothing in: the enemies win (the game over and its return to the title)
+            printf '5 0x1000 0 0\n7 0 0 0\n120 0 0 80\n200 0 0 0\n' > "$SCRATCH/idle.input"
+            run long-gameover battle-stuck 3600 ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 \
+                -- --frames 20000 --input "$SCRATCH/idle.input" --dump-frames "$SCRATCH/frames"
             run long-maptour-battles "" 7200 ELTALE_MAP_TOUR=1 ELTALE_BATTLE_LOG=2 -- --frames 300000 --dump-frames "$SCRATCH/frames"
             for s in "$SAVES"/*/; do
                 s=$(basename "$s")
                 run "long-battle-$s" "$s" 3600 ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 \
                     -- --frames 20000 --input tests/battle-spells.input --dump-frames "$SCRATCH/frames"
+            done ;;
+        rdram)
+            # RDRAM poisoned until a ROM DMA loads it (port/p0/asan_rdram.c): reads and writes of RDRAM nothing loaded
+            for r in "ng||--frames 3000 --input tests/title-new-game.input" "ending|ELTALE_START_MODE=5|--frames 10000" \
+                     "camtour|ELTALE_START_MODE=7|--frames 10000" "maptour|ELTALE_MAP_TOUR=1|--frames 300000" \
+                     "maptour-native|ELTALE_MAP_TOUR=1|--frames 300000 --dump-frames $SCRATCH/frames" \
+                     "battle|ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2|--frames 20000 --input tests/battle-spells.input" \
+                     "gameover|ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2|--frames 20000 --input $SCRATCH/idle.input" \
+                     "menu|ELTALE_QUICK_LOAD_AT=100|--frames 650 --input tests/item-menu.input"; do
+                IFS='|' read -r n e a <<< "$r"
+                printf '5 0x1000 0 0\n7 0 0 0\n120 0 0 80\n200 0 0 0\n' > "$SCRATCH/idle.input"
+                save=""; case "$n" in battle|gameover|menu) save=battle-stuck ;; esac
+                run "rdram-$n" "$save" 7200 ELTALE_ASAN_RDRAM=loaded $e -- $a
             done ;;
         saves)
             pak="$SCRATCH/one.mpk"
@@ -126,7 +144,8 @@ for suite in "${SUITES[@]}"; do
                 run "saves-continue-$tail" "" 1200 -- --frames 500 --input tests/title-continue.input --pak "$SCRATCH/t.mpk" \
                     --dump-frames "$SCRATCH/frames"
                 cp "$SCRATCH/two.mpk" "$SCRATCH/t.mpk"
-                run "saves-pakmanager-$tail" "" 1200 -- --frames 400 --input tests/pak-manager-delete.input --pak "$SCRATCH/t.mpk"
+                # (one save is left after the delete, so the manager stays open and --frames is never reached: 60 s)
+                run "saves-pakmanager-$tail" "" 60 -- --frames 400 --input tests/pak-manager-delete.input --pak "$SCRATCH/t.mpk"
             done ;;
         tools)
             for t in spell_ui_test mouse_menu_test pause_menu_test interp_test; do

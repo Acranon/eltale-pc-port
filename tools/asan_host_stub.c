@@ -4,7 +4,9 @@
  * is read through in full (its reads are checked), and what the real renderer would trust is checked here: a mesh's
  * groups inside its vertices and materials, texel and palette ranges, ids handed out. A broken rule prints
  * "[asan] host stub: ..." (tools/asan_summary.py lists it). Buffer room as the real renderer's (port/render/
- * nd_renderer.cpp), ELTALE_ND_SMALL_BUFFERS=n KiB as there too, so resources_reset runs. Writes no pictures. */
+ * nd_renderer.cpp), ELTALE_ND_SMALL_BUFFERS=n KiB as there too, so resources_reset runs. The pictures it writes are
+ * blank (the tools that read them go on); the picture's shape follows ELTALE_WIDESCREEN as the real headless one. */
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +14,7 @@
 
 #include "port/render.h"
 #include "port/automap.h"
+#include "port/render/png.h"
 
 #define API __attribute__((visibility("default")))
 
@@ -113,7 +116,37 @@ static void draw(const ElRdDraw *d) {
     if (d->mesh >= mesh_count) problem("%s: mesh %lu of %lu", "draw", d->mesh, mesh_count);
     if ((d->id >> EL_RDD_KIND_SHIFT) >= EL_KIND_COUNT) problem("%s: kind %lu%.0lu", "draw", (unsigned long)(d->id >> 56), 0);
 }
-static void frame_end(uint32_t frame) { (void)frame, frames++; }
+/* --dump-frames: a blank picture of the right size for each frame the spec names (as port/render/nd_renderer.cpp's
+ * want_dump), so the test tools that read them go on */
+static char dump_dir[1024], dump_spec[1024];
+static float aspect(void);
+static int want_dump(uint32_t frame) {
+    if (!dump_dir[0]) return 0;
+    if (!dump_spec[0]) return 1;
+    for (const char *p = dump_spec; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL) {
+        char *e = NULL, *e2 = NULL;
+        unsigned long first = strtoul(p, &e, 10);
+        if (*e == '-') {
+            if (frame >= first && frame <= strtoul(e + 1, NULL, 10)) return 1;
+        } else if (*e == '+') {
+            unsigned long step = strtoul(e + 1, &e2, 10), run = *e2 == '/' ? strtoul(e2 + 1, NULL, 10) : 1;
+            if (frame >= first && step && (frame - first) % step < run) return 1;
+        } else if (frame == first) {
+            return 1;
+        }
+    }
+    return 0;
+}
+static void frame_end(uint32_t frame) {
+    frames++;
+    if (!want_dump(frame)) return;
+    uint32_t w = (uint32_t)(aspect() * 240.0f + 0.5f), h = 240;
+    uint32_t *px = calloc((size_t)w * h, 4);
+    char path[1100];
+    snprintf(path, sizeof path, "%s/frame_%u.png", dump_dir, frame);
+    if (px) render_png_write(path, px, w, h);
+    free(px);
+}
 static uint32_t material_2d(const ElRdMaterial *m) {
     touch(m, sizeof *m);
     check_material(m, "material_2d");
@@ -128,9 +161,15 @@ static void draw_2d(const ElRd2D *item) {
 }
 static void frame_phase(float phase) { (void)phase; }
 static float draw_distance(void) { return 1.0f; }
+/* the picture's shape as the real renderer's headless dumps take it (render_native.cpp wanted_aspect, the 1x size) */
 static float aspect(void) {
-    const char *e = getenv("ELTALE_STUB_ASPECT");
-    return e ? (float)atof(e) : 4.0f / 3.0f;
+    const char *e = getenv("ELTALE_WIDESCREEN");
+    float a = 4.0f / 3.0f;
+    if (e && (!strcmp(e, "16:9") || !strcmp(e, "1") || !strcmp(e, "window") || !strcmp(e, "2"))) a = 16.0f / 9.0f;
+    else if (e && strcmp(e, "off") && strcmp(e, "4:3") && strcmp(e, "0") && atof(e) > 0) a = (float)atof(e);
+    a = a < 4.0f / 3.0f ? 4.0f / 3.0f : a > 32.0f / 9.0f ? 32.0f / 9.0f : a;
+    uint32_t w = 2 * (uint32_t)lroundf(a * 240.0f * 0.5f);
+    return w <= 320 ? 4.0f / 3.0f : (float)w / 240.0f;
 }
 static void reset(void) { resources_reset(); }
 
@@ -151,7 +190,10 @@ API int ElHost_InitHeadless(void) {
     return 0;
 }
 API const void *ElHost_RenderApi(void) { return &api; }
-API void ElHost_SetDump(const char *dir, const char *spec) { (void)dir, (void)spec; }
+API void ElHost_SetDump(const char *dir, const char *spec) {
+    snprintf(dump_dir, sizeof dump_dir, "%s", dir ? dir : "");
+    snprintf(dump_spec, sizeof dump_spec, "%s", spec ? spec : "");
+}
 API void ElHost_Shutdown(void) {
     fprintf(stderr, "[asan] host stub: %u frames, %u problems\n", frames, problems);
 }
