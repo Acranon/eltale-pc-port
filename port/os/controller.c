@@ -3,6 +3,7 @@
 #include "port/mouse_camera.h"
 #include "port/mouse_menu.h"
 #include "port/os.h"
+#include "port/spell_aim.h"
 #include "port/spell_ui.h"
 #include "port/pause_menu.h"
 
@@ -256,6 +257,8 @@ void osContGetReadData(OSContPad *pads) {
     Port_SpellUiRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     Port_PauseMenuRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     Port_MouseMenuRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
+    /* click to aim spells: the pointer over the battlefield with a spell ready (port/spell_aim.h) */
+    Port_SpellAimRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     if (hold_start_at_boot) {
         pads[0].button |= START_BUTTON;
         hold_start_at_boot = 0;

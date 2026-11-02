@@ -50,6 +50,10 @@ its press, Enter is not a game key until it is let go and 400 ms have passed (po
 In the game's menus the mouse points and clicks (below, "The mouse in menus"): left click A, right click B. Spells have
 their own panel and quick bar (on by default; [SPELL_UI.md](SPELL_UI.md)): click a crystal or press 1-4, click the
 plate to cast, right click to take an element back; the quick bar's slots cast with a click or 5-0.
+
+In a battle, with a spell ready, the pointer on the battlefield aims it (on by default; [SPELL_AIM.md](SPELL_AIM.md)).
+The panel folds to its plate and the camera rises. The spell's area shows on the ground and a gold ring under each
+monster it would hit. A left click turns you that way and casts. Right click takes the last element back.
 While the full area map is open (docs/AUTOMAP.md) the mouse is the map's: the wheel zooms it, a left drag moves it,
 a right click fits it again, pointing at a mark names it, and Esc closes it; the keyboard and the pad still drive the
 game (unless the Map page's pause is on). With the map closed, the wheel over the minimap zooms the minimap instead of
@@ -65,10 +69,12 @@ On the Controls page click a binding, then press the key or mouse button (or, in
 controller button or a stick or trigger push). Esc cancels, Backspace or Delete clears the slot. A key or
 button does one thing: binding it takes it away from wherever it was. "Reset the controls to the defaults"
 puts back the table above. The page also has the mouse camera's speed (10-400%) and an invert switch for
-up and down, **Mouse in menus** (on by default; off: the mouse only turns the camera) and **Spell panel and quick
+up and down, **Mouse in menus** (on by default; off: the mouse only turns the camera), **Spell panel and quick
 bar** (on by default; off: the game's own spell rows, and the keys 1-0, `,`, `.` and Esc do nothing:
-[SPELL_UI.md](SPELL_UI.md)) and **Unified pause menu** (on by default; off: the Start menu's four pages, and Esc and
-O do nothing there: [PAUSE_MENU.md](PAUSE_MENU.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
+[SPELL_UI.md](SPELL_UI.md)), **Click to aim spells** with **Raise the camera while aiming** (both on by default:
+[SPELL_AIM.md](SPELL_AIM.md)) and **Unified pause menu** (on by default; off: the Start menu's four pages, and Esc
+and O do nothing there: [PAUSE_MENU.md](PAUSE_MENU.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc);
+Q, E, Enter, Space and the
 minimap's `[` `]` and wheel are as they were.
 
 ## The mouse in menus
@@ -91,6 +97,7 @@ menus, takes the last element back from a spell, backs out of the save menu and 
 | Spell list (the spell UI off) | a name: its element's gem glows at its ends | its C button: the element added (refused as with the controller when the spell is not known) |
 | The spell being made (the middle name; the spell UI off) | its last element's gems glow | A: cast it |
 | The spell panel and the quick bar (the spell UI on) | a plate, a slot: a yellow frame; a slot: its name box | [SPELL_UI.md](SPELL_UI.md) |
+| The battlefield, a spell ready (battle) | the spell's area and the rings of the monsters it would hit; the panel folds, the camera rises | aim (face the monster or the point) and cast: [SPELL_AIM.md](SPELL_AIM.md) |
 | Element allocation (a spirit found) | the cross's four elements | that element raised (its C button) |
 | Controller Pak manager | the answers and the note rows: the selection steers there | A on it (after the selection got there) |
 
@@ -230,6 +237,8 @@ eye and the point looked at) for every tick the view is applied.
   with a save once (tests/tour-save.input, a few minutes). `MOUSE_MENU_TEST OK`.
 - `tools/spell_ui_test.py --exe EXE --rom ROM [--saves ...]`: the spell panel and the quick bar (docs/SPELL_UI.md
   "Tests"), with the host's path and mouse look in a hidden window. `SPELL_UI_TEST OK`.
+- `tools/spell_aim_test.py --exe EXE --rom ROM [--saves ...]`: click to aim spells in battles, 4:3 and 16:9
+  ([SPELL_AIM.md](SPELL_AIM.md) "Tests"). `SPELL_AIM_TEST OK`.
 - `tools/pause_menu_test.py --exe EXE --rom ROM [--saves ...]`: the pause menu with the controller, the mouse, Esc and
   O, the compass's cyan diamond, the marker kept with a quick save, the host's path in a hidden window
   ([PAUSE_MENU.md](PAUSE_MENU.md) "Tests"). `PAUSE_MENU_TEST OK`.
@@ -245,6 +254,8 @@ eye and the point looked at) for every tick the view is applied.
   "invert_y": false,
   "mouse_menus": true,
   "spell_ui": true,
+  "spell_aim": true,
+  "spell_aim_camera": true,
   "pause_menu": true,
   "bindings": {
     "a": ["Space", "", "Pad a"],
@@ -266,8 +277,7 @@ defaults.
 
 - The mouse in menus, not done: the wheel does not scroll the item and save lists (it zooms the camera, as
   before); the Start menu's options are set by a click, not by pointing at the rows in their edit mode.
-- Click to interact and to aim spells: a click could be bound as A today (bind Mouse Left); aiming a
-  spell where the cursor points needs the spell code's target direction (the player's facing when cast)
-  turned toward the picked point. Not started.
+- Click to interact: a click could be bound as A today (bind Mouse Left). Aiming spells is done
+  ([SPELL_AIM.md](SPELL_AIM.md)); items that cast spells could take the same aim later.
 - Quest 64 Enhanced's per-object cull opening is done here for billboards; effect emitters
   (`Effect_QueueMapObjEmitter`, +-90 degrees of the yaw) follow the view's yaw.

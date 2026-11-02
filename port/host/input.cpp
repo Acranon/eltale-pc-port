@@ -797,7 +797,9 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
 void input_spell_keys(unsigned *keys, int *on) {
     *keys = menu::is_open() ? 0 : spell_keys;
     spell_keys = 0;
-    *on = (settings.controls.spell_ui ? 1 : 0) | (settings.controls.pause_menu ? 2 : 0);
+    *on = (settings.controls.spell_ui ? 1 : 0) | (settings.controls.pause_menu ? 2 : 0) |
+          (settings.controls.spell_aim ? 4 : 0) |
+          (settings.controls.spell_aim && settings.controls.spell_aim_camera ? 8 : 0);
 }
 
 void input_shutdown() {

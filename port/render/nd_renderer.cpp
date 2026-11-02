@@ -155,6 +155,7 @@ uint32_t api_mesh_upload(const ElRdMeshDesc *m) { return instance.mesh_upload(m)
 void api_palette(uint32_t id, const uint16_t *e, uint32_t n) { instance.palette(id, e, n); }
 void api_resources_reset() { instance.resources_reset(); }
 void api_reset() { instance.reset(); }
+void api_overlay(const ElRdVertex *v, uint32_t n, uint32_t m) { instance.overlay(v, n, m); }
 void api_frame_begin(const ElRdFrameInfo *i) { instance.frame_begin(i); }
 void api_camera(const ElRdCamera *c) { instance.camera(c); }
 void api_lights(const ElRdLights *l) { instance.lights(l); }
@@ -173,7 +174,7 @@ float api_aspect() { return instance.aspect(); }
 const ElRenderApi api_table = {
     EL_RENDER_API_VERSION, api_texture_upload, api_mesh_upload, api_palette, api_resources_reset,
     api_frame_begin, api_camera, api_lights, api_env, api_prim, api_fog, api_fog_position, api_draw, api_frame_end,
-    api_material_2d, api_draw_2d, api_frame_phase, api_draw_distance, api_aspect, api_reset,
+    api_material_2d, api_draw_2d, api_frame_phase, api_draw_distance, api_aspect, api_reset, api_overlay,
 };
 
 } // namespace
@@ -555,7 +556,10 @@ void NativeDraw::keep_recorded() {
     };
     // what the recordings name: meshes (3D and 2D) and 2D rectangles' materials; a kept mesh keeps its materials
     each_recording([&](Recording &r) {
+        for (const Recording::Overlay &o : r.overlays)
+            if (o.material < mat_to.size()) mat_to[o.material] = USED, rect_material[o.material] = 1;
         for (const Recording::Item &it : r.items) {
+            if (it.overlay >= 0) continue;
             if (it.item2d < 0) {
                 if (it.draw.mesh < mesh_to.size()) mesh_to[it.draw.mesh] = USED;
                 continue;
@@ -639,7 +643,9 @@ void NativeDraw::keep_recorded() {
     }
     // the recordings name the new numbers (one that named nothing kept names nothing: render() skips it)
     each_recording([&](Recording &r) {
+        for (Recording::Overlay &o : r.overlays) o.material = o.material < mat_to.size() ? mat_to[o.material] : NONE;
         for (Recording::Item &it : r.items) {
+            if (it.overlay >= 0) continue;
             if (it.item2d < 0) {
                 it.draw.mesh = it.draw.mesh < mesh_to.size() ? mesh_to[it.draw.mesh] : NONE;
                 continue;
@@ -743,6 +749,11 @@ void NativeDraw::print_lifetime() const {
 // vertices, a rectangle's material)
 bool NativeDraw::item_ok(const Recording &rec, const Recording::Item &it) const {
     if (it.state >= rec.states.size()) return false;
+    if (it.overlay >= 0) {
+        if (size_t(it.overlay) >= rec.overlays.size()) return false;
+        const Recording::Overlay &o = rec.overlays[size_t(it.overlay)];
+        return o.material < material_cpu.size() && size_t(o.first) + o.count <= rec.overlay_vertices.size();
+    }
     uint32_t id = it.draw.mesh;
     if (it.item2d >= 0) {
         if (size_t(it.item2d) >= rec.items2d.size()) return false;
@@ -772,6 +783,8 @@ void NativeDraw::frame_begin(const ElRdFrameInfo *info) {
     building.info = *info;
     building.items.clear();
     building.items2d.clear();
+    building.overlays.clear();
+    building.overlay_vertices.clear();
     building.states.clear();
     building.has_camera = false;
     state_dirty = true;
@@ -809,6 +822,26 @@ void NativeDraw::draw_2d(const ElRd2D *d) {
     it.state = uint32_t(building.states.size() - 1);
     it.item2d = int32_t(building.items2d.size());
     building.items2d.push_back(*d);
+    building.items.push_back(it);
+}
+
+// v10: world-space triangles of the port's own, in the recording's order (drawn with the picture's camera)
+void NativeDraw::overlay(const ElRdVertex *v, uint32_t count, uint32_t material) {
+    if (!in_frame || !count || material >= material_cpu.size()) return;
+    count -= count % 3;
+    if (state_dirty || building.states.empty()) {
+        building.states.push_back(state);
+        state_dirty = false;
+    }
+    Recording::Overlay o = { uint32_t(building.overlay_vertices.size()), count, material };
+    building.overlay_vertices.insert(building.overlay_vertices.end(), v, v + count);
+    Recording::Item it = {};
+    it.state = uint32_t(building.states.size() - 1);
+    it.overlay = int32_t(building.overlays.size());
+    // (an id of its own and an identity matrix: pictures between ticks leave it as it is)
+    it.draw.id = uint64_t(0xFE) << EL_RDD_KIND_SHIFT | uint64_t(building.overlays.size());
+    it.draw.matrix[0] = it.draw.matrix[5] = it.draw.matrix[10] = it.draw.matrix[15] = 1.0f;
+    building.overlays.push_back(o);
     building.items.push_back(it);
 }
 
@@ -987,6 +1020,32 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             const Recording::State &s = rec->states[it.state];
             GpuDraw &g = gd[i];
             std::memset(&g, 0, sizeof g);
+            if (it.overlay >= 0) {
+                // v10: world-space triangles (their vertices after the rectangles' in this picture's buffer), the
+                // camera alone, the depth as a 3D draw's
+                if (!camera_ok) {
+                    options[i] = OPT_SKIP;
+                    continue;
+                }
+                const Recording::Overlay &o = rec->overlays[size_t(it.overlay)];
+                rect_first.resize(i + 1, 0);
+                rect_first[i] = uint32_t(rect_vertices.size());
+                rect_vertices.insert(rect_vertices.end(), rec->overlay_vertices.begin() + o.first,
+                                     rec->overlay_vertices.begin() + o.first + o.count);
+                std::memcpy(g.mvp, cam.projection, sizeof g.mvp);
+                g.colors[0] = pack(s.env);
+                g.colors[1] = pack(s.prim);
+                g.colors[2] = pack(s.fog);
+                g.colors[3] = pack(s.blend);
+                g.fog[0] = s.fog_mul;
+                g.fog[1] = s.fog_off;
+                g.fog[2] = cam.near_plane > 0 ? cam.near_plane : 1.0f;
+                g.fog[3] = 511.0f * 32.0f * std::fabs(cam.perspective[14]) / g.fog[2];
+                g.tile_offset[2] = -cam.perspective[10];
+                g.tile_offset[3] = 1.0f;
+                options[i] = 0;
+                continue;
+            }
             if (it.item2d >= 0) {
                 const ElRd2D &d = rec->items2d[size_t(it.item2d)];
                 if (d.mesh == EL_RD2D_RECT) {
@@ -1111,7 +1170,7 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
     if (std::getenv("ELTALE_ND_DEBUG") && rec) {
         std::fprintf(stderr, "[nd] frame %u: camera %d items %zu states %zu\n", rec->frame, rec->has_camera, rec->items.size(),
                      rec->states.size());
-        if (!gd.empty() && rec->items[0].item2d < 0 && !(options[0] & OPT_SKIP)) {
+        if (!gd.empty() && rec->items[0].item2d < 0 && rec->items[0].overlay < 0 && !(options[0] & OPT_SKIP)) {
             const float *m = gd[0].mvp;
             const Mesh &mesh = meshes[rec->items[0].draw.mesh];
             const ElRdVertex *v = reinterpret_cast<const ElRdVertex *>(vertices.shadow.data()) + mesh.first;
@@ -1245,6 +1304,16 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
             const Recording::Item &item = rec->items[i];
             const ElRd2D *d2 = item.item2d >= 0 ? &rec->items2d[size_t(item.item2d)] : nullptr;
             if (wide) scissor(d2 && (d2->flags & EL_RD2D_ANCHOR_MASK) == EL_RD2D_ANCHOR_CENTRE ? middle : whole);
+            if (item.overlay >= 0) {
+                const Recording::Overlay &o = rec->overlays[size_t(item.overlay)];
+                if (!rect_bound) cmd.set_storage_buffer(0, 0, *rect_buffer);
+                rect_bound = true;
+                apply_state(cmd, material_cpu[o.material]);
+                Push push = { uint32_t(i), o.material, options[i] | dither, view };
+                cmd.push_constants(&push, 0, sizeof push);
+                cmd.draw(o.count, 1, rect_first[i], 0);
+                continue;
+            }
             if (d2 && d2->mesh == EL_RD2D_RECT) {
                 if (!rect_bound) cmd.set_storage_buffer(0, 0, *rect_buffer);
                 rect_bound = true;

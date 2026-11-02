@@ -36,6 +36,9 @@ CASES = [
     ("mouse-battle", {"ELTALE_QUICK_LOAD_AT": "100"}, ["--frames", "560", "--input", "tests/mouse-battle.input"],
      "110-560", "battle-stuck"),
     ("flames", {}, ["--frames", "700", "--input", "tests/title-new-game.input"], "225-330", None),
+    # click to aim spells (docs/SPELL_AIM.md): the camera rising and coming down, the preview's overlays, the cast
+    ("aim", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2", "ELTALE_SPELL_UI": "1", "ELTALE_SPELL_AIM": "1"},
+     ["--frames", "560", "--input", "tests/spell-aim.input"], "185-260", "battle-stuck"),
     ("spells", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2"},
      ["--frames", "1600", "--input", "tests/battle-spells.input"], "60+100/40", "battle-stuck"),
     ("tour", {"ELTALE_MAP_TOUR": "1"}, ["--frames", "300000"], "600+1000/8", None),

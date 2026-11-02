@@ -1,10 +1,11 @@
 # Spell targeting: how every spell aims and hits, and how to aim it with the mouse
 
-This is research for "click to aim spells". Nothing here is implemented yet. It covers every spell the player can
-cast, in battle and on the field, for all four elements and all levels. The rules come from the decomp
+This is the research for "click to aim spells", which is now implemented: see [SPELL_AIM.md](SPELL_AIM.md). It covers
+every spell the player can cast, in battle and on the field, for all four elements and all levels. The rules come from the decomp
 (`game/magic/magic.c`, `game/player/player.c`, `game/battle/battle.c`). The numbers come from the spell tables in
 the ROM's magic block. The ranges were worked out with a Python copy of the game's movement code (see
-"How the numbers were found").
+"How the numbers were found"). They have since been checked in play against the game's own effects, every tick, for
+every aiming spell (SPELL_AIM.md, "Verified in play"). The corrections are marked **(verified)** below.
 
 Units are world units. For scale:
 
@@ -42,13 +43,14 @@ Each spell is a `SpellDef` row (`D_800C185C[element][index]`). These fields deci
 | `floor_collision_mode` | 0 no floor. 1 stops (lands) when below the floor, then lives 8 more frames. 2 stuck to the floor (y = floor). |
 
 `D_800C1878`, the 8 launch directions, as (x, y, z) in the caster's frame. Forward is +z. `Math_RotateVec2`
-mirrors x, so cast 1 and cast 2 go 45° to opposite sides:
+mirrors x, so cast 1 and cast 2 go 45° to opposite sides. **(verified)** The caster's +x is their right: direction 1
+and the diagonal place (8) are on the caster's right, direction 2 on their left:
 
 | Index | Direction |
 | --- | --- |
 | 0 | (0, .5, 1): forward and up |
-| 1 | (.7, .5, .7): 45° to one side |
-| 2 | (-.7, .5, .7): 45° to the other side |
+| 1 | (.7, .5, .7): 45° to the right |
+| 2 | (-.7, .5, .7): 45° to the left |
 | 3 | (1, .5, 0): sideways |
 | 4 | (-1, .5, 0): sideways, the other way |
 | 5 | (.7, .5, -.7): back diagonal |
@@ -67,7 +69,7 @@ The second argument is always the caster:
 - 5 behind and high;
 - 6 **at the chosen target**;
 - 7 a **random** point 20..39 from the caster in one of 16 directions, high (uses `Math_Rand`);
-- 8 a **diagonal** point: d = `body_radius × 10 × scale` = 35 for the player, at (1.5d to the side, d ahead), and so
+- 8 a **diagonal** point: d = `body_radius × 10 × scale` = 35 for the player, at (1.5d to the right, d ahead), and so
   63 away;
 - 9 380 × scale forward (no spell uses it).
 
@@ -141,18 +143,18 @@ Ranges are worked out for flat ground and a target 6 high, using the game's own 
 
 | # | Spell | Elements | Kind | How it moves and hits | Code | Aim UI |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0.0 | Fire Ball Lv1 | Fire | **Facing cone, homing bolt** | One bolt starts 9.5 ahead at chest height, launched forward and up (v = (0, 1, 2)). It homes (strength 2, accel 1.0, top speed 10) on the enemy nearest its heading. It lives 9 frames and travels about 52, ignoring the floor. Hit: 6 + r, single hit. It reaches a target straight ahead up to about 65, 30° off up to 55, 60° off up to 30. | sel0 V, place3, move0, find0 | Cone of reach about 65 along the facing. The enemy the bolt will pick is ringed, greyed if out of reach. Click an enemy to face it. |
-| 0.1 | Fire Ball Lv2 | Fire+Fire | Same, 2 bolts | Bolts 1 frame apart at 0° and 45° to one side. **Each picks the enemy nearest its own heading** (V). They live 10 frames, about 58 travel, reach about 70 ahead. | as Lv1, cast_count 2 | Two arcs (0°, 45°), each with its target ringed. |
-| 0.5 | Fire Ball Lv3 | Fire+Fire+Fire | Same, 3 bolts | Bolts at 0°, +45° and −45°, each with its own target. They live 11 frames, about 65 travel, reach about 80 ahead. | cast_count 3 | Three-armed fan, about 80 long, each arm's target ringed. |
+| 0.0 | Fire Ball Lv1 | Fire | **Facing cone, homing bolt** | One bolt starts 9.5 ahead at chest height, launched forward and up (v = (0, 1, 2)). It homes (strength 2, accel 1.0, top speed 10) on the enemy nearest its heading. It lives 9 frames and travels about 52, ignoring the floor. Hit: 6 + r, single hit. It reaches a target straight ahead up to about 65, 30° off up to 55, 60° off up to 30. **(verified)** Its last tested place is 55 from the caster, so about 66 for r 5.6; a bat 72.6 away was missed. **(verified: not a narrow cone)** It starts slow (2.2) and turns 1 a tick toward its target, so within its 9 ticks it can turn right round: it can touch a monster's edge 51 from where it starts straight ahead, 47 at 45° off, 39 at 90° and 27 behind (SPELL_AIM.md "Cones"). Its target is the enemy nearest its heading, at any range, so with one enemy left it chases it wherever it is. | sel0 V, place3, move0, find0 | The cone: the ground the bolt can reach, worked out by running it toward a monster at every place round the caster; the bolt's predicted tunnel inside it. |
+| 0.1 | Fire Ball Lv2 | Fire+Fire | Same, 2 bolts | Bolts 1 frame apart at 0° and 45° to the right **(verified)**. **Each picks the enemy nearest its own heading** (V). They live 10 frames, about 58 travel, reach about 70 ahead (**verified**: the first bolt's last place is 62.4 out, about 73). | as Lv1, cast_count 2 | The two bolts' cones (nearly one lopsided disc: drawn as one) and each bolt's tunnel. |
+| 0.5 | Fire Ball Lv3 | Fire+Fire+Fire | Same, 3 bolts | Bolts at 0°, 45° right and 45° left, each with its own target. They live 11 frames, about 65 travel, reach about 80 ahead (**verified**: it hit a bat 72.6 away; from its start a bolt touches a monster's edge 66 ahead, 61 at 45°, 51 at 90°, 38 behind). | cast_count 3 | The cone (the three bolts' together) and each bolt's tunnel. |
 | 0.2 | Power Rod Lv1 | Fire+Earth | Self | Attack ×1.5 (status 2, arg 1). | sel2, find1 | None. Click the plate. |
 | 0.7 | Power Rod Lv2 | Fire+Earth+Earth | Self | Attack ×2. | sel2 | Click the plate. |
-| 0.3 | Homing Arrow Lv1 | Fire+Wind | **Auto-target, homing, piercing** | 3 arrows, one every 4 frames. They start just behind and over the head and are launched backwards (directions 5, 6, 7), speed 6. Each picks the enemy nearest *its own backward heading* (V), so the arrows spread over the outermost enemies. They home hard (strength 10, accel 1.0) and live 25 frames. Hit: 2 + r, piercing; after a hit they fly on straight. They swing wide: an arrow that turns from 135° back reliably hits only up to about 30, and the straight-back one reaches about 110. | sel0 V, place5, move0, find0, P | Ring the enemy each arrow will pick, with a count badge. Draw the predicted curves (dry run, section 4). The click faces, but the arrows choose their own targets. |
+| 0.3 | Homing Arrow Lv1 | Fire+Wind | **Auto-target, homing, piercing** | 3 arrows, one every 4 frames. They start just behind and over the head and are launched backwards (directions 5, 6, 7), speed 6. Each picks the enemy nearest *its own backward heading* (V), so the arrows spread over the outermost enemies. They home hard (strength 10, accel 1.0) and live 25 frames. Hit: 2 + r, piercing; after a hit they fly on straight. They swing wide: an arrow that turns from 135° back reliably hits only up to about 30, and the straight-back one reaches about 110. | sel0 V, place5, move0, find0, P | Ring the enemy each arrow will pick, with a count badge. Draw the predicted curves (dry run, section 4): each arrow's tunnel, a string of beads (12 a tick, extent 2). The click faces, but the arrows choose their own targets. |
 | 0.9 | Homing Arrow Lv2 | Fire+Wind+Wind | Same | 5 arrows, one every 8 frames, from the feet, directions 4, 5, 6, 7, 0. Top speed 12, life 30. Reach about 30, 70, 70, then 160 or more. | place0, cast_count 5 | As Lv1. |
 | 0.4 | Hot Steam Lv1 | Fire+Water | **Area round self** | Stays at the caster's feet on the floor for 8 frames. Hits every enemy within 15 + r, piercing. | sel1, place0, move1, find0, floor2, P | Circle r 15 round the player; enemies inside glow. No aim, so click the plate. |
 | 0.14 | Hot Steam Lv2 | Fire+Water+Water | Area round self | Same, r 30. | as Lv1 | Circle r 30. |
 | 0.6 | Compression | Fire+Fire+Wind | **Auto-target single** | Hits the enemy nearest the facing, any distance, 75%. Shrink. | sel0, place6, find1 | Click a monster. |
 | 0.8 | Fire Pillar | Fire+Fire+Water | **Facing point (ground circle)** | A pillar on the floor 11.5 ahead (3.5 + 8), after a 3-frame delay, for 8 frames. Hits within 8 + r, piercing. | sel1, place3, move1, find0, floor2, P | Circle r 8 at 11.5 ahead, swung round the player by the mouse. The distance is fixed. |
-| 0.10 | Fire Bomb | Fire+Fire+Earth | **Facing lob, ground circle** | Lobbed from 21.5 ahead, forward and up, with gravity, not homing. It lands about 52 ahead on flat ground (11 frames), then blasts within 18 + r for 8 frames, piercing. It hits nothing in flight (find2). | sel0, place3, move0 (strength 0), find2, floor1, gravity, P | Arc and landing circle r 18 at the predicted landing point (a dry run against the real floor). The mouse sets the direction only. |
+| 0.10 | Fire Bomb | Fire+Fire+Earth | **Facing lob, ground circle** | Lobbed from 21.5 ahead, forward and up, with gravity, not homing. It lands **about 49 ahead after 18 frames (verified; the research said 52 after 11)**, then blasts within 18 + r for 8 frames, piercing. It hits nothing in flight (find2; **verified**: its tunnel is only the blast, 9 ticks). | sel0, place3, move0 (strength 0), find2, floor1, gravity, P | Arc and landing circle r 18 at the predicted landing point (a dry run against the real floor). The mouse sets the direction only. |
 | 0.11 | Vampire Touch | Fire+Earth+Water | Self | Status 1 (bit 2: heal on hit). | sel2 | Click the plate. |
 | 0.12 | Magma Ball | Fire+Earth+Wind | **Facing fan of ground lines** | 3 balls one frame apart from the feet at 0°, +45° and −45°. They roll along the floor (floor2), not homing, at up to 7 a frame for 20 frames, about 91 each. Hit 7 + r, piercing. Damage also clears the victim's statuses (hit 9). | sel1, place0, move0 (strength 0), find0, floor2, P | Three tubes, 91 long, half-width 7 (+r), in a fan. Enemies touched glow. |
 | 0.13 | Extinction | Fire+Water+Wind | Auto-target single | The enemy nearest the facing, 60%, after a 28-frame delay. Removes it (bosses: popup only). | sel0, place6, find1, hit 7 | Click a monster. |
@@ -161,12 +163,12 @@ Ranges are worked out for flat ground and a target 6 high, using the game's own 
 
 | # | Spell | Elements | Kind | How it moves and hits | Code | Aim UI |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1.0 | Rock Lv1 | Earth | **Homing lob at the target nearest the facing** | Appears 8.5 ahead and 27 high and waits 10 frames. Then it falls forward with gravity, homing weakly (strength 1, accel 0.5) on the enemy nearest the facing, and lands (floor1, camera shake). It hits in flight and for 8 frames after landing, within 5 + r, piercing. Straight ahead it hits at 15..70; **30° off the facing it misses**. With no pull it lands about 72 ahead. | sel0, place4, move0, find0, floor1, gravity, P | Ring the target, and put a circle r 5 at the predicted landing point (dry run). Click a monster to face it. This is where aiming helps most. |
-| 1.1 | Rock Lv2 | Earth+Earth | Same | Delay 16, starts 13.5 ahead and 32 high, hit 10 + r. Straight ahead it hits at 10..85; 30° off at 15..70. | extent 10 | As Lv1, circle r 10. |
-| 1.5 | Rock Lv3 | Earth+Earth+Earth | Same | Delay 20, starts 18.5 ahead and 37 high, hit 15 + r. Straight ahead it hits at 10..100; 30° off at 10..80. | extent 15 | Circle r 15. |
+| 1.0 | Rock Lv1 | Earth | **Homing lob at the target nearest the facing** | Appears 8.5 ahead and 27 high and waits 10 frames. Then it falls forward with gravity, homing weakly (strength 1, accel 0.5) on the enemy nearest the facing, and lands (floor1, camera shake). It hits in flight and for 8 frames after landing, within 5 + r, piercing. Straight ahead it hits at 15..70; **30° off the facing it misses**. With no pull it lands about 72 ahead. **(verified)** It appears 8.5 ahead and 27.4 up, as said; but it always has a target to pull toward (the one nearest the facing), and the pull toward the target's middle brings it down early: aimed at a bat 72.6 away it landed 60.1 ahead and missed. Lv2 and Lv3 landed 67.7 and 70.7 ahead at the same bat and hit. **(verified: its flight hits)** Once it falls it tests every tick: a monster on the ground (r 5.6) is in reach once the rock is about 24 above the ground, the last 9 of its 15 flying ticks; in play Rock Lv3 hit a monster it passed over 20 up (SPELL_AIM.md "Tunnels"). | sel0, place4, move0, find0, floor1, gravity, P | The arc of its flight, and its tunnel where it can touch a monster: its lower flight and the landing. Click a monster to face it. This is where aiming helps most. |
+| 1.1 | Rock Lv2 | Earth+Earth | Same | Delay 16, starts 13.5 ahead and 32 high, hit 10 + r. Straight ahead it hits at 10..85; 30° off at 15..70. **(verified)** It can touch a monster on the ground for its whole flight (2 wide at first). | extent 10 | As Lv1. |
+| 1.5 | Rock Lv3 | Earth+Earth+Earth | Same | Delay 20, starts 18.5 ahead and 37 high, hit 15 + r. Straight ahead it hits at 10..100; 30° off at 10..80. **(verified)** Its whole flight (7.4 wide at first). | extent 15 | As Lv1. |
 | 1.2 | Spirit Armor Lv1 | Earth+Water | Self | Defence ×1.5. | sel2 | Click the plate. |
 | 1.7 | Spirit Armor Lv2 | Earth+Water+Water | Self | Defence ×2. | sel2 | Click the plate. |
-| 1.3 | Rolling Rock Lv1 | Earth+Fire | **Sweep line across the front** | A rock starts at the diagonal point (52.5 to one side, 35 ahead) and rolls *sideways* across the front along the floor. It does not home, reaches up to 7 a frame, and goes about 220 in 50 frames, so it crosses the arena. Hit 6 + r, piercing. | sel0, place8, move0 (strength 0, direction 4), find0, floor2, P | A tube perpendicular to the facing, 35 ahead, from 52.5 on the start side to the arena's edge, half-width 6. Enemies on it glow. |
+| 1.3 | Rolling Rock Lv1 | Earth+Fire | **Sweep line across the front** | A rock starts at the diagonal point (**52.5 to the right**, 35 ahead: verified) and rolls *sideways*, to the left, across the front along the floor. It does not home, reaches up to 7 a frame, and goes **about 275 in 50 frames (verified; the research said 220)**, so it crosses the arena. Hit 6 + r, piercing. | sel0, place8, move0 (strength 0, direction 4), find0, floor2, P | A tube perpendicular to the facing, 35 ahead, from 52.5 on the right to the arena's edge, half-width 6. Enemies on it glow. |
 | 1.13 | Rolling Rock Lv2 | Earth+Fire+Fire | Same | Hit 12 + r. | extent 12 | Tube, half-width 12. |
 | 1.4 | Weakness Lv1 | Earth+Wind | Auto-target single | The enemy nearest the facing, 90%. Defence −25%. | sel0, place6, find1 | Click a monster. |
 | 1.10 | Weakness Lv2 | Earth+Water+Wind | Auto-target single | The same, defence −50%. P is set, but life 1, so only one enemy is hit. | sel0, find1 | Click a monster. |
@@ -193,7 +195,7 @@ Ranges are worked out for flat ground and a target 6 high, using the game's own 
 | 2.7 | Exit | Water+Wind | Self, field only | Leaves the dungeon (hit 6, `Magic_TryStartFlag8ReturnTransition`). | sel2 | Click the plate. |
 | 2.8 | Escape | Water+Earth+Wind | Self, battle | Ends a random battle, 55% (hit 3). | sel2 | Click the plate. |
 | 2.9 | Return | Water+Wind+Wind | Self, field only | Warps back (hit 4). | sel2 | Click the plate. |
-| 2.12 | Walking Water | Water+Fire+Water | **Facing line along the ground** | A wave starts 13.5 ahead after a 6-frame delay and runs straight forward along the floor. It does not home, has a top speed of 5, and goes about 233 in 50 frames, so it crosses the arena. Hit 10 + r, piercing. | sel1, place3, move0 (strength 0), find0, floor2, P | A tube from 13.5 ahead to the arena's edge, half-width 10. Enemies on it glow. |
+| 2.12 | Walking Water | Water+Fire+Water | **Facing line along the ground** | A wave starts 13.5 ahead after a 6-frame delay and runs straight forward along the floor. It does not home, has a top speed of 5, and goes **about 219 in 50 frames (verified; the research said 233)**, so it crosses the arena. Hit 10 + r, piercing. | sel1, place3, move0 (strength 0), find0, floor2, P | A tube from 13.5 ahead to the arena's edge, half-width 10. Enemies on it glow. |
 | 2.13 | Drain Magic | Water+Fire+Earth | Auto-target single | The enemy nearest the facing, 70%. Takes 11/64 of its MP. | sel0, place6, find1 | Click a monster. |
 | 2.14 | Invalidity | Water+Fire+Wind | Self | Clears the caster's statuses (hit 8). | sel2 | Click the plate. |
 
@@ -227,10 +229,10 @@ Ranges are worked out for flat ground and a target 6 high, using the game's own 
 | Random round self | Rock Combo (ring 20..39, rocks r 10) | nothing | A faint ring 10..49; click the plate. |
 | Auto-target single (nearest the facing, any range) | Compression, Extinction, Weakness 1/2, Magnet Rock, Soul Search Lv1, Ice Knife, Drain Magic, Restriction Lv1, Silence Lv1, Slow Enemy | which enemy | Hovered enemy ringed; click a monster. |
 | Auto-target homing projectile | Wind Cutter 1/2/3 (reach about 90..160), Homing Arrow 1/2 (V: the arrows spread over targets) | which enemy | Ring the target(s). For arrows, a badge per target and the predicted curves. |
-| Facing cone (short homing fan) | Fire Ball 1/2/3 (reach about 65/70/80, 1/2/3 bolts at 0°, ±45°) | direction | A fan of arcs; each arm's chosen enemy ringed if in reach. |
+| Facing cone (short homing fan) | Fire Ball 1/2/3 (reach about 65/70/80, 1/2/3 bolts at 0°, ±45°; **verified**: each bolt can turn right round, so its reach is a lopsided disc) | direction | The bolts' cone and each bolt's tunnel; each chosen enemy ringed. |
 | Facing point (fixed distance) | Fire Pillar (r 8 at 11.5), Water Pillar 1/2/3 (r 5/10/15 at 8.5/13.5/18.5) | direction | A ground circle at its fixed distance, swung round the player. |
-| Facing lob | Fire Bomb (r 18, lands about 52 ahead); Rock 1/2/3 (homing lob; r 5/10/15 near the target) | direction, which also picks the target | The arc and the landing circle from a dry run. |
-| Facing lines (tubes) | Walking Water (233, ±10), Cyclone (106, ±12), Large Cutter (51, ±12), Magma Ball (3 × 91, ±7, fan 0/±45°), Rolling Rock 1/2 (across the front at 35 ahead, ±6/±12) | direction | Tubes on the ground; enemies they touch glow. |
+| Facing lob | Fire Bomb (r 18, lands about 52 ahead); Rock 1/2/3 (homing lob; r 5/10/15 near the target) | direction, which also picks the target | The arc, and the tunnel where it can hit: Rock's lower flight and landing, Fire Bomb's blast. |
+| Facing lines (tubes) | Walking Water (233, ±10), Cyclone (106, ±12), Large Cutter (51, ±12), Magma Ball (3 × 91, ±7, fan 0/±45°), Rolling Rock 1/2 (across the front at 35 ahead, ±6/±12) | direction | Tunnels on the ground; enemies they touch glow. |
 
 ## 3. What aiming has to change, and the hook
 
@@ -372,7 +374,9 @@ enemy AI (`enemy.c`, `enemy_temp_vec.z`).
   0xD490C0 → 0x800C0000; `D_800C185C`, `D_800C1878`), and the speed tables from `.data` (`magic.c`). The names come
   from `translations/en.v2.tsv` (0x2000000 + element × 16 + index).
 - **Ranges.** A Python copy of `Magic_MoveHomingEffect` and `Magic_FindTargetInRange` gave the ranges, on flat
-  ground, against a target with radius 5.6 at height 6 (a Were-Rabbit). It was not run in the game. Before shipping
-  the overlay, check a few against a `magic_effects` log: Fire Ball's reach, Rock's landing point, and the side
-  Rolling Rock starts on.
+  ground, against a target with radius 5.6 at height 6 (a Were-Rabbit). The C copy the aim uses (port/p0/spell_aim.c)
+  was then checked in play: `python tools/spell_aim_test.py --verify` casts every aiming spell and compares the game's
+  effects (`P1_AIM_FX`) with the copy's paths every tick, and what they hit. Fire Ball's reach, Rock's landing point,
+  Rolling Rock's side and distance, Walking Water's and Fire Bomb's numbers were corrected from it (SPELL_AIM.md,
+  "Verified in play").
 - **Not in the repo.** The scratch tools (`dump.py`, `sim.py`, `reach.py`) were not committed.

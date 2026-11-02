@@ -23,6 +23,7 @@
 #include "game/math/math.h"
 #include "game/input/input.h"
 #include "port/mouse_camera.h"
+#include "port/spell_aim.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -48,6 +49,13 @@
 #define COLL_NO_FLOOR 0x8000
 #define COLL_CAMERA_FLOORS 0x600 /* the game camera's flags (0x602) without the wall push */
 #define COLL_WALLS 0x601         /* floors and the walls the player collides with */
+/* Click to aim spells (port/spell_aim.h): while aiming the eye rises to this pitch over the point looked at, its
+ * height only (x, z and the yaw stay the game's: the map's grid search, the emitters and the billboards' yaw see the
+ * same), eased in and out over LIFT_TICKS; indoors less (the ceilings) */
+#define AIM_PITCH 0.82f
+#define AIM_PITCH_INDOORS 0.66f
+#define AIM_AHEAD 32.0f /* the point looked at moves this far ahead (the monsters stay in view) */
+#define LIFT_TICKS 8
 
 /* this tick's input (Port_CameraInputSet) */
 static float in_dx, in_dy;
@@ -66,6 +74,10 @@ static float move_yaw_offset;
 static int replaced;
 static float game_eye[3], view_eye[3];
 static float game_yaw, view_yaw_written;
+/* the aim's raise: 0 the game's height, 1 raised (port/spell_aim.h); the point looked at moved ahead for it (x, z) */
+static float lift_t;
+static int at_moved;
+static float game_at[2], view_at[2];
 
 void Port_CameraInputSet(float dx, float dy, int wheel, int flags) {
     in_dx = dx;
@@ -146,7 +158,10 @@ static void keep_eye_above_floor(Camera *cam) {
 
 void Port_MouseCameraRestore(void) {
     Camera *cam = &camera_state;
+    Port_SpellAimViewDrawn(); /* (the view this picture was drawn with: the aim's pointer) */
     view_active = 0;
+    if (at_moved && cam->atX == view_at[0] && cam->atZ == view_at[1]) cam->atX = game_at[0], cam->atZ = game_at[1];
+    at_moved = 0;
     if (!replaced) return;
     replaced = 0;
     /* something else moved the eye since (a scene): keep that */
@@ -157,15 +172,33 @@ void Port_MouseCameraRestore(void) {
     if (cam->yaw == view_yaw_written) cam->yaw = game_yaw;
 }
 
+static void aim_lift(Camera *cam);
+static void mouse_view(Camera *cam);
+
 void Port_MouseCameraApply(void) {
     Camera *cam = &camera_state;
+    view_active = 0;
+    move_yaw_offset = 0.0f;
+    /* the aim's raise, eased (a tick at a time; never in the scenes the game films, nor outside play) */
+    if (Port_SpellAimLiftWanted()) lift_t += 1.0f / LIFT_TICKS;
+    else lift_t -= 1.0f / LIFT_TICKS;
+    if (lift_t < 0.0f) lift_t = 0.0f;
+    if (lift_t > 1.0f) lift_t = 1.0f;
+    /* (the cast's focus view, Camera_StartBattleFocus, takes the camera at once: the raise goes with it, a cut, rather
+     * than easing down over a camera the game is moving itself, which the pictures between ticks blend badly) */
+    if (core_game_mode != 1 || cam->mode == CAM_MODE_SCRIPTED || cam->mode < 0 || cam->mode >= CAM_MODE_COUNT ||
+        (cam->flags & CAM_FLAG_FOCUS))
+        lift_t = 0.0f;
+    mouse_view(cam);
+    aim_lift(cam);
+}
+
+static void mouse_view(Camera *cam) {
     float dx = in_dx, dy = in_dy, vx, vy, vz, h, dist, yaw0, view_yaw;
     int wheel = in_wheel, flags = in_flags;
 
     in_dx = in_dy = 0.0f;
     in_wheel = in_flags = 0;
-    view_active = 0;
-    move_yaw_offset = 0.0f;
     if (core_game_mode != 1 || cam->mode == CAM_MODE_SCRIPTED || cam->mode < 0 || cam->mode >= CAM_MODE_COUNT ||
         (cam->flags & CAM_FLAG_FOCUS))
         return;
@@ -252,6 +285,42 @@ void Port_MouseCameraApply(void) {
                     free_camera, free_yaw, free_pitch, orbit_zoom, yaw0, input_stick_x, input_stick_y, cam->eyeX, cam->eyeY, cam->eyeZ, cam->atX, cam->atY,
                     cam->atZ);
     }
+}
+
+/* While aiming a spell: the eye raised (its height only) and the point looked at moved ahead along the view (x, z), so
+ * the view looks down on the ground ahead at a steeper pitch; after the mouse view if any. The yaw and the eye's x and z
+ * stay as they are: what the game reads of the camera in a tick (the map's grid search round the eye, the emitters'
+ * half-plane, the billboards' yaw) sees the same, so this changes only the picture. */
+static void aim_lift(Camera *cam) {
+    const float e = lift_t * lift_t * (3.0f - 2.0f * lift_t);
+    float vx, vy, vz, h, pitch, target, ahead;
+    if (e <= 0.0f) return;
+    vx = cam->eyeX - cam->atX;
+    vy = cam->eyeY - cam->atY;
+    vz = cam->eyeZ - cam->atZ;
+    h = sqrtf(vx * vx + vz * vz);
+    if (h < 1.0f) return;
+    pitch = atan2f(vy, h);
+    target = (map_env_flags & MAP_HAS_SKY) ? AIM_PITCH : AIM_PITCH_INDOORS;
+    if (pitch >= target) return;
+    if (!replaced) {
+        game_eye[0] = cam->eyeX;
+        game_eye[1] = cam->eyeY;
+        game_eye[2] = cam->eyeZ;
+        game_yaw = view_yaw_written = cam->yaw;
+        replaced = 1;
+    }
+    ahead = AIM_AHEAD * e;
+    game_at[0] = cam->atX, game_at[1] = cam->atZ;
+    cam->atX -= vx / h * ahead;
+    cam->atZ -= vz / h * ahead;
+    view_at[0] = cam->atX, view_at[1] = cam->atZ;
+    at_moved = 1;
+    cam->eyeY = cam->atY + (h + ahead) * tanf(pitch + (target - pitch) * e);
+    view_eye[0] = cam->eyeX;
+    view_eye[1] = cam->eyeY;
+    view_eye[2] = cam->eyeZ;
+    view_active = 1;
 }
 
 float Port_MouseCameraMoveYaw(void) { return move_yaw_offset; }

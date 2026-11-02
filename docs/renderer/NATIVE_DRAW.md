@@ -1116,6 +1116,24 @@ looked at or of the field of view is still a cut. Ticks without the flag are as 
 returns 181 degrees (no cone) while the view is the mouse camera's. `tools/interp_test.py` cases `mouse`
 and `mouse-battle`.
 
+## Overlays: the port's own pictures in the world (render.h v10)
+
+`ElRenderApi.overlay(vertices, count, material)` takes world-space triangles. The vertices are `ElRdVertex` in world
+units with their colours (`c`, `EL_RDV_SHADE`). The material comes from `material_2d`. Click to aim spells
+(docs/SPELL_AIM.md) draws its areas, lines and rings through it, from `nd_2d_world_tris` (nd_2d.c), in the HUD's
+section.
+
+- **In the recording.** A run of the recording's `overlay_vertices` is an item in the recording's order
+  (`Recording::Item.overlay`; its draw id is kind 0xFE).
+- **Drawn.** `render()` puts its vertices after the 2D rectangles' in the picture's own buffer. It draws them with
+  the recording's camera (`cam.projection`, the 3D draws' depth constants) and the material's blend and depth state, in
+  the same program.
+- **The material.** One: colour and alpha the shade, ZB_XLU_SURF (depth-tested, not written), no culling.
+- **A full buffer.** `keep_recorded` keeps the overlays' materials, as the rectangles'.
+- **Pictures between ticks.** The overlay is the earlier recording's, matched by nothing (nd_interp.cpp leaves it as
+  it is, as the 2D). Being in world units and drawn through each picture's interpolated camera, it stays where it is on
+  the ground at 240 pictures a second.
+
 ## The presenter's robustness (2026-11-01, nr/present)
 
 - **A lost GPU device ends the game cleanly.** The presenter's Vulkan calls (wait, acquire, submit, present, ImGui's)

@@ -42,6 +42,7 @@ struct Recording {
         ElRdDraw draw;
         uint32_t state;
         int32_t item2d = -1; // a 2D item (items2d): the draw is unused
+        int32_t overlay = -1; // v10: world-space triangles of the port's own (overlays): the draw is unused
     };
     ElRdFrameInfo info = {};
     uint64_t vi = 0;     // the retraces presented when it was finished (its time: R6's pictures between)
@@ -52,6 +53,12 @@ struct Recording {
     std::vector<State> states;
     std::vector<Item> items;
     std::vector<ElRd2D> items2d;
+    // v10 overlays: a run of overlay_vertices (world units, 3 a triangle) and its material (material_2d's)
+    struct Overlay {
+        uint32_t first, count, material;
+    };
+    std::vector<Overlay> overlays;
+    std::vector<ElRdVertex> overlay_vertices;
     std::vector<PaletteChange> palettes; // in the order they were made
     uint32_t frame = 0;
 };
@@ -129,6 +136,7 @@ public:
     void frame_end(uint32_t frame);
     uint32_t material_2d(const ElRdMaterial *material);
     void draw_2d(const ElRd2D *item);
+    void overlay(const ElRdVertex *vertices, uint32_t count, uint32_t material);
     void frame_phase(float p) { phase = p; }
     // R7: the draw distance (1 the game's): the game's map pass reads it each tick (render.h draw_distance)
     // and the pictures push the fog and far plane by it. ELTALE_DRAW_DISTANCE=k fixes it (tests, the dumps).
