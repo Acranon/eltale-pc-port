@@ -304,7 +304,7 @@ static int bar_read(void) {
 }
 
 void Port_SpellUiSaveEvent(int kind, s32 slot) {
-    if (slot < 0 || slot >= 16) return;
+    if (slot < 0 || slot >= 16 || !Port_SpellUiEnabled()) return; /* (off: no files, as the original) */
     const SaveHeader *e = &save_menu_save_headers[slot];
     u64 h = 0xCBF29CE484222325ull;
     const u32 head[4] = { e->play_time, e->day_count, (u32)e->map_id, (u32)e->subarea };

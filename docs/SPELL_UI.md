@@ -172,7 +172,7 @@ sub-area as 32-bit numbers, then the SaveGameStateBlock) and writes or reads `sp
 folder (text: `ELTSPELLBAR 1`, `page N`, `slot I E [E [E]]`; written to a .new file and renamed). A change to the bar
 is written at once to the current save's file; a new game keeps it in memory until its first save; the title and
 the intro forget it. A save copied to another Pak slot keeps its bar. A load with no file (every older save) starts
-empty. The save formats are unchanged.
+empty. The save formats are unchanged. With the UI off nothing is read or written (headless runs too).
 
 ## Aiming (the hook for later)
 
