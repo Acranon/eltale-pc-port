@@ -27,6 +27,11 @@ OUT/<case>-43 and -169/pictures).
 - window: the host's path in a hidden window (the keys Esc and O, a right click, a click on Close).
 - same: a walk without opening the menu, the switch on and off: the same quick save bytes and the same game sound (the
   menu changes nothing until it is used).
+- bars-full, bars-empty, bars-over: the quick save's stats changed (HP, MP, Defense, Agility, the element levels, the
+  exp to the next spirit, the two options): full, empty and partly full, and past the caps (HP over its max, Defense
+  300, an element at 99). (The orb's fullest is 99%: at the level's whole exp the game levels up at once.) In every picture no bar's fill lies outside its frame's inside, a full bar fills it to the
+  end and an empty one leaves it empty; the Next-spirit orb and the Options sliders draw nothing outside their places
+  (the same pixels round them in all three cases); the Options button's label is inside the button.
 """
 
 import argparse
@@ -45,8 +50,10 @@ START = ["5 0x1000 0 0", "7 0 0 0"]  # Start on the title (the quick load follow
 OPEN = ["200 0x1000 0 0", "204 0 0 0"]
 
 # the layout (pause_menu.c layout()): frame x, the map's width, the Options button, Close
-LAYOUT = {"169": dict(W=426, fx=10, map_w=214, opt_x=327, opt_w=53, close_x=383),
-          "43": dict(W=320, fx=8, map_w=150, opt_x=238, opt_w=44, close_x=285)}
+LAYOUT = {"169": dict(W=426, fx=10, map_w=214, opt_x=321, opt_w=59, close_x=383, col_x=234, col_w=162,
+                     stat_bar_x=38, stat_bar_w=58, elem_bar_x=51, elem_bar_w=60, orb_x=120, orb_w=42),
+          "43": dict(W=320, fx=8, map_w=150, opt_x=232, opt_w=50, close_x=285, col_x=168, col_w=130,
+                     stat_bar_x=38, stat_bar_w=38, elem_bar_x=51, elem_bar_w=36, orb_x=90, orb_w=40)}
 FY, VP_X, VP_Y, VP_H = 12, 6, 22, 176
 KNOB = [138, 159, 179, 199, 219]  # the Options page's knob places (menu_options_*_row_pos), dialog x + 0x28
 
@@ -167,6 +174,16 @@ CASES = [
                ("P1_PAUSE_MARK", "reticle set=1 region=1"), ("P1_PAUSE_CLOSED", "marker=1,1"),
                ("P1_PAUSE_COMPASS", "shown=0")],
          pictures=[90, 110, 140, 200]),
+    # the bars: the quick save's stats changed (make_data); the menu, then Options (the sliders at the save's options)
+    dict(name="bars-full", frames=180, rows=START + OPEN + ["spellkey 240 0x2000"], pictures=[118, 150],
+         stats=dict(hp="max", mp="max", defense=255, agility=255, elements=(50, 50, 50, 50), level=97, exp=209103, text_delay=0, bgm=4),
+         expect=[("P1_PAUSE_OPEN", "region=0"), ("P1_PAUSE_VIEW", "options .*modal=1")], check="bars"),
+    dict(name="bars-empty", frames=180, rows=START + OPEN + ["spellkey 240 0x2000"], pictures=[118, 150],
+         stats=dict(hp=1, mp=0, defense=0, agility=0, elements=(0, 0, 0, 0), level=0, exp=0, text_delay=4, bgm=0),
+         expect=[("P1_PAUSE_OPEN", "region=0"), ("P1_PAUSE_VIEW", "options .*modal=1")], check="bars"),
+    dict(name="bars-over", frames=180, rows=START + OPEN + ["spellkey 240 0x2000"], pictures=[118, 150],
+         stats=dict(hp="max+20", mp="half", defense=300, agility=128, elements=(99, 25, 49, 1), level=0, exp=5, text_delay=2, bgm=2),
+         expect=[("P1_PAUSE_OPEN", "region=0"), ("P1_PAUSE_VIEW", "options .*modal=1")], check="bars"),
     dict(name="persist", frames=180, quick_save=330, rows=START + OPEN + [
         "230 0x8000 0 0", "234 0 0 0",   # the marker at the cross
         "260 0x1000 0 0", "264 0 0 0",   # closed (F2 at VI 330 saves)
@@ -193,11 +210,33 @@ def save_key(q: bytes) -> int:
     return fnv(struct.pack("<IIii", play, day, mapid, sub) + rec[0x80:0x80 + 0xC8])
 
 
-def make_data(src: Path, dst: Path, marker=None, visited=0x3F):
+def set_stats(q: bytes, st) -> bytes:
+    """the quick save with the player's stats changed (the record's SaveHeader: ActorStats, big-endian as on the Pak)
+    and its hash made good again (tools/quicksave.py)"""
+    b = bytearray(q)
+    max_hp, max_mp = struct.unpack_from(">H", b, RECORD + 6)[0], struct.unpack_from(">H", b, RECORD + 0xA)[0]
+
+    def value(v, mx):
+        return {"max": mx, "half": mx // 2, "max+20": mx + 20}[v] if isinstance(v, str) else v
+    struct.pack_into(">H", b, RECORD + 4, value(st["hp"], max_hp))
+    struct.pack_into(">H", b, RECORD + 8, value(st["mp"], max_mp))
+    struct.pack_into(">HH", b, RECORD + 0xC, st["agility"], st["defense"])
+    struct.pack_into(">I", b, RECORD + 0x10, st["exp"])
+    b[RECORD + 0x34] = st["level"]
+    b[RECORD + 0x24:RECORD + 0x28] = bytes(st["elements"])
+    b[RECORD + 0x62], b[RECORD + 0x63] = st["text_delay"], st["bgm"]
+    struct.pack_into("<Q", b, 16, fnv(bytes(b[0x18:])))
+    return bytes(b)
+
+
+def make_data(src: Path, dst: Path, marker=None, visited=0x3F, stats=None):
     shutil.copytree(src, dst, dirs_exist_ok=True)
     q = (dst / "quicksaves/quick0.elq").read_bytes()
     if q[:8] != b"ELTQUICK":
         raise SystemExit(f"{src}: not a quick save")
+    if stats:
+        q = set_stats(q, stats)
+        (dst / "quicksaves/quick0.elq").write_bytes(q)
     (dst / "mapmarker").mkdir(exist_ok=True)
     text = f"ELTMAPMARK 1\nvisited {visited:x}\n" + (f"marker {marker}\n" if marker else "")
     (dst / f"mapmarker/save_{save_key(q):016x}.mark").write_text(text)
@@ -211,7 +250,7 @@ def run(case, args, kind, work: Path, saves: Path, rows=None, data_from=None, fr
     if data_from:
         shutil.copytree(data_from, d / "data", dirs_exist_ok=True)
     else:
-        make_data(saves, d / "data", case.get("marker"))
+        make_data(saves, d / "data", case.get("marker"), stats=case.get("stats"))
     (d / "in.input").write_text(script(rows or case["rows"], kind if kind in LAYOUT else "43"))
     env = {k: v for k, v in os.environ.items() if not k.startswith("ELTALE_")}
     env.update({"ELTALE_DATA_DIR": str(d / "data"), "ELTALE_QUICK_LOAD_AT": "100", "ELTALE_LANG": "en",
@@ -252,6 +291,71 @@ def check_expect(expect, out, label, not_expect=()):
             problems.append(f"{label}: unexpected {tag} matching '{pattern}'")
     if "P1_TEST_EXIT" in out or "P1_OS_OK" not in out:
         problems.append(f"{label}: the run did not finish")
+    return problems
+
+
+def is_fill(p):
+    """a pixel of a bar's fill (sprite 0x33: yellow to red, (247,189,0) .. (214,0,24))"""
+    r, g, b = p[:3]
+    return r >= 190 and b <= 70 and g <= 205
+
+
+def check_bars(pic: Path, kind, label, full: bool, empty: bool):
+    """no fill pixel outside a bar frame's inside (the frame w x 5 at x, y: the inside x+1..x+w-2, y+1..y+3; looked at
+    from 3 left of the frame to 4 past it, 2 above to 4 below); full: the inside's last column is fill; empty: no fill
+    inside (but HP, at 1). And the Options button's label (its dark ink) stays 3 clear of the button's right edge."""
+    from PIL import Image
+    im = Image.open(pic).convert("RGB")
+    px = im.load()
+    L = LAYOUT[kind]
+    cx = L["fx"] + L["col_x"]
+    bars = [(f"stat{i}", cx + L["stat_bar_x"], FY + 36 + 20 * i + 12, L["stat_bar_w"]) for i in range(4)]
+    bars += [(f"elem{e}", cx + L["elem_bar_x"], FY + 132 + 16 * e + 5, L["elem_bar_w"]) for e in range(4)]
+    problems = []
+    for name, x, y, w in bars:
+        out = [(i, j) for j in range(y - 2, y + 9) for i in range(x - 3, x + w + 5)
+               if is_fill(px[i, j]) and not (x + 1 <= i <= x + w - 2 and y + 1 <= j <= y + 3)]
+        if out:
+            problems.append(f"{label} {pic.name}: {name}: {len(out)} fill pixels outside the frame's inside, e.g. {out[:4]}")
+        if full and not all(is_fill(px[x + w - 2, j]) for j in range(y + 1, y + 4)):
+            problems.append(f"{label} {pic.name}: {name}: full, but the inside's last column is not fill")
+        if empty and name != "stat0" and any(is_fill(px[i, j]) for j in range(y + 1, y + 4) for i in range(x + 1, x + w - 1)):
+            problems.append(f"{label} {pic.name}: {name}: empty, but there is fill inside")
+    ox, ow = L["fx"] + L["opt_x"], L["opt_w"]
+    ink = [i for j in range(FY + 7, FY + 16) for i in range(ox + 2, ox + ow - 1) if sum(px[i, j][:3]) < 330]
+    if not ink or max(ink) > ox + ow - 4:
+        problems.append(f"{label} {pic.name}: the Options label is not clear of the button's right edge "
+                        f"(ink to {max(ink) if ink else None}, edge {ox + ow - 1})")
+    return problems
+
+
+def ring(pic: Path, box):
+    """the pixels in a 3-wide band round box (x0, y0, x1, y1)"""
+    from PIL import Image
+    im = Image.open(pic).convert("RGB")
+    px = im.load()
+    x0, y0, x1, y1 = box
+    return [px[i, j] for j in range(y0 - 3, y1 + 3) for i in range(x0 - 3, x1 + 3)
+            if not (x0 <= i < x1 and y0 <= j < y1)]
+
+
+def check_places(work: Path, kind):
+    """the Next-spirit orb (its 32 x 32) and the Options sliders (the track and the knobs' row): the pixels round them
+    are the same in all the bars cases (whatever the fill or the place, nothing is drawn past them)"""
+    L = LAYOUT[kind]
+    cx = L["fx"] + L["col_x"]
+    ox = cx + L["orb_x"] + (L["orb_w"] - 32) // 2
+    mx = (L["W"] - 240) // 2
+    places = {"orb": (118, (ox, FY + 148, ox + 32, FY + 180))}
+    for row, ty in enumerate((32, 78)):  # the track (84 x 7 at dialog x 101) and the knobs (8 x 11 from ty - 5)
+        places[f"slider{row}"] = (150, (mx + 98, 66 + ty - 6, mx + 188, 66 + ty + 8))
+    problems = []
+    for name, (frame, box) in places.items():
+        rings = [ring(work / f"{c}-{kind}/pictures/frame_{frame}.png", box) for c in ("bars-full", "bars-empty", "bars-over")]
+        # (a step or two of colour allowed: the dialog's fade-in blends over the menu behind, which differs)
+        bad = sum(max(abs(u - v) for u, v in zip(p, q)) > 8 for r in rings[1:] for p, q in zip(rings[0], r))
+        if bad:
+            problems.append(f"{kind}: {name}: {bad} pixels round it differ between the cases")
     return problems
 
 
@@ -361,6 +465,13 @@ def main():
             problems.append("4:3 and 16:9 print different menu lines")
         if case["name"] == "compass":
             problems += check_compass(o43, "4:3") + check_compass(o169, "16:9")
+        if case.get("check") == "bars":
+            for kind in ("43", "169"):
+                problems += check_bars(work / f"{case['name']}-{kind}/pictures/frame_{case['pictures'][0]}.png", kind,
+                                       "4:3" if kind == "43" else "16:9", case["name"] == "bars-full",
+                                       case["name"] == "bars-empty")
+            if case["name"] == "bars-over":
+                problems += check_places(work, "43") + check_places(work, "169")
         if case.get("then"):
             t = case["then"]
             ot, _ = run(case, args, "43", work, saves, rows=t["rows"], data_from=d169 / "data", frames=t["frames"], label="then")

@@ -55,9 +55,9 @@ hud.c `Hud_DrawCompass`, save_menu.c); the keys in `port/host/input.cpp`. On by 
 | The map | (6, 22), 214 x 176 | (6, 22), 150 x 176 |
 | Zoom + / - | the map's bottom right, 11 x 11 | same |
 | The divider | x 228 | x 162 |
-| Options, Close | (327, 5) 53 x 13, (383, 5) 13 x 13 | (238, 5) 44 x 13, (285, 5) 13 x 13 |
+| Options, Close | (321, 5) 59 x 13, (383, 5) 13 x 13 | (232, 5) 50 x 13, (285, 5) 13 x 13 |
 | The right column | x 234, 162 wide | x 168, 130 wide |
-| Status rows | y 36 + 20 i: label, value over a 58-wide bar at x 38, "exp" at x 101, % at the right | bar 38 wide, "exp" at x 81 |
+| Status rows | y 36 + 20 i: label, value over a 58-wide bar at x 38 (the value's right end is the bar's), "exp" at x 101, % at the right | bar 38 wide, "exp" at x 81 |
 | Elements rows | y 132 + 16 i: gem, level/50, a 60-wide bar at x 51 | bar 36 wide |
 | Next spirit | x 120, 42 wide: "Next spirit", the orb 32 x 32 at y 148, % at y 183 | x 90, 40 wide |
 | Options dialog | the game's Options page's 240 x 108 panel, centred, y 66 | same |
@@ -69,6 +69,21 @@ bars are 7 high (the spec's 5); the exp gauge is 56 x 56 in the game, drawn at 3
 its menu sprites); the Options dialog is the game's page (240 x 108, the spec's 250 x 106). The prompt strip is left
 out (the owner: a help key later, and the key list on the Controls page).
 
+The Options button fits its label: 3 in at each end round the gear (16:9 only) and "Options" (the HUD font steps 6,
+its last letter's cell is 8), ending 2 left of Close as before; in Japanese it keeps the widths above with the gear
+alone in the middle.
+
+**The bars.** The frame sprite 0x32 is 60 x 7 but only its left 52 x 5 is the bar: a black line round a 50 x 3
+inside, a shadow column right (x 52) and two rows below, then 7 empty columns. The fill 0x33 is 52 x 3 with 50
+coloured columns and 2 empty. The game's pages draw both 1:1, the fill at x + 1 at most 50 wide, so a full fill is the
+inside exactly (the original had no overflow). The first build stretched the whole 60-wide frame sprite to the bar's
+width, empty columns too, so the visible frame was 52/60 of it (50 of 58 at 16:9), while the fill ran w - 2: about 6
+pixels past the frame when full. Now a bar w wide is the frame w wide (its ends, texels 0-1 and 50-52, drawn 1:1, the
+middle stretched; the shadow one past), the inside w - 2, and the fill's 50 columns stretched over the inside; the
+fraction is kept to 0..1 (HP over its max, Defense or Agility past 255, an element past 50). The frames grew to the
+widths in the table (the room was there: the values above already ended at the bar's width) rather than the fill
+shrinking, so the bars are near the game's 52 at 16:9.
+
 ## The game's art (read from the ROM or RDRAM at run time; nothing of it is in the repository)
 
 | Piece | From |
@@ -77,7 +92,7 @@ out (the owner: a help key later, and the key list on the Controls page).
 | Titles: Map, Status, Elements, Options | sprites 0x2B, 0x1A, 0x2D, 0x21 (with the grey bullets; English in English) |
 | Hp, Mp, Def, Agi, exp, % and / | sprites 0x1B-0x1E, 0x20, 0x15, 0x14 |
 | Numbers | the menu's digits (sprites 0x0A-0x13, 7 apart) |
-| Bars | the Status page's frame (0x32) and fill (0x33), stretched to the bar |
+| Bars | the Status page's frame (0x32: its 52-wide bar, the ends 1:1 and the middle stretched) and fill (0x33: its 50 coloured columns over the inside) |
 | Gems | sprites 0x2E, 0x2F, 0x31, 0x30 (fire, earth, water, wind) |
 | The next spirit's orb | the Elements page's exp gauge, its four layers (`menu_exp_gauge_tex`, `Menu_DrawExpGauge`) |
 | Region arrows, the hand cursor, + and - | sprites 6, 7 (wobbling as on the pages), 1, 0x16, 0x17 |
@@ -191,7 +206,11 @@ Back, Close), `esc` (Esc opens, O, Esc closes Options, Esc closes the menu), `co
 from its file: the diamond's bearing, angle and place checked against the positions and the camera, the view turned
 with the mouse camera and checked again, then the marker moved to another region: the diamond goes), `persist` (the
 marker, F2, then a new process: F4 brings it back), `window` (the host's path in a hidden window: Esc, O, a right
-click, Close) and `same` (a walk with the switch on and off: the same quick save and the same sound).
+click, Close), `same` (a walk with the switch on and off: the same quick save and the same sound) and `bars-full`,
+`bars-empty`, `bars-over` (the quick save's stats changed: every bar full, empty, partly full and past its cap, the
+orb at 99%, 0% and 62%, the sliders at both ends and the middle: no fill pixel outside a frame's inside, full fills to
+its end, empty is empty, nothing drawn round the orb or the sliders differs between the cases, and the Options label
+is clear of its button's edge).
 `PAUSE_MENU_TEST OK`.
 
 `ELTALE_PAUSE_LOG=1` prints `P1_PAUSE_OPEN`, `_VIEW`, `_MARK`, `_OPTION`, `_PRESS`, `_CLOSED`, `_COMPASS`, `_SAVE`.

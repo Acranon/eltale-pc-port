@@ -99,6 +99,8 @@ typedef struct {
 enum { VP_X = 6, VP_Y = 22, VP_H = 176, MODAL_W = 240, MODAL_H = 108, MODAL_Y = 66, ORB = 32 };
 
 static int picture_width(void) { return 2 * (int)lroundf(ND_ASPECT() * 120.0f); }
+static const u8 *encode(const char *t, u8 *buf, int cap);
+static int text_w(const u8 *s);
 
 static Layout layout(void) {
     Layout L;
@@ -117,6 +119,15 @@ static Layout layout(void) {
         L.opt_x = 238, L.opt_w = 44, L.close_x = 285;
         L.stat_bar_x = 38, L.stat_bar_w = 38, L.exp_x = 81, L.elem_bar_x = 51, L.elem_bar_w = 36;
         L.orb_x = 90, L.orb_w = 40;
+    }
+    /* the Options button fits its label (in English: the gear at 16:9, then "Options"; its last letter's cell is 8
+     * wide, 2 past the 6 the text steps), 3 in from each end, and ends where it did, 2 left of Close (3 with its
+     * shadow) */
+    u8 buf[32];
+    const u8 *s = encode("Options", buf, sizeof buf);
+    if (s) {
+        L.opt_w = 3 + (L.wide ? 9 : 0) + text_w(s) + 2 + 3;
+        L.opt_x = L.close_x - 3 - L.opt_w;
     }
     return L;
 }
@@ -1045,14 +1056,24 @@ static void text_centre(float cx, float y, const char *t, const u16 *pal) {
     text(x, y, s, pal);
 }
 
-/* a bar as the Status page draws its (the 60x7 frame, the 52x3 fill), stretched to w */
+/* a bar as the Status and Elements pages draw theirs, its frame w wide. The frame sprite (0x32, 60 x 7) is a 52 x 5
+ * bar (a black line round a 50 x 3 inside) with a 1-pixel shadow right and 2 below and 7 empty columns; the fill
+ * (0x33, 52 x 3) is 50 coloured columns and 2 empty. The pages draw both 1:1 (the fill at x + 1, 50 * frac wide), so a
+ * full fill is the inside exactly. Here the frame's ends (texels 0-1 and 50-52) are drawn 1:1 and its middle stretched,
+ * so the inside is w - 2 wide, and the fill's 50 columns are stretched over that inside: full is full, never past it */
 static void bar(float x, float y, float w, float frac) {
-    spr_scaled(SPR_BAR, x, y, w, (float)spr_h(SPR_BAR));
+    enum { FRAME_W = 52, FILL_W = 50 };
+    spr_load(SPR_BAR, 0, 0);
+    const float h = (float)spr_h(SPR_BAR);
+    rect(x, y, 2, h, 0, 0, 1, 1);
+    rect(x + 2, y, w - 4, h, 2, 0, (FRAME_W - 4) / (w - 4.0f), 1);
+    rect(x + w - 2, y, 3, h, FRAME_W - 2, 0, 1, 1);
+    if (!(frac > 0.0f)) return; /* (and not a number) */
     if (frac > 1.0f) frac = 1.0f;
     const float fw = floorf((w - 2.0f) * frac + 0.5f);
     if (fw <= 0) return;
     spr_load(SPR_BAR_FILL, 0, 0);
-    rect(x + 1, y + 1, fw, 3, 0, 0, spr_w(SPR_BAR_FILL) / (w - 2.0f), 1);
+    rect(x + 1, y + 1, fw, 3, 0, 0, FILL_W / (w - 2.0f), 1);
 }
 
 /* the Elements page's exp gauge (Menu_DrawExpGauge's four layers, each two halves), at ORB x ORB */
@@ -1218,7 +1239,7 @@ static void draw_main(const Layout *L) {
     {
         const int dn = S.pressed_t == T_OPT;
         const u8 *s = encode("Options", buf, sizeof buf);
-        int x = ro.x + 2;
+        int x = ro.x + 3;
         if (!s) x = ro.x + (ro.w - 7) / 2; /* (Japanese: the gear alone, in the middle) */
         if (L->wide || !s) {
             own(x, ro.y + 3 + dn, 7, 7, ART_GEAR_S);
@@ -1279,8 +1300,9 @@ static void draw_main(const Layout *L) {
     /* the next spirit: the Elements page's exp gauge */
     {
         const int ox = cx + L->orb_x;
-        int v = player_level_exp_table[st->level] ? (int)(st->exp * 100 / player_level_exp_table[st->level]) : 0;
-        if (v > 100) v = 100;
+        const u32 need = st->level < 100 ? player_level_exp_table[st->level] : 0;
+        const u64 pct = need ? (u64)st->exp * 100 / need : 0; /* (64-bit: the game's u32 product wraps past 42M exp) */
+        const int v = pct < 100 ? (int)pct : 100;
         text_centre(ox + L->orb_w / 2.0f, fy + 129, "Next", ink_text);
         text_centre(ox + L->orb_w / 2.0f, fy + 138, "spirit", ink_text);
         gauge(ox + (L->orb_w - ORB) / 2, fy + 148, v);
