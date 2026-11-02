@@ -116,6 +116,7 @@ int nd2d_kind = -1;
 static int recording;
 static int element, anchor;
 static uint32_t item_number;
+static int muted;
 
 static int kind_default_anchor(int kind) {
     (void)kind;
@@ -153,6 +154,30 @@ void nd_2d_element(int e, int a) {
     element = e;
     anchor = a;
     item_number = 0;
+}
+
+void nd_2d_mute(int on) { muted = on; }
+
+static struct { int used, element, anchor; uint32_t item_number; } pushed;
+static __typeof__(st) pushed_st;
+
+void nd_2d_push(void) {
+    pushed_st = st;
+    pushed.element = element;
+    pushed.anchor = anchor;
+    pushed.item_number = item_number;
+    pushed.used = 1;
+}
+
+void nd_2d_pop(void) {
+    if (!pushed.used) return;
+    const uint32_t gen = st.tmem_gen;
+    st = pushed_st;
+    st.tmem_gen = gen + 1; /* (tiles decoded meanwhile are not the state put back: decoded again) */
+    element = pushed.element;
+    anchor = pushed.anchor;
+    item_number = pushed.item_number;
+    pushed.used = 0;
 }
 
 void nd_2d_clip_x(int32_t *left, int32_t *right) {
@@ -559,7 +584,7 @@ static void emit(ElRd2D *d) {
     memcpy(d->prim, st.prim, 4);
     memcpy(d->blend, st.blend, 4);
     memcpy(d->fog, st.fog, 4);
-    if (nd_automap_truth()) return; /* (the map's truth view: no 2D) */
+    if (nd_automap_truth() || muted) return; /* (the map's truth view: no 2D; a muted draw: the spell UI's) */
     nd_api()->draw_2d(d);
 }
 

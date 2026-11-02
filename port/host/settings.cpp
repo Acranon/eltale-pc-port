@@ -149,6 +149,7 @@ static void read_controls(const cJSON *j, Controls &c) {
     read_int(item(j, "mouse_sensitivity"), c.mouse_sensitivity, 10, 400);
     read_bool(item(j, "invert_y"), c.invert_y);
     read_bool(item(j, "mouse_menus"), c.mouse_menus);
+    read_bool(item(j, "spell_ui"), c.spell_ui);
     const cJSON *b = item(j, "bindings");
     if (!cJSON_IsObject(b)) return;
     for (int a = 0; a < ACT_COUNT; a++) {
@@ -228,6 +229,7 @@ void save_settings() {
     cJSON_AddNumberToObject(controls, "mouse_sensitivity", s.controls.mouse_sensitivity);
     cJSON_AddBoolToObject(controls, "invert_y", s.controls.invert_y);
     cJSON_AddBoolToObject(controls, "mouse_menus", s.controls.mouse_menus);
+    cJSON_AddBoolToObject(controls, "spell_ui", s.controls.spell_ui);
     cJSON *bindings = cJSON_AddObjectToObject(controls, "bindings");
     for (int a = 0; a < ACT_COUNT; a++) {
         cJSON *list = cJSON_AddArrayToObject(bindings, action_key(a));

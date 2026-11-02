@@ -84,9 +84,14 @@ ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, int *flags);
 /* The menus' pointer (port/mouse_menu.h; docs/CONTROLS.md "The mouse in menus") since the last call: where it is
  * on the picture shown, in the 1x picture's units (x across a picture `width` wide: 320 at 4:3 and for the
  * CPU-drawn screens, 426 at 16:9; y down 240), and flags: 1 over the picture and usable (the mouse in menus on,
- * mouse look off, the menu closed), 2 the cursor shown, 4 a left click, 8 a right click (let go without a drag).
+ * mouse look off, the menu closed), 2 the cursor shown, 4 a left click, 8 a right click (let go without a drag),
+ * 16 the left button held now, 32 the left button let go.
  * Call after ElHost_Poll, with ElHost_GetPad. */
 ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int *flags);
+
+/* The spell UI (port/spell_ui.h; docs/SPELL_UI.md): its keys pressed since the last call (PORT_SPELLKEY_*: 1-4 the
+ * crystals, 5-0 the quick bar's slots, the pages, clearing) and its switch (on: 1). Call with ElHost_GetPointer. */
+ELHOST_API void ElHost_GetSpellKeys(unsigned *keys, int *on);
 
 /* Play one AI buffer: interleaved 16-bit stereo, host order, at `rate` Hz. */
 ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate);

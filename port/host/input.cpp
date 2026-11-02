@@ -58,6 +58,19 @@ const ActionInfo actions[ACT_COUNT] = {
     { "zoom_out", "Zoom out", 0 },
     { "camera_reset", "Camera reset", 0 },
     { "map", "Area map (open/close)", 0 },
+    { "spell_fire", "Spell UI: fire crystal", 0 },
+    { "spell_earth", "Spell UI: earth crystal", 0 },
+    { "spell_water", "Spell UI: water crystal", 0 },
+    { "spell_wind", "Spell UI: wind crystal", 0 },
+    { "slot_1", "Quick bar: slot 1", 0 },
+    { "slot_2", "Quick bar: slot 2", 0 },
+    { "slot_3", "Quick bar: slot 3", 0 },
+    { "slot_4", "Quick bar: slot 4", 0 },
+    { "slot_5", "Quick bar: slot 5", 0 },
+    { "slot_6", "Quick bar: slot 6", 0 },
+    { "page_prev", "Quick bar: page before", 0 },
+    { "page_next", "Quick bar: page after", 0 },
+    { "spell_clear", "Spell UI: take the elements back", 0 },
 };
 
 // The camera keys' turn per tick, in mouse counts (port/p0/mouse_camera.c: 0.006 rad a count across, 0.004 up
@@ -84,7 +97,8 @@ constexpr float DRAG_START = 3.0f;
 constexpr uint64_t CURSOR_IDLE_MS = 3000;
 bool pointer_known, pointer_inside = true;
 float pointer_x, pointer_y; // window coordinates (SDL's)
-int left_clicks, right_clicks;
+int left_clicks, right_clicks, left_ups;
+unsigned spell_keys;        // the spell UI's keys pressed since the last read (port/spell_ui.h)
 int drag_button;            // the look-hold mouse button pressed (0: none)
 bool drag_started;
 float drag_dx, drag_dy;     // its motion before the drag started
@@ -150,6 +164,11 @@ void show_cursor(bool on) {
 
 // a press of `code`: the actions it is bound to that act on the press (the camera's edges)
 void pressed(int code) {
+    // the spell UI's keys: their bit in PORT_SPELLKEY_* order (crystals 0-3, slots 4-9, pages 10-11, clear 12)
+    for (int a = ACT_SPELL_FIRE; a <= ACT_SPELL_CLEAR; a++)
+        for (int s = 0; s < BIND_SLOTS; s++)
+            if (settings.controls.bind[a][s] == code && !menu::is_open() && !automap::full_open())
+                spell_keys |= 1u << (a - ACT_SPELL_FIRE);
     for (int a : { ACT_LOOK_TOGGLE, ACT_CAM_RESET, ACT_ZOOM_IN, ACT_ZOOM_OUT, ACT_MAP })
         for (int s = 0; s < BIND_SLOTS; s++)
             if (settings.controls.bind[a][s] == code) {
@@ -264,6 +283,8 @@ void pointer_event(const SDL_Event &e, bool was_looking) {
             cursor_moved_at = SDL_GetTicks();
         }
     }
+    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT && !menu::is_open() && capture_action < 0)
+        left_ups++; // (the spell UI's drags and clicks act when the button is let go)
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == drag_button) {
         drag_button = 0;
         drag_started = false;
@@ -423,6 +444,20 @@ Controls::Controls() {
     set(ACT_ZOOM_OUT, key(SDL_SCANCODE_MINUS), key(SDL_SCANCODE_KP_MINUS), 0);
     set(ACT_CAM_RESET, BIND_MOUSE | SDL_BUTTON_MIDDLE, key(SDL_SCANCODE_KP_5), 0);
     set(ACT_MAP, key(SDL_SCANCODE_M), 0, 0);
+    // the spell UI: 1-4 the crystals in their order on screen, 5-0 the quick bar's slots, , and . its pages, Esc
+    set(ACT_SPELL_FIRE, key(SDL_SCANCODE_1), 0, 0);
+    set(ACT_SPELL_EARTH, key(SDL_SCANCODE_2), 0, 0);
+    set(ACT_SPELL_WATER, key(SDL_SCANCODE_3), 0, 0);
+    set(ACT_SPELL_WIND, key(SDL_SCANCODE_4), 0, 0);
+    set(ACT_SLOT_1, key(SDL_SCANCODE_5), 0, 0);
+    set(ACT_SLOT_2, key(SDL_SCANCODE_6), 0, 0);
+    set(ACT_SLOT_3, key(SDL_SCANCODE_7), 0, 0);
+    set(ACT_SLOT_4, key(SDL_SCANCODE_8), 0, 0);
+    set(ACT_SLOT_5, key(SDL_SCANCODE_9), 0, 0);
+    set(ACT_SLOT_6, key(SDL_SCANCODE_0), 0, 0);
+    set(ACT_PAGE_PREV, key(SDL_SCANCODE_COMMA), 0, 0);
+    set(ACT_PAGE_NEXT, key(SDL_SCANCODE_PERIOD), 0, 0);
+    set(ACT_SPELL_CLEAR, key(SDL_SCANCODE_ESCAPE), 0, 0);
 }
 
 const char *action_label(int a) { return a >= 0 && a < ACT_COUNT ? actions[a].label : ""; }
@@ -637,8 +672,8 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
     *x = *y = 0.0f;
     *width = 0;
     *flags = 0;
-    const int left = left_clicks, right = right_clicks;
-    left_clicks = right_clicks = 0;
+    const int left = left_clicks, right = right_clicks, up = left_ups;
+    left_clicks = right_clicks = left_ups = 0;
     if (!settings.controls.mouse_menus || !pointer_known || !pointer_inside || !focused() || menu::is_open() ||
         automap::full_open() || looking() || !window() || !renderer()) // (the open map has the mouse)
         return;
@@ -665,7 +700,14 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
     *x = u;
     *y = v;
     *width = w1;
-    *flags = 1 | (cursor_visible ? 2 : 0) | (left ? 4 : 0) | (right ? 8 : 0);
+    *flags = 1 | (cursor_visible ? 2 : 0) | (left ? 4 : 0) | (right ? 8 : 0) | (mouse_buttons[SDL_BUTTON_LEFT] ? 16 : 0) |
+             (up ? 32 : 0);
+}
+
+void input_spell_keys(unsigned *keys, int *on) {
+    *keys = menu::is_open() ? 0 : spell_keys;
+    spell_keys = 0;
+    *on = settings.controls.spell_ui ? 1 : 0;
 }
 
 void input_shutdown() {

@@ -178,6 +178,8 @@ extern "C" ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int
     input_pointer(x, y, width, flags);
 }
 
+extern "C" ELHOST_API void ElHost_GetSpellKeys(unsigned *keys, int *on) { input_spell_keys(keys, on); }
+
 extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate) {
     audio_queue(samples, bytes, rate);
 }

@@ -35,6 +35,8 @@ enum {
     PORT_POINTER_SHOWN = 2,  /* the OS cursor is shown (hover highlights) */
     PORT_POINTER_LEFT = 4,   /* a left click since the last read */
     PORT_POINTER_RIGHT = 8,  /* a right click (pressed and let go without a drag) since the last read */
+    PORT_POINTER_HELD = 16,  /* the left button is down now (the spell UI's drags) */
+    PORT_POINTER_UP = 32,    /* the left button was let go since the last read */
 };
 
 /* Tags the HUD asks about (Port_MouseHoverTag) to draw a hover highlight; other targets use 0. */
@@ -68,5 +70,14 @@ void Port_MousePointerSet(float x, float y, int width, int flags);
 void Port_MouseMenuRead(u16 *buttons, s8 *stick_x, s8 *stick_y);
 /* the Controller Pak manager runs (port/p0/stubs.c): its own screens (no frame drawing) */
 void Port_MousePakManager(int running);
+
+/* The spell UI (port/p0/spell_ui.c) reads the pointer before the menus do, takes the clicks it uses (so no target
+ * under its own panel or bar presses anything too) and mutes the targets of the game's spell panel it replaces. */
+void Port_MousePointerGet(float *x, float *y, int *flags);
+void Port_MousePointerTake(int flags);
+/* the pointer in an anchor's 320x240 units (PORT_MOUSE_*) */
+void Port_MouseToAnchor(int anchor, float *x, float *y);
+/* while on, Port_MouseTarget / Port_MouseTargetFn / Port_MouseBack name nothing */
+void Port_MouseMute(int on);
 
 #endif
