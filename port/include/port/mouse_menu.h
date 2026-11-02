@@ -77,6 +77,10 @@ void Port_MousePointerGet(float *x, float *y, int *flags);
 void Port_MousePointerTake(int flags);
 /* the pointer in an anchor's 320x240 units (PORT_MOUSE_*) */
 void Port_MouseToAnchor(int anchor, float *x, float *y);
+/* The game shows a screen the pointer is for: the pause and save menus, the title, the Controller Pak manager, and
+ * in play the item menu, a text window, the spell input (the spell panel) and the element allocation. The host turns
+ * mouse look off while one is shown (ElHost_SetScreen). */
+int Port_MouseScreenOpen(void);
 /* while on, Port_MouseTarget / Port_MouseTargetFn / Port_MouseBack name nothing */
 void Port_MouseMute(int on);
 

@@ -120,7 +120,7 @@ typedef struct Spell {
     u8 dirs[3];
 } Spell;
 
-enum { T_NONE, T_PLATE, T_CRYSTAL, T_NEXT, T_SLOT, T_DOT, T_BAR, T_PANEL };
+enum { T_NONE, T_PLATE, T_CRYSTAL, T_NEXT, T_SLOT, T_DOT, T_BAR };
 enum { I_NONE, I_CRYSTAL, I_BACK, I_CAST };
 
 static struct {
@@ -347,6 +347,11 @@ static void press(u16 *buttons, u16 b, const char *why) {
                count_now());
 }
 
+/* The one place the UI casts: A, which the game takes as the controller's (Player_HandleSpellInput: the spell on the
+ * plate, with the game's own aim and target rules). The plate's click, the quick bar's last step and (later) a click
+ * on the battlefield to aim all come here (docs/SPELL_UI.md "Aiming"). */
+static void cast_press(u16 *buttons, const char *why) { press(buttons, 0x8000, why); }
+
 static void macro_start(const Spell *s, int cast) {
     S.macro = 1;
     S.macro_spell = *s;
@@ -373,7 +378,7 @@ static void macro_step(u16 *buttons) {
         /* A went in: cast (the input closed), or pressed again once if a read missed it */
         if (!building()) macro_end("cast");
         else if (++S.macro_tries > 2) macro_end("refused");
-        else press(buttons, 0x8000, "slot-cast-again");
+        else cast_press(buttons, "slot-cast-again");
         return;
     }
     if (!ui_live()) {
@@ -401,7 +406,7 @@ static void macro_step(u16 *buttons) {
         }
         S.macro_a_sent = 1;
         S.macro_tries = 0;
-        press(buttons, 0x8000, "slot-cast");
+        cast_press(buttons, "slot-cast");
     } else {
         macro_end(t->len ? "built" : "cleared");
     }
@@ -418,6 +423,16 @@ int Port_SpellUiCast(void) {
     S.intent = I_CAST;
     macro_end("cast-asked");
     return 1;
+}
+
+/* Aiming (not done: docs/SPELL_UI.md "Aiming"): a left click on the battlefield, not on the panel or the bar, while a
+ * spell is ready on the plate (Port_SpellUiReady). It will turn the point clicked into the spell's direction and then
+ * cast (Port_SpellUiCast). Returns 1 when it took the click. For now it takes nothing: such a click does nothing (no
+ * cast on a battlefield click, spec Q7). */
+static int battlefield_click(float x, float y) {
+    (void)x;
+    (void)y;
+    return 0;
 }
 
 /* the slot under the pointer (page-relative) or -1, in LEFT units */
@@ -670,6 +685,8 @@ void Port_SpellUiRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         S.intent = I_BACK;
         macro_end("right");
     }
+    /* a click on the battlefield (none of the UI's) while a spell is ready on the plate: aiming's hook */
+    if (left && over == T_NONE && Port_SpellUiReady() >= 0 && battlefield_click(S.px, S.py)) take |= PORT_POINTER_LEFT;
     if (over != T_NONE) take |= PORT_POINTER_LEFT | PORT_POINTER_UP;
     Port_MousePointerTake(take);
 
@@ -694,7 +711,7 @@ void Port_SpellUiRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         S.intent = I_NONE;
         if (what == I_CRYSTAL && ui_live() && count_now() < 3) press(buttons, c_button[a & 3], "element");
         else if (what == I_BACK && building()) press(buttons, 0x4000, "back");
-        else if (what == I_CAST && Port_SpellUiReady() >= 0) press(buttons, 0x8000, "cast");
+        else if (what == I_CAST && Port_SpellUiReady() >= 0) cast_press(buttons, "cast");
     } else if (S.macro) {
         macro_step(buttons);
     }
@@ -713,7 +730,6 @@ enum {
     ART_EMPTY_S = 0, ART_EMPTY_T = 21,    /* 11x11 */
     ART_PIP_S = 12, ART_PIP_T = 21,       /* 5x5 cells, element 0..3 then grey */
     ART_PLUS_S = 40, ART_PLUS_T = 21,     /* 5x5 */
-    ART_DOT_S = 46, ART_DOT_T = 21,       /* 3x3 round dot (the page dots) */
 };
 static u16 art[ART_W * ART_H];
 static int art_made;
@@ -776,9 +792,6 @@ static void make_art(void) {
         art_put(ART_PLUS_S + 2, ART_PLUS_T + i, rgba5551(0x6B, 0x2A, 0x1A, 255));
         art_put(ART_PLUS_S + i, ART_PLUS_T + 2, rgba5551(0x6B, 0x2A, 0x1A, 255));
     }
-    for (int y = 0; y < 3; y++)
-        for (int x = 0; x < 3; x++)
-            if (!((x == 0 || x == 2) && (y == 0 || y == 2)) || 1) art_put(ART_DOT_S + x, ART_DOT_T + y, white);
 }
 
 /* the drawing's own display list (thrown away: the native core has what it needs as the commands are made) */
@@ -1173,6 +1186,13 @@ static void draw_bar(int live_now) {
     }
 }
 
+/* A spell's description for the name box (spec Q9: the game has none; when they are written, one line each, in the
+ * HUD font, comes from here). NULL: the box has no description line. */
+static const u8 *spell_description(u32 id) {
+    (void)id;
+    return NULL;
+}
+
 /* the name box over the bar: the kept spell's name, its gems and its MP ("save here": the spell in and its slot) */
 static void draw_tip(void) {
     u8 buf[48];
@@ -1204,7 +1224,9 @@ static void draw_tip(void) {
     s32 w = 6 + name_w + 8 + cost_w + 6, sub_w = sub ? text_width(sub) + 6 + 3 * 12 + 6 : 0;
     if (sub_w > w) w = sub_w;
     if (w < 100) w = 100;
-    const s32 h = 3 + 9 + 3 + 11 + 3;
+    const u8 *desc = spell_description(id);
+    const s32 h = 3 + 9 + 3 + 11 + 3 + (desc ? 11 : 0);
+    if (desc && text_width(desc) + 12 > w) w = text_width(desc) + 12;
     const s32 x = b.x, y = TIP_BOTTOM - h;
     const int saved = alpha_mul;
     alpha_mul = alpha_mul * S.tip_alpha / 255;
@@ -1218,11 +1240,11 @@ static void draw_tip(void) {
     digits(x + w - 6 - cost_w, y + 2, cost);
     {
         u8 mp[8];
-        text(x + w - 6 - 12, y + 3, (f & 1) ? hud_spell_label_palettes[1] : 0, ascii("MP", mp, sizeof mp));
+        text(x + w - 6 - 11, y + 3, (f & 1) ? hud_spell_label_palettes[1] : 0, ascii("MP", mp, sizeof mp));
     }
     for (int k = 0; k < show->len; k++) gem(show->dirs[k], x + 6 + k * 12, y + 15);
     if (sub) text(x + 6 + show->len * 12 + 4, y + 16, (st == 'c' || !s->len) ? 0 : hud_spell_label_palettes[1], sub);
-    /* (a description line goes here when the spells get them: docs/SPELL_UI.md) */
+    if (desc) text(x + 6, y + 29, 0, desc);
     alpha_mul = saved;
 }
 

@@ -93,6 +93,12 @@ ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int *flags);
  * crystals, 5-0 the quick bar's slots, the pages, clearing) and its switch (on: 1). Call with ElHost_GetPointer. */
 ELHOST_API void ElHost_GetSpellKeys(unsigned *keys, int *on);
 
+/* The game shows a screen that takes the pointer (its menus, a text window, the spell panel or spell input, the
+ * element allocation; port/mouse_menu.h Port_MouseScreenOpen), at each read before ElHost_GetCamera: mouse look
+ * turns off when one opens (the Tab toggle too, and a right drag does not start) and stays off once it closes
+ * (docs/CONTROLS.md "Mouse look and the game's screens"). */
+ELHOST_API void ElHost_SetScreen(int open);
+
 /* Play one AI buffer: interleaved 16-bit stereo, host order, at `rate` Hz. */
 ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t bytes, uint32_t rate);
 

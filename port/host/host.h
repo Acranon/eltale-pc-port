@@ -120,6 +120,8 @@ void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
 void input_camera(float *dx, float *dy, int *wheel, int *flags);
 // The menus' pointer (ElHost_GetPointer): where it is on the picture shown, and the clicks since the last call
 void input_pointer(float *x, float *y, int *width, int *flags);
+// The game shows a menu, a text window or the spell panel (ElHost_SetScreen, each read): no mouse look over it
+void input_screen(int open);
 // The spell UI's keys pressed since the last call (port/spell_ui.h PORT_SPELLKEY_*) and its switch
 void input_spell_keys(unsigned *keys, int *on);
 void input_shutdown();

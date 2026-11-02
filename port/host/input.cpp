@@ -81,6 +81,10 @@ constexpr float KEY_PITCH = 8.0f;
 bool keys[SDL_SCANCODE_COUNT];
 bool mouse_buttons[8];
 bool look_toggled;
+// No mouse look while the game shows a menu, a text window or the spell panel (the game says so each read:
+// input_screen). One opening turns mouse look off (the Tab toggle too) and blocks it until the screen is closed and
+// every mouse-look-hold key and button is let go: it never comes back by itself.
+bool screen_open, look_block;
 bool relative_on;
 float acc_dx, acc_dy, acc_wheel;
 int reset_clicks, zoom_steps; // edges since the last tick
@@ -175,13 +179,30 @@ void pressed(int code) {
                 if (menu::is_open()) continue;
                 if (a == ACT_MAP) { automap::toggle(); continue; }
                 if (automap::full_open() && a != ACT_LOOK_TOGGLE) continue; // (the open map has the mouse)
+                if (a == ACT_LOOK_TOGGLE && screen_open) continue; // (no mouse look over a menu or the spell panel)
                 if (a == ACT_LOOK_TOGGLE) look_toggled = !look_toggled;
                 else if (a == ACT_CAM_RESET) reset_clicks++;
                 else zoom_steps += a == ACT_ZOOM_IN ? 1 : -1;
             }
 }
 
-bool looking() { return (look_toggled || look_held()) && focused() && !menu::is_open() && !automap::full_open(); }
+bool looking() {
+    return (look_toggled || look_held()) && focused() && !menu::is_open() && !automap::full_open() && !look_block;
+}
+
+// a mouse-look-hold binding is down (a button whether dragged or not)
+bool look_hold_down() {
+    for (int s = 0; s < BIND_SLOTS; s++) {
+        const int code = settings.controls.bind[ACT_LOOK_HOLD][s];
+        if (code && code_held(code)) return true;
+    }
+    return false;
+}
+
+// the block ends once the screen is closed and the hold is let go: the player turns mouse look on again
+void update_look_block() {
+    if (look_block && !screen_open && !look_hold_down()) look_block = false;
+}
 
 // The cursor is captured (relative mode) while the mouse turns the camera. Never with a hidden window (tests):
 // the desktop's mouse is not ours to take.
@@ -289,7 +310,7 @@ void pointer_event(const SDL_Event &e, bool was_looking) {
         drag_button = 0;
         drag_started = false;
     }
-    if (e.type == SDL_EVENT_MOUSE_MOTION && drag_button && !drag_started) {
+    if (e.type == SDL_EVENT_MOUSE_MOTION && drag_button && !drag_started && !look_block) {
         drag_dx += e.motion.xrel;
         drag_dy += e.motion.yrel;
         if (std::fabs(drag_dx) + std::fabs(drag_dy) > DRAG_START) drag_started = true;
@@ -611,8 +632,29 @@ void input_test_pump() {
 // The keyboard and the mouse's buttons by settings.controls; the controller's left stick and D-pad, its
 // buttons by settings.controls (by default: A (south) A, X (west) B, left trigger Z, Start, shoulders L/R,
 // right stick the C buttons).
+void input_screen(int open) {
+    if (open && !screen_open) {
+        if (looking()) {
+            show_cursor(true); // (the pointer is back to point and click)
+            cursor_moved_at = SDL_GetTicks();
+        }
+        look_toggled = false;
+        look_block = true;
+        drag_started = false;
+    }
+    screen_open = open != 0;
+}
+
 void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y) {
     pad_reads++;
+    update_look_block();
+    {
+        static int was = -1;
+        static const bool log = std::getenv("ELTALE_MOUSE_LOG") != nullptr;
+        const int now = looking() ? 1 : 0;
+        if (log && now != was) std::fprintf(stderr, "P1_HOST_LOOK %s read=%ld screen=%d\n", now ? "on" : "off", pad_reads, screen_open ? 1 : 0);
+        was = now;
+    }
     update_capture();
     // the cursor: shown with the F1 menu; hidden in mouse look (relative mode hides it) and after a while still
     if (menu::is_open()) show_cursor(true);

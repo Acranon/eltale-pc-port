@@ -138,6 +138,11 @@ static void to_anchor(int anchor, float *x, float *y) {
 
 void Port_MouseToAnchor(int anchor, float *x, float *y) { to_anchor(anchor, x, y); }
 
+int Port_MouseScreenOpen(void) {
+    if (pak_running || core_game_mode == 2 || core_game_mode == 3 || core_game_mode == 4) return 1;
+    return core_game_mode == 1 && (core_flags & 0xF) != 0;
+}
+
 void Port_MousePointerGet(float *x, float *y, int *flags) {
     *x = ptr_x;
     *y = ptr_y;

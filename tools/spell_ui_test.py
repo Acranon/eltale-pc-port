@@ -132,6 +132,49 @@ CASES = [
 ]
 
 
+# The host's whole path in a hidden window (ELTALE_INPUT_TEST: SDL's own events by pad read, nothing reaches the
+# desktop; 640x480, 4:3: a picture unit is 2 window pixels), with mouse look: Tab turns it on (the view turns), the
+# key 3 opens the panel (water; while mouse look is on the pointer is the camera's, so a key or a C button opens it) and
+# mouse look goes off; a click on the plate under earth works; a right drag there is B (undo) and never turns the view;
+# a click on the spell's plate casts (on the release) and the panel closes; then mouse motion: mouse look stays off.
+WINDOW_EVENTS = ["3 key_down Return", "5 key_up Return",
+                 "110 key_down Tab", "112 key_up Tab", "115 motion 20 0",
+                 "120 key_down 3", "122 key_up 3",
+                 "140 pointer 247 321", "150 mouse_down left", "152 mouse_up left",
+                 "160 mouse_down right", "162 motion 30 0", "164 motion 30 0", "166 mouse_up right",
+                 "170 mouse_down left", "172 mouse_up left",
+                 "175 pointer 320 220", "184 mouse_down left", "186 mouse_up left",
+                 "200 motion 40 0", "205 motion 40 0"]
+WINDOW_EXPECT = [("P1_SPELLUI_PRESS", "buttons=0004 why=element"), ("P1_SPELLUI_PRESS", "buttons=0002 why=element"), ("P1_SPELLUI_STATE", "count=2 dirs=21"),
+                 ("P1_SPELLUI_PRESS", "buttons=4000 why=back"), ("P1_SPELLUI_STATE", "count=1 dirs=2"),
+                 ("P1_SPELLUI_PRESS", "buttons=0002 why=element"), ("P1_SPELLUI_PRESS", "buttons=8000 why=cast"),
+                 ("P1_SPELLUI_STATE", "count=0 .* mp=28")]
+
+
+def window_case(args, work: Path, saves: Path):
+    d = work / "window"
+    if d.exists():
+        shutil.rmtree(d)
+    shutil.copytree(saves / "spells", d)
+    (d / "settings.json").write_text('{"version": 2, "audio": {"volume": 0}, "game": {"language": "en"}}\n')
+    (d / "in.events").write_text("\n".join(WINDOW_EVENTS) + "\n")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("ELTALE_")}
+    env.update(ELTALE_HIDDEN_WINDOW="1", ELTALE_DATA_DIR=str(d), ELTALE_INPUT_TEST=str(d / "in.events"),
+               ELTALE_QUICK_LOAD_AT="100", ELTALE_SPELLUI_LOG="1", ELTALE_MOUSE_LOG="1", ELTALE_WINDOW_SIZE="640x480",
+               ELTALE_WIDESCREEN="off")
+    p = subprocess.run([str(args.exe), "--window", "--fast", "--frames", "260", "--rom", str(args.rom)], env=env, cwd=d,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out = p.stdout.decode("utf-8", "replace")
+    (d / "log.txt").write_text(out)
+    problems = check_expect(WINDOW_EXPECT, out, "window")
+    # (the host's lines are on stderr, the game's on stdout: checked apart) mouse look: off at the start, on with Tab, off
+    # when the panel opens (screen=1), and not on again after it closed
+    looks = re.findall(r"P1_HOST_LOOK (on|off) read=\d+ screen=(\d)", out)
+    if looks != [("off", "1"), ("on", "0"), ("off", "1")]:
+        problems.append(f"window: mouse look went {looks} (wanted off, on, off when the panel opened, and no more)")
+    return problems
+
+
 def fnv(data: bytes) -> int:
     h = 0xCBF29CE484222325
     for c in data:
@@ -306,6 +349,12 @@ def main():
         status = "OK" if not problems else "FAIL"
         failed += bool(problems)
         print(f"SPELL_UI {case['name']} {status} audio={audio[0]} {got}")
+        for pr in problems:
+            print("    !", pr)
+    if not args.only or "window" in args.only.split(","):
+        problems = window_case(args, work, saves)
+        failed += bool(problems)
+        print(f"SPELL_UI window {'OK' if not problems else 'FAIL'}")
         for pr in problems:
             print("    !", pr)
     print("SPELL_UI_TEST " + ("OK" if not failed else f"FAIL ({failed})"))

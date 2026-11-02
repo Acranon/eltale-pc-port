@@ -134,11 +134,14 @@ void (*Port_LiveCamera)(float *dx, float *dy, int *wheel, int *flags);
 void (*Port_LivePointer)(float *x, float *y, int *width, int *flags);
 /* and the spell UI's keys since the last read (port/spell_ui.h PORT_SPELLKEY_*) and whether it is on */
 void (*Port_LiveSpellKeys)(unsigned *keys, int *on);
+/* and, first, whether a screen that takes the pointer is shown (no mouse look over it: port/mouse_menu.h) */
+void (*Port_LiveScreen)(int open);
 
 static void update_camera(void) {
     float dx = 0.0f, dy = 0.0f;
     int wheel = 0, flags = 0;
     if (Port_LiveCamera && row_count == 0 && mouse_count == 0) {
+        if (Port_LiveScreen) Port_LiveScreen(Port_MouseScreenOpen());
         Port_LiveCamera(&dx, &dy, &wheel, &flags);
         if (Port_LivePointer) {
             float x = 0.0f, y = 0.0f;

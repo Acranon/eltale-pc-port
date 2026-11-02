@@ -24,6 +24,7 @@ extern void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 extern void (*Port_LiveCamera)(float *dx, float *dy, int *wheel, int *flags);
 extern void (*Port_LivePointer)(float *x, float *y, int *width, int *flags);
 extern void (*Port_LiveSpellKeys)(unsigned *keys, int *on);
+extern void (*Port_LiveScreen)(int open);
 extern void (*Port_NativeTaskHook)(unsigned frame);
 extern void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
 extern void (*Port_PaceWaitHook)(uint64_t ns);
@@ -214,6 +215,7 @@ int Port_WindowStart(void) {
     h_camera = (void (*)(float *, float *, int *, int *))SYM("ElHost_GetCamera");
     h_pointer = (void (*)(float *, float *, int *, int *))SYM("ElHost_GetPointer");
     h_spell_keys = (void (*)(unsigned *, int *))SYM("ElHost_GetSpellKeys");
+    Port_LiveScreen = (void (*)(int))SYM("ElHost_SetScreen");
     h_audio = (void (*)(const int16_t *, uint32_t, uint32_t))SYM("ElHost_QueueAudio");
     h_shutdown = (void (*)(void))SYM("ElHost_Shutdown");
     h_render_api = (const void *(*)(void))SYM("ElHost_RenderApi");
