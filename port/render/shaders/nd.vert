@@ -14,6 +14,9 @@ layout(location = 1) out vec2 v_tc;
 layout(location = 2) noperspective out vec2 v_tc_affine;
 layout(location = 3) out float v_far;
 layout(location = 4) out vec2 v_zw;
+// v11 overlays' rim (RDV_RIM): the world place and normal, per pixel (nd.frag); 0 0 0 normal otherwise
+layout(location = 5) out vec3 v_world;
+layout(location = 6) out vec3 v_normal;
 
 float s8(uint c, int shift) {
     return float(int(c << (24 - shift)) >> 24);
@@ -54,5 +57,7 @@ void main() {
     v_tc = tc;
     v_tc_affine = tc;
     v_far = clip.w - z;
+    v_world = vec3(v.x, v.y, v.z);
+    v_normal = (v.flags & RDV_RIM) != 0u ? vec3(v.s, v.t, uintBitsToFloat(v.scale)) : vec3(0.0);
     gl_Position = vec4(clip.x, -clip.y, d.fog.z, clip.w);
 }

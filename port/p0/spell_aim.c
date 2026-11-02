@@ -11,7 +11,9 @@
  *   later: placement, launch, target choice, repeats) then reads that facing, as if the player had turned.
  * - Port_SpellAimDraw, in Hud_Draw: the preview as world-space overlays (the native renderer's overlay triangles,
  *   render.h v10): areas on the ground; for every moving spell the tunnel where its hit test can touch a monster, a
- *   thin arc where it flies out of reach, and a homing bolt's cone; a ring under each monster that would be hit.
+ *   thin arc where it flies out of reach, and a homing bolt's cone; a ring under each monster that would be hit. Over
+ *   them (F1 "3D spell paths", render.h v11's rim) each moving spell's hit volume in 3D: the see-through tube where a
+ *   monster's middle is touched (tube_reach), sorted back to front.
  *
  * The copy of the spell code (simulate): Magic_CreateCastEffect, the place, select, move and find handlers and the
  * repeats of Magic_UpdateEffects, with the same expressions (the same float and double steps) on a local copy of the
@@ -67,6 +69,15 @@ static int camera_enabled(void) {
     return env;
 }
 
+/* the 3D paths (docs/SPELL_AIM.md "3D paths"): the host's bit 8 (F1 "3D spell paths"), headless
+ * ELTALE_SPELL_AIM_TUBES=0|1 (default 1) */
+static int tubes_enabled(void) {
+    static int env = -2;
+    if (host_on >= 0) return (host_on & 8) != 0;
+    if (env == -2) env = getenv("ELTALE_SPELL_AIM_TUBES") ? atoi(getenv("ELTALE_SPELL_AIM_TUBES")) != 0 : 1;
+    return env;
+}
+
 void Port_SpellAimSwitch(int on) {
     if (on >= 0) host_on = on;
 }
@@ -77,6 +88,12 @@ static int log_level(void) {
     return log_on;
 }
 static unsigned long long vi(void) { return (unsigned long long)Port_OsViCount(); }
+/* microseconds, for P1_AIM_COST (clock() counts in milliseconds on Windows) */
+static double now_us(void) {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
+}
 
 /* ---- the spell's kind (from its SpellDef: docs/SPELL_AIM.md "Kinds") ---------------------------------------------- */
 
@@ -216,6 +233,7 @@ typedef struct Preview {
     float margin[MAX_ENEMIES]; /* the nearest each came to the hit test's reach (its distance less extent + radius) */
     Cone cone[MAX_CASTS];    /* (homing bolts: cone_wanted) */
     float body_r;            /* the battle's smallest monster radius (the tunnel's sides: tunnel_run) */
+    float mid_r;             /* and its largest (the 3D paths: where a monster's middle is touched, tube_reach) */
 } Preview;
 
 static void sim_select(SimFx *p) {
@@ -776,9 +794,11 @@ static void simulate(u32 id, float yaw, Preview *out, int fresh) {
     if (out->kind == K_SELF || out->kind == K_RANDOM) return;
     Model models[MAX_MODELS];
     const int nm = battle_models(models);
-    out->body_r = models[0].r;
-    for (int k = 1; k < nm; k++)
+    out->body_r = out->mid_r = models[0].r;
+    for (int k = 1; k < nm; k++) {
         if (models[k].r < out->body_r) out->body_r = models[k].r;
+        if (models[k].r > out->mid_r) out->mid_r = models[k].r;
+    }
     const int cones = cone_wanted(out->kind);
     if (cones) gcache_use(caster.y);
     cone_builds = 0;
@@ -868,6 +888,11 @@ static void simulate(u32 id, float yaw, Preview *out, int fresh) {
 
 static void build(const Preview *p);
 static int nverts;
+static void tube_build(const Preview *p);
+static int tube_sort(void);
+static void tube_forget(void);
+static void tube_resort(void);
+static int tube_planned(void);
 
 /* ---- the view the last picture was drawn with (for the pointer) -------------------------------------------------- */
 
@@ -1078,6 +1103,10 @@ static void log_preview(const char *tag, const Preview *p) {
     printf("\n");
 }
 
+static void tube_reach(const Preview *p, float *a, float *b);
+static int tube_bead(const Cast *c, int k);
+static int tube_wanted(int kind);
+
 /* the tunnels and cones as drawn (the tests check the game's hits against them): each cast's live places with their
  * disc (x, z, w; w <= 0 not drawn), and each cone's covered bearings (bin:nearest:furthest) */
 static void log_shapes(const Preview *p) {
@@ -1089,6 +1118,16 @@ static void log_shapes(const Preview *p) {
         for (int k = 1; k < c->path_n; k++)
             if (c->live[k] && c->w[k] > -1e8f) printf("%d:%.2f,%.2f,%.2f,%.2f;", k, c->path[k][0], c->path[k][1], c->path[k][2], c->w[k]);
         printf("\n");
+        if (tubes_enabled() && tube_wanted(p->kind)) {
+            /* the 3D path: the ellipsoids (half-axes a across, b up) round these places (docs/SPELL_AIM.md "3D paths") */
+            float a, b;
+            tube_reach(p, &a, &b);
+            printf("P1_AIM_TUBE vi=%llu spell=%d.%d cast=%d a=%.3f b=%.3f beads=", vi(), (int)(p->spell >> 8) & 0xF, (int)p->spell & 0xFF,
+                   n, a, b);
+            for (int k = 1; k < c->path_n; k++)
+                if (tube_bead(c, k)) printf("%d:%.3f,%.3f,%.3f;", k, c->path[k][0], c->path[k][1], c->path[k][2]);
+            printf("\n");
+        }
         const Cone *cn = &p->cone[n];
         if (!cn->ok) continue;
         printf("P1_AIM_CONE vi=%llu spell=%d.%d cast=%d start=%.2f,%.2f bins=%d r=", vi(), (int)(p->spell >> 8) & 0xF,
@@ -1106,8 +1145,8 @@ static void log_enemies(void) {
         if (alive(i)) {
             float sx = -1.0f, sy = -1.0f;
             if (view.ok) project(enemy(i)->x, middle_y(enemy(i)), enemy(i)->z, &sx, &sy);
-            printf(" e%d=%.2f,%.2f,%.2f,r%.2f,k%d,s%.0f,%.0f", i, enemy(i)->x, enemy(i)->y, enemy(i)->z, radius_of(enemy(i)),
-                   enemy(i)->stats->unk0, sx, sy);
+            printf(" e%d=%.2f,%.2f,%.2f,r%.2f,k%d,s%.0f,%.0f,m%.2f", i, enemy(i)->x, enemy(i)->y, enemy(i)->z, radius_of(enemy(i)),
+                   enemy(i)->stats->unk0, sx, sy, middle_y(enemy(i)));
         }
     printf("\n");
 }
@@ -1344,9 +1383,9 @@ void Port_SpellAimApply(struct Player *p, struct Actor *a) {
         if (log_level() >= 2) {
             /* what a preview costs (each read while aiming works one out) */
             static Preview t;
-            const clock_t t0 = clock();
+            const double t0 = now_us();
             for (int k = 0; k < 20; k++) simulate(A.pending_spell, a->rot, &t, 1);
-            const clock_t t1 = clock();
+            const double t1 = now_us();
             /* and a kept cone turned by a facing 0.7 off and back, against the cone built (the slope's difference) */
             simulate(A.pending_spell, a->rot + 0.7f, &t, 1);
             simulate(A.pending_spell, a->rot, &t, 0);
@@ -1357,15 +1396,34 @@ void Port_SpellAimApply(struct Player *p, struct Actor *a) {
                         const float d = fabsf(cast.cone[n].rmax[i] - t.cone[n].rmax[i]);
                         if (d > worst) worst = d;
                     }
-            const clock_t t2 = clock();
+            const double t2 = now_us();
             for (int k = 0; k < 20; k++) simulate(A.pending_spell, a->rot + 0.01f * k, &t, 0);
-            const clock_t t3 = clock();
+            const double t3 = now_us();
             /* and the drawing's triangles for the preview the pointer had */
             for (int k = 0; k < 20; k++) build(&A.preview);
-            printf("P1_AIM_COST spell=%d.%d built_us=%.0f turned_us=%.0f turned_off=%.2f draw_us=%.0f verts=%d\n",
-                   (int)(A.pending_spell >> 8) & 0xF, (int)A.pending_spell & 0xFF, (double)(t1 - t0) * 1e6 / CLOCKS_PER_SEC / 20.0,
-                   (double)(t3 - t2) * 1e6 / CLOCKS_PER_SEC / 20.0, worst, (double)(clock() - t3) * 1e6 / CLOCKS_PER_SEC / 20.0,
-                   nverts);
+            const double t4 = now_us();
+            /* and its 3D paths: made (as when the pointer moves) and sorted (each tick) */
+            int tube_tris = 0;
+            if (tube_wanted(A.preview.kind)) {
+                for (int k = 0; k < 20; k++) {
+                    tube_forget();
+                    tube_build(&A.preview);
+                }
+            }
+            const double t5 = now_us();
+            if (tube_wanted(A.preview.kind))
+                for (int k = 0; k < 20; k++) {
+                    tube_resort();
+                    tube_tris = tube_sort() / 3;
+                }
+            const double t6 = now_us();
+            tube_forget();
+            printf("P1_AIM_COST spell=%d.%d built_us=%.0f turned_us=%.0f turned_off=%.2f draw_us=%.0f verts=%d tube_us=%.0f "
+                   "tube_sort_us=%.0f tube_tris=%d tube_planned=%d\n",
+                   (int)(A.pending_spell >> 8) & 0xF, (int)A.pending_spell & 0xFF, (t1 - t0) / 20.0,
+                   (t3 - t2) / 20.0, worst, (t4 - t3) / 20.0,
+                   nverts, (t5 - t4) / 20.0, (t6 - t5) / 20.0,
+                   tube_tris, tube_planned());
         }
         log_shapes(&cast);
         log_enemies();
@@ -1691,6 +1749,373 @@ static void glow(int i, int count) {
     }
 }
 
+/* ---- the 3D paths (docs/SPELL_AIM.md "3D paths") ------------------------------------------------------------------ */
+
+/* Where a monster's middle is touched. Magic_FindTargetInRange hits a monster when sqrt(dx^2 + dz^2 + dy^2) is under
+ * extent + its radius, dx dz the ground distance from the effect to it and dy HALF the height from the effect to its
+ * middle (sim_distance). So round each place where the test runs, the monster's middle must be inside the ellipsoid
+ * with the horizontal half-axis a = extent + r and the vertical one b = 2a: the hit volume. With several kinds of
+ * monster the widest (r the largest: mid_r), as the tunnels take the widest. A 3D path is the union of those ellipsoids
+ * over the places where the test runs and some monster of the battle can be reached (tube_bead: the tunnel's beads,
+ * w > -1e8): its surface is where a monster's middle would have to be to be touched. (A monster of kind 2, whose
+ * height the test leaves out, is touched anywhere above or below its footprint's disc: the ground tunnel says it.) */
+static void tube_reach(const Preview *p, float *a, float *b) {
+    *a = spell_def(p->spell)->effect_extent + p->mid_r;
+    *b = 2.0f * *a;
+}
+
+static int tube_bead(const Cast *c, int k) { return k > 0 && k < c->path_n && c->live[k] && c->w[k] > -1e8f; }
+
+/* Each run of beads (places in a row where the test can touch a monster) is drawn as rings swept along its places: at
+ * each ring's place on the path, in the plane square to the path, the furthest each ray out from the path leaves one of
+ * the run's ellipsoids (the union's outline in that plane, as seen from the path), with the normal of that ellipsoid
+ * there. Past each end a cap closes on the end ellipsoid's tip. A run that does not move (a landed rock, Fire Bomb's
+ * blast) is its ellipsoid. Sparse beads (Homing Arrows) narrow between them: a string of beads, as the test runs. */
+#define TUBE_SEGS_MAX 24
+#define TUBE_RINGS_MAX 400
+#define TUBE_BUDGET 6000 /* triangles for all the paths together (before the ones under the ground are left out) */
+enum { MAX_TUBE_VERTS = 3 * 9000 };
+static ElRdVertex tube_v[MAX_TUBE_VERTS];
+static int tube_n;
+
+typedef struct TubeRing {
+    float p[TUBE_SEGS_MAX][3], n[TUBE_SEGS_MAX][3];
+    u8 below[TUBE_SEGS_MAX];
+} TubeRing;
+static TubeRing tube_rings[2];
+
+static void tube_vert(const float *p, const float *n, const u8 *col) {
+    ElRdVertex *v = &tube_v[tube_n++];
+    memset(v, 0, sizeof *v);
+    v->x = p[0], v->y = p[1], v->z = p[2];
+    v->s = n[0], v->t = n[1];
+    memcpy(v->scale, &n[2], sizeof n[2]);
+    memcpy(v->c, col, 4);
+    v->flags = EL_RDV_SHADE | EL_RDV_RIM;
+}
+
+static void tube_tri(const float *p0, const float *n0, const float *p1, const float *n1, const float *p2, const float *n2,
+                     const u8 *col) {
+    if (tube_n + 3 > MAX_TUBE_VERTS) return;
+    /* (a cap's tip: two corners in one place) */
+    float e1[3], e2[3], cr[3];
+    for (int k = 0; k < 3; k++) e1[k] = p1[k] - p0[k], e2[k] = p2[k] - p0[k];
+    cr[0] = e1[1] * e2[2] - e1[2] * e2[1], cr[1] = e1[2] * e2[0] - e1[0] * e2[2], cr[2] = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2] < 1e-8f) return;
+    tube_vert(p0, n0, col), tube_vert(p1, n1, col), tube_vert(p2, n2, col);
+}
+
+/* the ellipsoid's normal at p (its gradient, normalized) */
+static void ell_normal(const float *p, const float *c, float a, float b, float *n) {
+    n[0] = (p[0] - c[0]) / (a * a), n[1] = (p[1] - c[1]) / (b * b), n[2] = (p[2] - c[2]) / (a * a);
+    const float l = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (l > 1e-12f) n[0] /= l, n[1] /= l, n[2] /= l;
+    else n[0] = 0.0f, n[1] = 1.0f, n[2] = 0.0f;
+}
+
+/* under the ground there (left out: the ground hides it) */
+static int tube_below(const float *p) { return p[1] < ground_cached(p[0], p[2]) - 1.5f; }
+
+/* how far the ellipsoid reaches along the unit direction u from its middle */
+static float ell_support(const float *u, float a, float b) { return sqrtf(a * a * (u[0] * u[0] + u[2] * u[2]) + b * b * u[1] * u[1]); }
+
+static void ellipsoid(const float *c, float a, float b, int segs, const u8 *col) {
+    const int lat = segs / 2 < 6 ? 6 : segs / 2;
+    for (int i = 0; i < lat; i++) {
+        TubeRing *r[2] = { &tube_rings[0], &tube_rings[1] };
+        for (int h = 0; h < 2; h++) {
+            const float ph = -0.5f * PI_F + PI_F * (float)(i + h) / lat, cp = cosf(ph), sp = sinf(ph);
+            for (int m = 0; m < segs; m++) {
+                const float th = 2.0f * PI_F * m / segs;
+                float *p = r[h]->p[m];
+                p[0] = c[0] + a * cp * sinf(th), p[1] = c[1] + b * sp, p[2] = c[2] + a * cp * cosf(th);
+                ell_normal(p, c, a, b, r[h]->n[m]);
+                r[h]->below[m] = (u8)tube_below(p);
+            }
+        }
+        for (int m = 0; m < segs; m++) {
+            const int q = (m + 1) % segs;
+            if (r[0]->below[m] && r[0]->below[q] && r[1]->below[m] && r[1]->below[q]) continue;
+            tube_tri(r[0]->p[m], r[0]->n[m], r[0]->p[q], r[0]->n[q], r[1]->p[q], r[1]->n[q], col);
+            tube_tri(r[0]->p[m], r[0]->n[m], r[1]->p[q], r[1]->n[q], r[1]->p[m], r[1]->n[m], col);
+        }
+    }
+}
+
+/* the run's path: its distinct places, how far along each is, and the caps' directions and lengths */
+static struct {
+    int n;
+    float p[MAX_PATH][3];
+    float at[MAX_PATH];
+    float d0[3], d1[3], e0, e1;
+} axis;
+
+/* a place on the run's path s along it (before 0 and past its end: on along the end's direction) */
+static void axis_at(float s, float *out) {
+    if (s <= 0.0f) {
+        for (int k = 0; k < 3; k++) out[k] = axis.p[0][k] + axis.d0[k] * s;
+        return;
+    }
+    const float L = axis.at[axis.n - 1];
+    if (s >= L) {
+        for (int k = 0; k < 3; k++) out[k] = axis.p[axis.n - 1][k] + axis.d1[k] * (s - L);
+        return;
+    }
+    int i = 0;
+    while (i + 2 < axis.n && axis.at[i + 1] < s) i++;
+    const float t = (s - axis.at[i]) / (axis.at[i + 1] - axis.at[i]);
+    for (int k = 0; k < 3; k++) out[k] = axis.p[i][k] + (axis.p[i + 1][k] - axis.p[i][k]) * t;
+}
+
+/* the places along the run where its rings go (caps closing in on the tips: their sides are steep there) */
+static int tube_stations(float step, int segs, float *st, int max) {
+    const int cap = segs / 4 < 3 ? 3 : segs / 4;
+    int n = 0;
+    for (int j = 0; j < cap && n < max; j++) st[n++] = -axis.e0 * cosf(0.5f * PI_F * j / cap);
+    for (int i = 0; i + 1 < axis.n; i++) {
+        const float len = axis.at[i + 1] - axis.at[i];
+        const int parts = (int)ceilf(len / step);
+        for (int q = 0; q < parts && n < max; q++) st[n++] = axis.at[i] + len * q / parts;
+    }
+    const float L = axis.at[axis.n - 1];
+    if (n < max) st[n++] = L;
+    for (int j = cap - 1; j >= 0 && n < max; j--) st[n++] = L + axis.e1 * cosf(0.5f * PI_F * j / cap);
+    return n;
+}
+
+static void norm3(float *v) {
+    const float l = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (l > 1e-9f) v[0] /= l, v[1] /= l, v[2] /= l;
+}
+
+/* the run's distinct places (axis); 0 when it does not move */
+static int tube_axis(const Cast *c, int k0, int k1, float a, float b) {
+    axis.n = 0;
+    for (int k = k0; k <= k1; k++) {
+        const float *q = c->path[k];
+        if (axis.n) {
+            const float *l = axis.p[axis.n - 1];
+            const float d = sqrtf((q[0] - l[0]) * (q[0] - l[0]) + (q[1] - l[1]) * (q[1] - l[1]) + (q[2] - l[2]) * (q[2] - l[2]));
+            if (d < 0.05f) continue;
+            axis.at[axis.n] = axis.at[axis.n - 1] + d;
+        } else {
+            axis.at[0] = 0.0f;
+        }
+        memcpy(axis.p[axis.n++], q, sizeof axis.p[0]);
+    }
+    if (axis.n < 2) return 0;
+    for (int k = 0; k < 3; k++) axis.d0[k] = axis.p[1][k] - axis.p[0][k], axis.d1[k] = axis.p[axis.n - 1][k] - axis.p[axis.n - 2][k];
+    norm3(axis.d0), norm3(axis.d1);
+    axis.e0 = ell_support(axis.d0, a, b), axis.e1 = ell_support(axis.d1, a, b);
+    return 1;
+}
+
+/* the ring step along a cast's path and its segments round: the beads' ellipsoids overlap a lot (the lines, Rock), a
+ * ring every a / 2.2; far apart (Homing Arrows: 12 a tick, a 7.6), four a bead so its necks show */
+static void tube_detail(const Cast *c, float a, float *step, int *segs) {
+    float len = 0.0f;
+    int beads = 0;
+    for (int k = 1; k < c->path_n; k++)
+        if (tube_bead(c, k) && tube_bead(c, k - 1)) {
+            const float *p = c->path[k], *q = c->path[k - 1];
+            len += sqrtf((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]));
+            beads++;
+        }
+    const float gap = beads ? len / beads : 0.0f;
+    *step = a / 2.2f;
+    if (gap * gap / (8.0f * a) > 0.3f && gap / 4.0f < *step) *step = gap / 4.0f;
+    if (*step < 0.75f) *step = 0.75f;
+    *segs = (int)(a * 1.4f);
+    *segs = *segs < 14 ? 14 : *segs > TUBE_SEGS_MAX ? TUBE_SEGS_MAX : *segs;
+}
+
+static float tube_st[TUBE_RINGS_MAX];
+
+/* the rings of one run (k0..k1, beads all) */
+static void tube_run(const Cast *c, int k0, int k1, float a, float b, float step, int segs, const u8 *col) {
+    if (!tube_axis(c, k0, k1, a, b)) {
+        ellipsoid(c->path[k0], a, b, segs, col);
+        return;
+    }
+    const int ns = tube_stations(step, segs, tube_st, TUBE_RINGS_MAX);
+    const float L = axis.at[axis.n - 1], hs = a * 0.5f;
+    float nrm[3] = { 0, 0, 0 }, tan_prev[3] = { 0, 0, 0 };
+    for (int j = 0; j < ns; j++) {
+        const float s = tube_st[j];
+        float S[3], A[3], B[3], T[3];
+        axis_at(s, S);
+        /* the direction: smoothed over half a reach (a sharp turn would fold the rings), the caps' own at the ends */
+        if (s <= 0.0f) memcpy(T, axis.d0, sizeof T);
+        else if (s >= L) memcpy(T, axis.d1, sizeof T);
+        else {
+            axis_at(s - hs < 0.0f ? 0.0f : s - hs, A), axis_at(s + hs > L ? L : s + hs, B);
+            for (int k = 0; k < 3; k++) T[k] = B[k] - A[k];
+            norm3(T);
+        }
+        /* the ring's frame: up first, then carried along (no twist) */
+        if (j == 0) {
+            const float up[3] = { 0, 1, 0 }, side[3] = { 1, 0, 0 };
+            const float *ref = fabsf(T[1]) > 0.95f ? side : up;
+            const float d = ref[0] * T[0] + ref[1] * T[1] + ref[2] * T[2];
+            for (int k = 0; k < 3; k++) nrm[k] = ref[k] - d * T[k];
+        } else {
+            const float d = nrm[0] * T[0] + nrm[1] * T[1] + nrm[2] * T[2];
+            for (int k = 0; k < 3; k++) nrm[k] -= d * T[k];
+            if (nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2] < 1e-6f) /* (turned right round: the old one's way) */
+                for (int k = 0; k < 3; k++) nrm[k] = tan_prev[k];
+        }
+        norm3(nrm);
+        memcpy(tan_prev, T, sizeof T);
+        const float bin[3] = { T[1] * nrm[2] - T[2] * nrm[1], T[2] * nrm[0] - T[0] * nrm[2], T[0] * nrm[1] - T[1] * nrm[0] };
+        TubeRing *r = &tube_rings[j & 1];
+        for (int m = 0; m < segs; m++) {
+            const float th = 2.0f * PI_F * m / segs, ct = cosf(th), sn = sinf(th);
+            const float u[3] = { ct * nrm[0] + sn * bin[0], ct * nrm[1] + sn * bin[1], ct * nrm[2] + sn * bin[2] };
+            /* the furthest the ray leaves one of the run's ellipsoids (near enough to reach it) */
+            float best = 0.0f;
+            int bi = -1;
+            for (int k = k0; k <= k1; k++) {
+                const float *cc = c->path[k];
+                const float ox = S[0] - cc[0], oy = S[1] - cc[1], oz = S[2] - cc[2];
+                if (ox * ox + oy * oy + oz * oz > b * b * 1.05f) continue;
+                const float q0[3] = { ox / a, oy / b, oz / a }, qd[3] = { u[0] / a, u[1] / b, u[2] / a };
+                const float AA = qd[0] * qd[0] + qd[1] * qd[1] + qd[2] * qd[2];
+                const float BB = q0[0] * qd[0] + q0[1] * qd[1] + q0[2] * qd[2];
+                const float CC = q0[0] * q0[0] + q0[1] * q0[1] + q0[2] * q0[2] - 1.0f;
+                const float disc = BB * BB - AA * CC;
+                if (disc < 0.0f) continue;
+                const float rho = (-BB + sqrtf(disc)) / AA;
+                if (rho > best) best = rho, bi = k;
+            }
+            float *p = r->p[m];
+            for (int k = 0; k < 3; k++) p[k] = S[k] + u[k] * best;
+            if (bi >= 0) ell_normal(p, c->path[bi], a, b, r->n[m]);
+            else {
+                const float sg = s < L * 0.5f ? -1.0f : 1.0f; /* (a tip, or between beads that do not meet) */
+                for (int k = 0; k < 3; k++) r->n[m][k] = T[k] * sg;
+            }
+            r->below[m] = (u8)tube_below(p);
+        }
+        if (j == 0) continue;
+        const TubeRing *r0 = &tube_rings[(j - 1) & 1], *r1 = r;
+        for (int m = 0; m < segs; m++) {
+            const int q = (m + 1) % segs;
+            if (r0->below[m] && r0->below[q] && r1->below[m] && r1->below[q]) continue;
+            tube_tri(r0->p[m], r0->n[m], r0->p[q], r0->n[q], r1->p[q], r1->n[q], col);
+            tube_tri(r0->p[m], r0->n[m], r1->p[q], r1->n[q], r1->p[m], r1->n[m], col);
+        }
+    }
+}
+
+/* each run of a cast's beads; how many triangles it would take (count: nothing is made) */
+static int tube_cast(const Cast *c, float a, float b, float step, int segs, const u8 *col, int count) {
+    int tris = 0;
+    for (int k = 1; k < c->path_n; k++) {
+        if (!tube_bead(c, k)) continue;
+        int e = k;
+        while (tube_bead(c, e + 1)) e++;
+        if (count) {
+            if (!tube_axis(c, k, e, a, b)) tris += 2 * segs * (segs / 2 < 6 ? 6 : segs / 2);
+            else tris += 2 * segs * (tube_stations(step, segs, tube_st, TUBE_RINGS_MAX) - 1);
+        } else {
+            tube_run(c, k, e, a, b, step, segs, col);
+        }
+        k = e;
+    }
+    return tris;
+}
+
+/* The tubes' triangles (tube_v, tube_n: unsorted), made again only when the preview's paths change */
+static struct {
+    int ok, kind, casts;
+    u32 spell;
+    float a;
+    Cast cast[MAX_CASTS];
+    int tris_planned;
+    int sorted;      /* tube_sorted holds them in order for sorted_eye */
+    float sorted_eye[3];
+} tube_kept;
+
+static void tube_forget(void) { tube_kept.ok = 0; }
+static void tube_resort(void) { tube_kept.sorted = 0; }
+static int tube_planned(void) { return tube_kept.tris_planned; }
+
+static int tube_wanted(int kind) { return kind == K_LINE || kind == K_LOB || kind == K_FAN || kind == K_HOMING; }
+
+static void tube_build(const Preview *p) {
+    float a, b;
+    tube_reach(p, &a, &b);
+    if (tube_kept.ok && tube_kept.kind == p->kind && tube_kept.spell == p->spell && tube_kept.casts == p->casts &&
+        tube_kept.a == a && !memcmp(tube_kept.cast, p->cast, sizeof(Cast) * (size_t)p->casts))
+        return;
+    tube_kept.ok = 1, tube_kept.kind = p->kind, tube_kept.spell = p->spell, tube_kept.casts = p->casts, tube_kept.a = a;
+    tube_kept.sorted = 0;
+    memcpy(tube_kept.cast, p->cast, sizeof(Cast) * (size_t)p->casts);
+    tube_n = 0;
+    if (!tube_wanted(p->kind)) return;
+    /* the detail, then coarser along the paths while all of them together would pass the budget */
+    float step[MAX_CASTS];
+    int segs[MAX_CASTS], total = 0;
+    for (int n = 0; n < p->casts; n++) {
+        if (!p->cast[n].made) continue;
+        tube_detail(&p->cast[n], a, &step[n], &segs[n]);
+        total += tube_cast(&p->cast[n], a, b, step[n], segs[n], NULL, 1);
+    }
+    for (int tries = 0; total > TUBE_BUDGET && tries < 6; tries++) {
+        const float f = (float)total / TUBE_BUDGET * 1.1f;
+        total = 0;
+        for (int n = 0; n < p->casts; n++) {
+            if (!p->cast[n].made) continue;
+            step[n] *= f;
+            if (tries >= 2 && segs[n] > 10) segs[n] -= 2;
+            total += tube_cast(&p->cast[n], a, b, step[n], segs[n], NULL, 1);
+        }
+    }
+    tube_kept.tris_planned = total;
+    for (int n = 0; n < p->casts; n++) {
+        const Cast *c = &p->cast[n];
+        if (!c->made) continue;
+        /* blue when this cast touches a monster, grey when not (the ground's colours); the alpha is the rim's
+         * strongest (EL_RDV_RIM: nearly clear face on) */
+        u8 col[4];
+        const float many = p->casts > 2 ? 0.75f : 1.0f; /* (Wind Cutter's and the arrows' many tubes: a little fainter) */
+        if (c->hits) rgba(col, 120, 200, 255, (int)(190 * many));
+        else rgba(col, 215, 215, 215, (int)(150 * many));
+        tube_cast(c, a, b, step[n], segs[n], col, 0);
+    }
+}
+
+/* back to front from the eye of this tick's view (over blending: the pictures between ticks keep the order; where
+ * two tubes of one colour cross the order does not matter at all, and blue over grey changes only where they cross) */
+static ElRdVertex tube_sorted[MAX_TUBE_VERTS];
+static struct { float d; int i; } tube_order[MAX_TUBE_VERTS / 3];
+static int tube_far_first(const void *x, const void *y) {
+    const float a = ((const float *)x)[0], b = ((const float *)y)[0];
+    return a < b ? 1 : a > b ? -1 : 0;
+}
+
+static int tube_sort(void) {
+    /* the eye: the view's translation back through its turn (row vectors: p_view = p R + T) */
+    const float(*v)[4] = camera_view_mtx.mf;
+    float eye[3];
+    for (int j = 0; j < 3; j++) eye[j] = -(v[3][0] * v[j][0] + v[3][1] * v[j][1] + v[3][2] * v[j][2]);
+    const int tris = tube_n / 3;
+    /* (the same tubes from the same eye: the order kept) */
+    if (tube_kept.sorted && !memcmp(eye, tube_kept.sorted_eye, sizeof eye)) return tris * 3;
+    tube_kept.sorted = 1;
+    memcpy(tube_kept.sorted_eye, eye, sizeof eye);
+    for (int i = 0; i < tris; i++) {
+        const ElRdVertex *t = &tube_v[i * 3];
+        const float cx = (t[0].x + t[1].x + t[2].x) / 3.0f - eye[0], cy = (t[0].y + t[1].y + t[2].y) / 3.0f - eye[1];
+        const float cz = (t[0].z + t[1].z + t[2].z) / 3.0f - eye[2];
+        tube_order[i].d = cx * cx + cy * cy + cz * cz;
+        tube_order[i].i = i;
+    }
+    qsort(tube_order, (size_t)tris, sizeof tube_order[0], tube_far_first);
+    for (int i = 0; i < tris; i++) memcpy(&tube_sorted[i * 3], &tube_v[tube_order[i].i * 3], 3 * sizeof(ElRdVertex));
+    return tris * 3;
+}
+
 /* the preview's triangles (verts, nverts) */
 static void build(const Preview *p) {
     nverts = 0;
@@ -1742,18 +2167,20 @@ static void build(const Preview *p) {
             }
             cone_hits |= p->cast[n].hits != 0;
         }
+        /* (with the 3D paths over them, the ground's shapes a little fainter: both read together) */
+        const float faint = tubes_enabled() ? 0.7f : 1.0f;
         if (cones) {
             u8 cf[4], ce[4];
-            if (cone_hits) rgba(cf, 120, 200, 255, 20), rgba(ce, 170, 225, 255, 110);
-            else rgba(cf, 210, 210, 210, 16), rgba(ce, 230, 230, 230, 90);
+            if (cone_hits) rgba(cf, 120, 200, 255, (int)(20 * faint)), rgba(ce, 170, 225, 255, (int)(110 * faint));
+            else rgba(cf, 210, 210, 210, (int)(16 * faint)), rgba(ce, 230, 230, 230, (int)(90 * faint));
             cone_draw(&all, p->py, cf, ce);
         }
         for (int n = 0; n < p->casts; n++) {
             const Cast *c = &p->cast[n];
             if (!c->made) continue;
             u8 tf[4], te[4], arc_col[4];
-            if (c->hits) rgba(tf, 120, 200, 255, many ? 40 : 52), rgba(te, 170, 225, 255, 210);
-            else rgba(tf, 210, 210, 210, many ? 28 : 34), rgba(te, 230, 230, 230, 150);
+            if (c->hits) rgba(tf, 120, 200, 255, (int)((many ? 40 : 52) * faint)), rgba(te, 170, 225, 255, (int)(210 * faint));
+            else rgba(tf, 210, 210, 210, (int)((many ? 28 : 34) * faint)), rgba(te, 230, 230, 230, (int)(150 * faint));
             rgba(arc_col, 255, 244, 214, 110);
             tunnel(c, p->py, p->body_r, tf, te);
             arcs(c, p->kind == K_LOB, arc_col);
@@ -1776,4 +2203,11 @@ void Port_SpellAimDraw(void) {
     if (id < 0 || !p->valid || p->spell != (u32)id) return;
     build(p);
     if (nverts) nd_2d_world_tris(verts, (uint32_t)nverts);
+    /* the 3D paths over the ground's shapes and the rings, back to front (render.h v11's rim) */
+    if (tubes_enabled() && tube_wanted(p->kind)) {
+        if (gcache_map != (const void *)map_subarea_grid) gcache_use(p->py);
+        tube_build(p);
+        const int n = tube_sort();
+        if (n) nd_2d_world_tris(tube_sorted, (uint32_t)n);
+    }
 }

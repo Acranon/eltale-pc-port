@@ -13,8 +13,11 @@ The F1 menu's Controls page has two switches:
 
 - **Click to aim spells**: on by default (settings.json `controls.spell_aim`).
 - **Raise the camera while aiming**: on by default (`controls.spell_aim_camera`).
+- **3D spell paths**: on by default (`controls.spell_aim_tubes`): a moving spell's hit volume as a see-through tube in
+  the air over its ground area ("3D paths" below). Off: the areas on the ground only.
 
 Headless runs have aiming off unless `ELTALE_SPELL_AIM=1`. `ELTALE_SPELL_AIM_CAMERA=0` keeps the camera down.
+`ELTALE_SPELL_AIM_TUBES=0` turns the 3D paths off (on by default).
 
 ## Using it
 
@@ -66,6 +69,7 @@ The kind comes from the spell's own record (`SpellDef`). `ELTALE_SPELL_AIM_LOG=2
 | homing | Homing Arrow Lv1/Lv2, Wind Cutter Lv1/2/3 | faces the point | each arrow's or cutter's tunnel |
 
 An area or tunnel that would hit nothing is grey; one that would hit is light blue (each cast's tunnel on its own).
+Every moving spell (the lines, lobs, fans and homing kinds) also shows its 3D path over the ground ("3D paths").
 
 ### Tunnels
 
@@ -137,6 +141,104 @@ inside it, stronger.
 
 Wind Cutter and Homing Arrows home far harder (strength 10) for 25-30 ticks and reach 90 to 160 (SPELL_TARGETING.md):
 their cones would cover most of the arena round the caster and say nothing. They show each cutter's and arrow's tunnel only.
+
+### 3D paths
+
+Over the ground's shapes, every spell that moves (the lines, the lobs, Fire Ball's bolts, Wind Cutter, Homing Arrows)
+also shows its **hit volume in the air**: a see-through tube along its path. F1, Controls: **3D spell paths**, on by
+default (settings.json `controls.spell_aim_tubes`; headless `ELTALE_SPELL_AIM_TUBES=0|1`, default 1). Off: the
+ground-only look, exactly as before (the same pictures).
+
+**What the surface is.** The hit test (`Magic_FindTargetInRange`, the copy's `sim_distance`) touches a monster when
+
+```
+sqrt(dx^2 + dz^2 + dy^2) < extent + r      dx, dz: the ground distance from the effect to the monster
+                                           dy = (the monster's middle - the effect's height) / 2
+```
+
+Written for the monster's middle `(mx, my, mz)`, round an effect at `(x, y, z)`:
+
+```
+(mx - x)^2 / a^2 + (mz - z)^2 / a^2 + (my - y)^2 / b^2 < 1      a = extent + r,  b = 2a
+```
+
+an ellipsoid twice as tall as it is wide, because the test counts the height at half. **The tube is the union of those
+ellipsoids round every place where the test runs: its surface is where a monster's middle would have to be to be
+touched.** A monster whose middle is inside the tube is hit (by the first place whose ellipsoid holds it); one whose
+middle is outside is not. The middle is the test's own: a ground monster's feet plus half its body height, a flying
+monster's flying height (`battle.unk94`).
+
+- **Which monster.** `r` is the largest radius among the battle's live monsters (`Preview.mid_r`), as the tunnels take
+  the widest. With one kind of monster (battle-stuck's) the surface is exact for all of them; a smaller monster's middle
+  can be up to the difference of the radii inside the surface and still be missed. A monster of kind 2 (the test leaves
+  its height out) is touched anywhere above or below its footprint's disc: the ground tunnel says that.
+- **Where the test runs and something can be reached.** The places are the tunnel's beads: the test runs there (not in
+  a start delay, Fire Bomb only after it lands, a cast ends at its first hit unless it pierces) and some monster of the
+  battle standing on the ground there could be touched (`w > -1e8`). Higher up, where nothing standing can be reached,
+  only the thin arc of the flight is drawn, as before.
+- **Sizes.** Homing Arrow (extent 2) a 7.6 across, 15.2 up; Wind Cutter, Rock Lv1 10.6 / 21.2; Fire Ball 11.6 / 23.2;
+  Walking Water 15.6 / 31.2; Rolling Rock Lv2, Cyclone, Large Cutter 17.6 / 35.2; Rock Lv3 20.6 / 41.2; Fire Bomb's
+  blast 23.6 / 47.2 (r 5.6).
+
+What that looks like:
+
+- **Lobs hang in the air.** Rock Lv1 starts its fall 27 above the caster's feet. Its tube begins in mid-air, where the
+  rock is about 24 above the ground and the tube's bottom (21 under the rock) comes down to a standing monster's middle,
+  and reaches the ground only over its last ticks: a cocoon hanging over the monsters it passes. Rock Lv3's, twice as
+  big, reaches down along its whole flight. In `rock3_flight` it holds the near monster's middle in the air, 2.2
+  inside; in `rock1_flight` that monster's middle is 8.9 outside Rock Lv1's.
+- **Fire Bomb's blast** is one ellipsoid at the landing point, half in the ground: a dome 23.6 round and 47 tall. Its
+  flight has no tube (it touches nothing until it lands).
+- **Thin, fast shots are beads.** A Homing Arrow moves 12 a tick and is tested only where it is each tick: its ellipsoids
+  (7.6 round) barely meet, so the tube narrows between them, a string of beads. A monster between two beads is missed,
+  as in the game.
+- **On the ground** (Walking Water, Rolling Rock, Cyclone: their places are on the floor) the tube is half in the ground,
+  a long rounded wall twice as tall as it is wide.
+- **The ground's shapes stay** under it (tunnels, cones, circles, the rings), at 70 % of their alpha while the tubes are
+  on, so both read together. The ground tunnel is the band a monster's *edge* must reach; the tube is where its *middle*
+  must be, so at a standing monster's middle height the tube is the band plus its radius each side.
+
+**How it is made** (spell_aim.c `tube_build`, from the same `Cast` places, live flags and `w` the tunnels use):
+
+- Each run of beads in a row is swept with rings. At each ring's place on the path, in the plane square to the path,
+  each of its segments is a ray out from the path; the ring's point is where the ray last leaves one of the run's
+  ellipsoids (near enough to reach it), and its normal is that ellipsoid's there. So the rings follow the union's own
+  outline, its necks between beads included, and every point is on the true surface. Past each end a cap closes on the
+  end ellipsoid's tip (its rings closer together at the tip). A run that does not move (a landed rock, the blast) is its
+  ellipsoid.
+- The path's direction is smoothed over half a reach (a bolt's sharp turn would fold the rings) and the rings' frame is
+  carried along the path without twisting.
+- 14 to 24 segments round (a x 1.4), a ring every a / 2.2 along the path, or a quarter of the step between beads where
+  the beads are far apart. All the tubes of a preview together are kept under 6000 triangles: over that the rings are
+  spaced out (and from the third try fewer segments). Pieces wholly 1.5 under the ground are left out.
+- Made again only when the preview's paths change (the pointer moved); sorted every tick.
+
+**Drawing** (render.h v11, docs/renderer/NATIVE_DRAW.md "v11"):
+
+- **The rim.** Each vertex carries its normal (`EL_RDV_RIM`); the pixel stage scales the alpha by how edge-on the surface
+  is to the picture's own eye: `0.06 + 0.94 (1 - |n.v|)^3`, faded out over the last sliver of the outline
+  (`smoothstep(0, 0.12, |n.v|)`). Face on the tube is nearly clear (about 9 % for its two walls together), so the
+  monsters inside stay plain; toward its outline it glows (up to about three quarters), with a soft edge. Wind
+  Cutter's and the arrows' many tubes (more than two casts) are a quarter fainter. The eye is each picture's, so
+  at 240 pictures a second the glow follows the camera between ticks.
+- **The colours.** Blue (120, 200, 255) when that cast touches a monster, grey (215) when it does not, as the tunnels.
+  Every vertex of a tube has the same colour; only the alpha changes.
+- **Order.** The tubes come after the ground's shapes and the rings, in a second overlay, their triangles sorted back to
+  front by their centres' distance from this tick's eye. Blending one colour `c` over another layer of the same colour
+  in either order gives `c (1 - (1 - a1)(1 - a2)) + dst (1 - a1)(1 - a2)`: the same. So overlapping tubes of one colour
+  (Wind Cutter Lv3's six, Fire Ball's three when all hit) look the same in any order, and the order kept from the tick
+  between ticks cannot make them flicker or change brightness. Only where a blue tube crosses a grey one does the order
+  matter, and there it is sorted.
+- **Depth.** Tested, not written (the overlay's ZB_XLU_SURF): a tube is hidden by the ground and by a monster in front of
+  it, and hides nothing, not even itself. Nothing is coplanar with anything, so nothing fights for depth: the tubes meet
+  the ground and the monsters along clean lines (where Rock Lv3's tube "reaches the ground" is the ground cutting it).
+  There is no see-through pass: what hides a part of a tube (the ground under it, a tree or a wall in front) hides the
+  monsters there too, so the tubes and the monsters are seen alike.
+- **The cost** (`P1_AIM_COST`, battle-stuck): made again in 0.01 to 0.24 ms when the pointer moves (Fire Bomb's
+  dome 0.01, Wind Cutter Lv3's six tubes 0.24), sorted in 0.01 to 0.30 ms each tick, 300 to 5200 triangles (Rock Lv1
+  454, Fire Ball Lv3 4036; Wind Cutter Lv2/Lv3 and Homing Arrow Lv2 at the budget, about 5000). Next to the preview's
+  own copy of the spell code (0.02 to 0.4 ms a read, 2 to 7.5 ms for a Fire Ball cone built) it is small; on the GPU it
+  is a few thousand translucent triangles in the overlay's one draw.
 
 ## How it works
 
@@ -224,8 +326,9 @@ The preview is world-space triangles, drawn through the native renderer's new ov
   between ticks. The overlay is the earlier tick's, as a 2D mesh is. They are drawn at any resolution, MSAA and aspect
   as the 3D is.
 - **One material.** The game's ZB_XLU_SURF blending (depth-tested, not written) with the shade as the colour. It uses
-  the program and pipeline state the game's own translucent effects use: no new shader. `warm_test --check` checks the
-  pipeline list.
+  the program and pipeline state the game's own translucent effects use. `warm_test --check` checks the pipeline list.
+- **The 3D paths** are a second overlay after the ground's shapes and the rings, with render.h v11's rim (a normal per
+  vertex, the alpha from each picture's eye in the pixel stage): the same material and pipeline ("3D paths").
 - **Shapes follow the ground.** Circles, tunnels, cones and lines are cut into small pieces whose corners sit 0.45 above
   the floor under them: the same floor query, kept on a 2-unit grid while a spell is being aimed (a corner's height is
   between its four nearest), so the drawing costs about 0.1 ms a tick.
@@ -341,20 +444,25 @@ They could take the same hook later, in `Player_StartUseItem`. Not done.
 | 1 | `P1_AIM_CLICK` | the point, the facing, `predicted=` |
 | 1 | `P1_AIM_APPLY` | `rot=before>after` |
 | 1 | `P1_AIM_CAST` | the copy run again for the cast's facing |
-| 1 | `P1_AIM_ENEMIES` | positions |
+| 1 | `P1_AIM_ENEMIES` | positions (`e<i>=x,y,z,r<radius>,k<kind>,s<screen x,y>,m<the hit test's middle height>`) |
 | 1 | `P1_AIM_HITS` | `predicted=` against `actual=` (from the effects' slots and the monsters' `magic_hit_slot_bits`): match, DIFFER, or random (Rock Combo) |
 | 1 | `P1_AIM_TUNNEL` | at the cast, each cast's tunnel as drawn: `land=` (the place it landed) and each live place `k:x,y,z,w;` |
+| 1 | `P1_AIM_TUBE` | at the cast (3D paths on), each cast's 3D path: the half-axes `a=` (across) and `b=` (up) and the places of its ellipsoids `k:x,y,z;` |
 | 1 | `P1_AIM_CONE` | at the cast, each cone: its start and each covered bearing `bin:nearest:furthest;` (240 bins) |
 | 1 | `P1_AIM_HITAT` | each hit as the game made it: the effect's slot and place, the monster and where it stood |
 | 1 | `P1_AIM_COMPASS` | with `P1_AIM_SCREEN`: the ground 40 from the player every 5 degrees (`b<deg>=x,y`) and each monster's body as the pick takes it (`body<i>=feet x,y,top x,y,half-width`) |
-| 2 | `P1_AIM_COST` | at the cast, what a preview costs: built (with its cones), turned (a kept cone), the drawing, and the kept cone's difference from one built |
+| 2 | `P1_AIM_COST` | at the cast, what a preview costs (microseconds): built (with its cones), turned (a kept cone), the drawing, the kept cone's difference from one built, the 3D paths made (`tube_us`) and sorted (`tube_sort_us`), their triangles |
 | 2 | `P1_AIM_SPELLDEF` | the table |
 | 2 | `P1_AIM_FX` | the game's live effects each tick |
 | 3 | `P1_AIM_SIMPATH` | the copy's paths at the cast |
 
 ## Tests
 
-`python tools/spell_aim_test.py --exe EXE --rom ROM [--saves C:/code/eltale/out/bugsaves]`.
+`python tools/spell_aim_test.py --exe EXE --rom ROM [--saves C:/code/eltale/out/bugsaves] [--tubes 0|1] [--sheet]`.
+
+Every run has the 3D paths on (`ELTALE_SPELL_AIM_TUBES=1`) unless `--tubes 0`. With them off every case passes as
+before and its pictures are the ones from before the 3D paths, byte for byte (176 pictures, 2026-11-02; the aim lines,
+the sound and the last frame hash too, with them on as well).
 
 The save is battle-stuck's quick save with spirit levels 48 and MP 60 (a copy). Each case:
 
@@ -375,6 +483,8 @@ The save is battle-stuck's quick save with spirit levels 48 and MP 60 (a copy). 
 | homing, lob, bomb, sweep, magma, random, arena, cutter | the other kinds' pictures and hits |
 | lift | the same Fire Ball with the camera raised and not: the same game |
 | idle | aim on with no pointer against aim off: the same frame list and sound |
+| tubes_off | the lob (Rock Lv3 at the far monster) with the 3D paths on and off, at 4:3 and 16:9: the same aim lines and sound, the 3D path logged only when on, other pictures (`tubes_off-<43\|169>-<n>-on.png` and `-off.png`) |
+| side_rock1 ... side_arrow2 | every moving spell, aimed as its t_ case, from a low side view: the raised camera off, the mouse camera turned (`mouse VI 230 -40 -6 ...`: a quarter round to the right, down a little, zoomed out). Pictures of the preview only, no click |
 
 `--verify [SPELL ...]` runs the check against the game described above, for every aiming spell, and for every moving
 one the tunnel check below.
@@ -389,7 +499,8 @@ the cast and the game's own hits (`P1_AIM_HITS`, `P1_AIM_HITAT`):
 | tunnel | every monster is hit exactly when its edge is inside the tunnel (`e0=-4.21 hit`: 4.21 inside), and each hit came from a live place of the tunnel, with the monster inside that place's disc. After a kill (Wind Cutter Lv2/Lv3, below) the hits up to it |
 | cone | every monster hit is inside the cone |
 | outside / off_line | the monster is outside the cone; or well off its bolt's straight line (by more than the bolt's reach and 2) |
-| flight | the monster was hit while the rock was in the air exactly when the tunnel before the landing reaches it |
+| flight | the monster was hit while the rock was in the air exactly when the tunnel before the landing reaches it, and exactly when its middle is inside the 3D path before the landing (Rock Lv3: e1 2.23 inside, hit in the air; Lv1: 8.91 outside, passed over) |
+| (3D paths, with tunnel) | every monster's middle (`P1_AIM_ENEMIES` `m`) is inside the 3D path (`P1_AIM_TUBE`: the union of its ellipsoids) exactly when the game hits it (`tube_e1=-4.22`: 4.22 inside, across), and each hit (`P1_AIM_HITAT`: the effect's place and the monster's then) has the monster's middle inside the ellipsoid of the logged place it came from. A missed monster smaller than the battle's widest is checked against its own radius's volume. After a kill, the hits up to it |
 
 | Case | What |
 | --- | --- |
@@ -400,13 +511,20 @@ the cast and the game's own hits (`P1_AIM_HITS`, `P1_AIM_HITAT`):
 | pick | Water Pillar Lv2 aimed with the pointer on the far monster's body (picked), 2 units off its side (kept), 4 off (the ground), 2 off again (still the ground), 2.5 above its head (the ground), on it again (picked) |
 
 The pictures are in `OUT/pictures/<case>-<43|169>-<n>.png`: n 0 is the preview just before the click, n 1 the cast.
-The undo case has four: folded, open after the undo, the pointer on the panel, folded again.
+The undo case has four: folded, open after the undo, the pointer on the panel, folded again. At the end (or alone with
+`--sheet`) the contact sheets `OUT/sheet/sheet_<n>.png`: each moving spell from the raised camera at 4:3 and 16:9 and
+from the side, and the lob with the 3D paths on and off; `OUT/sheet/index.txt` lists the pictures' full paths.
+
+tools/warm_test.py and tools/interp_test.py have an `aim3d` case (tests/spell-aim-3d.input: Fire Ball Lv1, then Rock
+Lv1, the pointer moving while aiming): the 3D paths' pipeline and their pictures between ticks.
 
 ## Not done
 
 - Item spells (above).
 - Cones for Wind Cutter and Homing Arrows (they would cover most of the arena; their tunnels are drawn).
 - Rock Combo's monsters are not ringed: where its rocks fall is random.
+- 3D volumes for the spells that do not move (Hot Steam's circle, the pillars): only their circles on the ground.
+- A see-through pass for the 3D paths behind walls ("3D paths", Depth).
 - The preview does not know about kills by an earlier bolt of the same spell (above). Wind Cutter Lv2 and Lv3 at
   battle-stuck's monsters show it: the first cutter kills the near monster, so the later cutters' real paths leave
   their tunnels (in the tests the monsters hit were still the ones predicted, by other cutters).

@@ -15,6 +15,7 @@ const uint OPT_DITHER = 16u;      // the RDP's dither: 5 bits a channel with its
 const uint OPT_RECT = 32u;        // a 2D rectangle (R7: sampled at its N64 pixel's corner in a bigger picture)
 
 const uint RDV_LIGHT = 1u, RDV_TEXGEN = 2u, RDV_TEXGEN_LIN = 4u, RDV_FOG = 8u, RDV_SHADE = 16u;
+const uint RDV_RIM = 32u; // v11, an overlay's see-through surface: s, t, scale (a float) its world normal (nd.frag)
 
 struct Vertex {
     float x, y, z, s, t;

@@ -118,6 +118,10 @@ void controls_page() {
     if (ImGui::Checkbox("Raise the camera while aiming", &c.spell_aim_camera)) save_settings();
     help("The view rises over the battlefield while you aim, so the areas on the ground are easy to read, and comes back "
          "down when you cast or take the spell back. Only the picture changes.");
+    if (ImGui::Checkbox("3D spell paths", &c.spell_aim_tubes)) save_settings();
+    help("A spell that flies (a rock, a bolt, an arrow, a rolling rock) shows its path as a see-through tube in the air: "
+         "a monster whose middle is inside the tube is hit. Lobs show the tube hanging in the air and reaching down only "
+         "where the spell can touch a monster. Off: only the areas on the ground.");
     ImGui::Unindent();
     if (!c.spell_aim) ImGui::EndDisabled();
     help("Point at a menu's options, items and answers to move the game's cursor there; a left click picks (A), a "

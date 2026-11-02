@@ -3,6 +3,7 @@
 
     python tools/spell_aim_test.py --exe out/p1-windows/eltale-p1.exe --rom eltalemonsters.jp.z64
         [--saves C:/code/eltale/out/bugsaves] [--out out/spell_aim_test] [--only NAME,...] [--verify [SPELL ...]]
+        [--tubes 0|1] [--sheet]
 
 Each case is a battle from battle-stuck's quick save with every spell learned (spirit levels 48, MP 60: a copy, only
 numbers changed, as tools/spell_ui_test.py makes its saves; ELTALE_BATTLE_LOG=2 starts the battle). Its input script
@@ -22,6 +23,14 @@ The tunnels and cones (docs/SPELL_AIM.md "Tunnels", "Cones"; cases t_*, cone_*, 
 is inside the tunnel the preview draws (P1_AIM_TUNNEL) and none it misses, each hit (P1_AIM_HITAT) came from a live
 place of it, a Fire Ball hit is inside its cone (P1_AIM_CONE), and a rock hits in the air where its flight's tunnel says.
 A target "b:DEG" points at the ground at that bearing from the player (P1_AIM_COMPASS).
+
+The 3D paths (docs/SPELL_AIM.md "3D paths"; on unless --tubes 0): with every tunnel check, every monster's middle is
+inside the drawn 3D volume (P1_AIM_TUBE: the ellipsoids round the places where the test runs) exactly when the game
+hits it, and each hit's monster middle is inside the ellipsoid of the place it was hit from (P1_AIM_HITAT); for the
+rocks, the same for the flight before the landing (Rock Lv1 passes over e1, Lv3 hits it in the air). `side_*`: every
+moving spell from a low side view (the mouse camera turned, the raised camera off), pictures only. `tubes_off`: the
+lob with the 3D paths off: the same aim lines, other pictures. --tubes 0 runs every case with them off (the ground-only
+look: its pictures equal the ones before the 3D paths). --sheet: a contact sheet of the pictures (OUT/sheet).
 
 Also: `lift`: the same aim with the camera raised and not (ELTALE_SPELL_AIM_CAMERA=0): the same game (aim lines, sound);
 `pick`: the pointer on a monster's body, just off it and back (the pick and its hysteresis);
@@ -50,6 +59,7 @@ START = ["5 0x1000 0 0", "7 0 0 0"]
 WALK = ["120 0 0 80", "200 0 0 0"]  # a battle (ELTALE_BATTLE_LOG=2); the player's first turn from VI ~360
 NEUTRAL = "300 60"                  # a battlefield point (CENTRE): the panel folds, the camera rises
 ELEMENT_KEY = {0: 0x1, 1: 0x2, 2: 0x4, 3: 0x8}
+TUBES = "1"                         # ELTALE_SPELL_AIM_TUBES for every run (--tubes)
 
 
 def keys(seq, at):
@@ -94,14 +104,18 @@ HOMING_ARROW1 = ([0, 3], "0.3")
 # that bearing (P1_AIM_COMPASS), so the facing is DEG.
 
 
-def case(name, spell, target, first=370, pre=(), click=True, expect=(), pictures=None, env=None, extra=(), frames=None):
+def case(name, spell, target, first=370, pre=(), click=True, expect=(), pictures=None, env=None, extra=(), frames=None,
+         turn=None):
     """target: "e0"/"e1" (a monster), "g:DX,DY" (the ground: the player's place on the picture plus DX, DY), "b:DEG" (the
     ground at that bearing from the player)"""
     seq, sid = spell
     t_vi = first + 6 * len(seq) + 40       # pointing at the target (the camera has risen by then)
     c_vi = t_vi + 10
-    rows = START + WALK + list(pre) + keys(seq, first) + [f"mouse {first + 6 * len(seq) + 6} 0 0 0 0 {{c:300}} 60",
-                                                         f"mouse {t_vi} 0 0 0 0 {{T}}"]
+    rows = START + WALK + list(pre) + keys(seq, first)
+    if turn:
+        # the mouse camera turned (dx, dy counts: 0.006 and 0.004 radians each) and zoomed (the wheel) before aiming starts
+        rows.append(f"mouse {first + 6 * len(seq) + 2} {turn[0]} {turn[1]} {turn[2]} 0 {{c:300}} 60")
+    rows += [f"mouse {first + 6 * len(seq) + 6} 0 0 0 0 {{c:300}} 60", f"mouse {t_vi} 0 0 0 0 {{T}}"]
     if click:
         rows.append(f"mouse {c_vi} 0 0 0 2")
     rows += list(extra)
@@ -177,6 +191,24 @@ CASES = [
     case("rock1_flight", ROCK1, "b:46", expect=[("tunnel", None), ("flight", "e1")]),
 ]
 
+# The 3D paths from a low side view (docs/SPELL_AIM.md "3D paths"): the raised camera off and the mouse camera turned
+# nearly a quarter round to the right, down a little and zoomed out, so the paths are seen across; the pointer where the t_ cases aim, no
+# click (the preview). Pictures only (their aim lines are the hover's).
+SIDE = {"ELTALE_SPELL_AIM_CAMERA": "0"}
+SIDE_TURN = (230, -40, -6)  # (dx, dy, the wheel: zoomed out; the eye stays clear of the walls there)
+for _name, _spell, _target in [
+        ("rock1", ROCK1, "b:46"), ("rock2", ROCK2, "e1"), ("rock3", ROCK3, "b:46"), ("bomb", FIRE_BOMB, "b:40"),
+        ("water", WALKING_WATER, "b:47"), ("cyclone", CYCLONE, "e1"), ("cutter", LARGE_CUTTER, "e1"),
+        ("magma", MAGMA_BALL, "b:15"), ("roll1", ROLLING_ROCK1, "b:20"), ("roll2", ROLLING_ROCK2, "b:0"),
+        ("fire1", FIRE_BALL1, "e1"), ("fire2", FIRE_BALL2, "b:80"), ("fire3", FIRE_BALL3, "b:46"),
+        ("wind1", WIND_CUTTER1, "e0"), ("wind2", WIND_CUTTER2, "b:100"), ("wind3", WIND_CUTTER3, "e0"),
+        ("arrow1", HOMING_ARROW1, "b:46"), ("arrow2", HOMING_ARROW2, "e1")]:
+    _c = case("side_" + _name, _spell, _target, click=False, env=SIDE, turn=SIDE_TURN)
+    _c["pictures"] = [_c["t_vi"] + 6]
+    _c["frames"] = _c["t_vi"] // 2 + 20
+    _c["side"] = True
+    CASES.append(_c)
+
 
 def undo_rows(c):
     # after the target: a right click (Lv2 -> Lv1: the panel opens), the pointer on the battlefield (it stays open: an
@@ -220,6 +252,7 @@ def run(c, args, kind, work, saves, rows, frames, pictures=None, env=None):
     e = {k: v for k, v in os.environ.items() if not k.startswith("ELTALE_")}
     e.update({"ELTALE_DATA_DIR": str(d / "data"), "ELTALE_QUICK_LOAD_AT": "100", "ELTALE_LANG": "en", "ELTALE_BATTLE_LOG": "2",
               "ELTALE_SPELL_UI": "1", "ELTALE_SPELLUI_LOG": "1", "ELTALE_SPELL_AIM": "1", "ELTALE_SPELL_AIM_LOG": "2"})
+    e["ELTALE_SPELL_AIM_TUBES"] = TUBES
     e.update(c["env"])
     e.update(env or {})
     cmd = [str(args.exe), "--headless", "--fast", "--frames", str(frames), "--input", str(d / "in.input")]
@@ -244,6 +277,8 @@ def probe(c, args, work, saves, env=None):
     rows = [r for r in c["rows"] if "{T}" not in r and not r.startswith(f"mouse {c['c_vi']} ")]
     kind = "probe" + ("-flat" if env else "")
     out = run(c, args, kind, work, saves, substitute(rows, False, (0, 0)), c["t_vi"] // 2 + 40, env=env)
+    if c.get("side") and not args.keep_probes:
+        shutil.rmtree(work / f"{c['name']}-{kind}", ignore_errors=True)
     # the pictures' VIs as graphics frames (--dump-frames counts frames: P1_GFX_TASK frame= vi=)
     tasks = [(int(f), int(v)) for f, v in re.findall(r"P1_GFX_TASK frame=(\d+) vi=(\d+)", out)]
     frames = []
@@ -297,7 +332,7 @@ def shapes(out):
     if not cast:
         return None
     text = out[cast[-1].start():]
-    sh = {"tunnels": {}, "lands": {}, "cones": {}, "enemies": {}, "rot": None, "targets": {}}
+    sh = {"tunnels": {}, "lands": {}, "cones": {}, "enemies": {}, "rot": None, "targets": {}, "tubes": {}, "middles": {}}
     for n, t in re.findall(r" c(\d+)=t(-?\d+)", cast[-1].group(0)):
         sh["targets"][int(n)] = int(t)
     for m in re.finditer(r"P1_AIM_TUNNEL vi=\d+ spell=\S+ cast=(\d+) land=(-?\d+) beads=(\S*)", text):
@@ -306,16 +341,25 @@ def shapes(out):
     for m in re.finditer(r"P1_AIM_CONE vi=\d+ spell=\S+ cast=(\d+) start=([-\d.]+),([-\d.]+) bins=(\d+) r=(\S*)", text):
         bins = {int(i): (float(a), float(b)) for i, a, b in re.findall(r"(\d+):([-\d.]+):([-\d.]+);", m[5])}
         sh["cones"][int(m[1])] = (float(m[2]), float(m[3]), int(m[4]), bins)
+    for m in re.finditer(r"P1_AIM_TUBE vi=\d+ spell=\S+ cast=(\d+) a=([-\d.]+) b=([-\d.]+) beads=(\S*)", text):
+        beads = [tuple(float(v) for v in b.replace(":", ",").split(",")) for b in m[4].split(";") if b]
+        sh["tubes"][int(m[1])] = (float(m[2]), float(m[3]), beads)
     en = re.search(r"P1_AIM_ENEMIES .*", text)
     if en:
         for i, x, y, z, r in re.findall(r" e(\d+)=([-\d.]+),([-\d.]+),([-\d.]+),r([\d.]+)", en.group(0)):
             sh["enemies"][int(i)] = (float(x), float(y), float(z), float(r))
+        for i, mid in re.findall(r" e(\d+)=\S*?,m([-\d.]+)", en.group(0)):
+            sh["middles"][int(i)] = float(mid)
     ap = re.search(r"P1_AIM_APPLY .*rot=[-\d.]+>([-\d.]+)", out)
     if ap:
         sh["rot"] = float(ap.group(1))
     sh["hitat"] = [(int(m[2]), int(m[3]), float(m[4]), float(m[5]), int(m[6]), int(m[7], 16), int(m[1]))
                    for m in re.finditer(r"P1_AIM_HITAT vi=(\d+) slot=(\d+) enemy=(\d+) fx=([-\d.]+),[-\d.]+,([-\d.]+) "
                                         r"left=(\d+) flags=(\w+)", text)]
+    # (each hit's effect height and the monster's place then)
+    sh["hitat3"] = [(float(m[1]), float(m[2]), float(m[3]), float(m[4]), float(m[5]), float(m[6]))
+                    for m in re.finditer(r"P1_AIM_HITAT vi=\d+ slot=\d+ enemy=\d+ fx=([-\d.]+),([-\d.]+),([-\d.]+) .*?"
+                                         r"at=([-\d.]+),([-\d.]+),([-\d.]+)", text)]
     return sh
 
 
@@ -331,6 +375,41 @@ def tunnel_margin(sh, e, casts=None):
             if d < best:
                 best, where = d, (n, int(k))
     return best, where
+
+
+def tube_margin(sh, e, before_land=False, r_own=False):
+    """how far monster e's middle is outside the drawn 3D paths (under 0: inside), in units across: the union of the
+    ellipsoids (half-axes a across, b up) round the logged places, (q - 1) a where q is the ellipsoid's own distance
+    (1 on its surface). before_land: the flight only (the places before the landing). r_own: with the monster's own
+    radius (the drawn ones take the widest of the battle)"""
+    x, y, z, r = sh["enemies"][e]
+    mid = sh["middles"].get(e, y)
+    best = 1e9
+    for n, (a, b, beads) in sh["tubes"].items():
+        land = sh["lands"].get(n, -1)
+        if r_own:
+            widest = max(rr for _, _, _, rr in sh["enemies"].values())
+            a = a - widest + r
+            b = 2 * a
+        for k, bx, by, bz in beads:
+            if before_land and land >= 0 and k >= land:
+                continue
+            q = math.sqrt(((x - bx) / a) ** 2 + ((mid - by) / b) ** 2 + ((z - bz) / a) ** 2)
+            best = min(best, (q - 1) * a)
+    return best
+
+
+def tube_hit_margin(sh, e, fx, fy, fz, at):
+    """a hit from the effect at (fx, fy, fz) on monster e standing at `at`: how far its middle is outside the drawn
+    ellipsoid round that place (under 0: inside); None when no place of the drawn paths is there"""
+    for a, b, beads in sh["tubes"].values():
+        for k, bx, by, bz in beads:
+            if abs(bx - fx) < 0.01 and abs(by - fy) < 0.01 and abs(bz - fz) < 0.01:
+                x, y, z, r = sh["enemies"][e]
+                mid = at[1] + (sh["middles"].get(e, y) - y)
+                q = math.sqrt(((at[0] - bx) / a) ** 2 + ((mid - by) / b) ** 2 + ((at[2] - bz) / a) ** 2)
+                return (q - 1) * a
+    return None
 
 
 def cone_margin(sh, e):
@@ -468,6 +547,31 @@ def check(c, out, label, results):
                         if math.hypot(x - fx, z - fz) - near[1][4] - r > 0.02:
                             problems.append(f"{label}: e{e} hit from {fx:.2f},{fz:.2f}, outside that place's disc")
                 info["hitat"] = len(sh["hitat"])
+                if TUBES == "1":
+                    # the 3D paths: every monster's middle inside the drawn volume exactly when it is hit (0.02: the log's
+                    # rounding), and each hit (up to a kill, as above) inside the ellipsoid of the place it came from
+                    if not sh["tubes"]:
+                        problems.append(f"{label}: no 3D path logged")
+                    widest = max(rr for _, _, _, rr in sh["enemies"].values())
+                    for e in sh["enemies"]:
+                        d = tube_margin(sh, e)
+                        own = tube_margin(sh, e, r_own=True)
+                        hit = bool(actual >> e & 1)
+                        info[f"tube_e{e}"] = f"{d:+.2f}"
+                        if hit and d > 0.02:
+                            problems.append(f"{label}: e{e} hit but its middle {d:+.2f} outside the 3D path")
+                        if not hit and own < -0.02 and not until < (1 << 62):
+                            problems.append(f"{label}: e{e} missed but its middle {-own:.2f} inside the 3D path")
+                        if not hit and sh["enemies"][e][3] < widest:
+                            info[f"tube_e{e}"] += f" (own radius {own:+.2f})"
+                    for (slot, e, fx, fz, left, flags, hvi), (hx, hy, hz, ax, ay, az) in zip(sh["hitat"], sh["hitat3"]):
+                        if hvi > until:
+                            continue
+                        d = tube_hit_margin(sh, e, hx, hy, hz, (ax, ay, az))
+                        if d is None:
+                            problems.append(f"{label}: e{e} hit from {hx:.2f},{hy:.2f},{hz:.2f}: no place of the 3D path there")
+                        elif d > 0.02:
+                            problems.append(f"{label}: e{e}'s middle {d:+.2f} outside the 3D path's ellipsoid it was hit from")
             elif what == "cone":
                 if not sh["cones"]:
                     problems.append(f"{label}: no cone")
@@ -506,6 +610,13 @@ def check(c, out, label, results):
                 info["flight"] = f"e{e} {'hit in flight' if hit_air else 'not hit in flight'}, tunnel {d:+.2f}"
                 if abs(d) > 0.02 and hit_air != (d < 0):
                     problems.append(f"{label}: e{e} {'hit' if hit_air else 'not hit'} in flight, the flight's tunnel {d:+.2f}")
+                if TUBES == "1":
+                    # and its middle against the flight's 3D path (hanging in the air: Lv1 over it, Lv3 down on it)
+                    d3 = tube_margin(sh, e, before_land=True)
+                    info["flight"] += f", 3D path {d3:+.2f}"
+                    if abs(d3) > 0.02 and hit_air != (d3 < 0):
+                        problems.append(f"{label}: e{e} {'hit' if hit_air else 'not hit'} in flight, its middle {d3:+.2f} from "
+                                        "the flight's 3D path")
         elif what == "ui_off":
             if any("collapsed=1" in l for l in aim_lines(out)):
                 problems.append(f"{label}: the panel folded with the spell UI off")
@@ -636,7 +747,15 @@ def main():
     ap.add_argument("--out", type=Path, default=ROOT / "out/spell_aim_test")
     ap.add_argument("--only", help="cases, comma-separated (and lift, pick, idle)")
     ap.add_argument("--verify", nargs="*", help="check the copy of the spell code against the game (spells: 0.5 1.3 ...)")
+    ap.add_argument("--tubes", choices=("0", "1"), default="1", help="the 3D spell paths (ELTALE_SPELL_AIM_TUBES) in every run")
+    ap.add_argument("--sheet", action="store_true", help="only make the contact sheet of OUT's pictures")
+    ap.add_argument("--keep-probes", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
+    global TUBES
+    TUBES = args.tubes
+    if args.sheet:
+        sheet(args.out.resolve())
+        return
     args.exe = args.exe.resolve()
     args.rom = args.rom.resolve()
     work = args.out.resolve()
@@ -668,6 +787,8 @@ def main():
                 if src.is_file():
                     shutil.copyfile(src, shots / f"{c['name']}-{aspect}-{n}.png")
         problems = check(c, o43, "4:3", results) + check(c, o169, "16:9", {})
+        if c.get("side"):
+            problems = [pr for pr in problems if "the run did not finish" in pr]
         if aim_lines(o43) != aim_lines(o169):
             problems.append("4:3 and 16:9 print different aim lines")
         audio = [field(o, r"P1_AUDIO .*hash=(\w+)") for o in (o43, o169)]
@@ -679,6 +800,38 @@ def main():
         for label, info in results.get(c["name"], {}).items():
             if isinstance(info, dict):
                 print(f"    {label}: " + " ".join(f"{k}={v}" for k, v in info.items()))
+        for pr in problems:
+            print("    !", pr)
+    # the 3D paths change only the picture: the lob with them off, the same aim lines and sound, other pictures
+    if (not only or "tubes_off" in only) and TUBES == "1":
+        c = dict(next(x for x in CASES if x["name"] == "lob"), name="tubes_off")
+        pt = probe(c, args, work, saves)
+        problems = []
+        shots = work / "pictures"
+        shots.mkdir(exist_ok=True)
+        for aspect, wide in (("43", False), ("169", True)):
+            on = run(c, args, aspect + "-on", work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"])
+            off = run(c, args, aspect + "-off", work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"],
+                      env={"ELTALE_SPELL_AIM_TUBES": "0"})
+            if aim_lines(on) != aim_lines(off):
+                problems.append(f"{aspect}: the aim lines differ with the 3D paths on and off")
+            if field(on, r"P1_AUDIO .*hash=(\w+)") != field(off, r"P1_AUDIO .*hash=(\w+)"):
+                problems.append(f"{aspect}: the game's sound differs with the 3D paths on and off")
+            if "P1_AIM_TUBE " not in on or "P1_AIM_TUBE " in off:
+                problems.append(f"{aspect}: the 3D path logged {'not ' if 'P1_AIM_TUBE ' not in on else ''}with them on, "
+                                f"{'' if 'P1_AIM_TUBE ' in off else 'not '}with them off")
+            for n, f in enumerate(c["frames_shot"]):
+                pa = work / f"tubes_off-{aspect}-on" / "pictures" / f"frame_{f}.png"
+                pb = work / f"tubes_off-{aspect}-off" / "pictures" / f"frame_{f}.png"
+                if pa.is_file() and pb.is_file():
+                    shutil.copyfile(pa, shots / f"tubes_off-{aspect}-{n}-on.png")
+                    shutil.copyfile(pb, shots / f"tubes_off-{aspect}-{n}-off.png")
+                    if n == 0 and pa.read_bytes() == pb.read_bytes():
+                        problems.append(f"{aspect}: the preview's pictures are the same with the 3D paths on and off")
+                else:
+                    problems.append(f"{aspect}: no picture {f}")
+        failed += bool(problems)
+        print(f"SPELL_AIM tubes_off {'OK' if not problems else 'FAIL'}")
         for pr in problems:
             print("    !", pr)
     # the raised camera changes only the picture: the same aim (its own probe: the monsters are elsewhere on a flat view)
@@ -716,7 +869,50 @@ def main():
         for pr in problems:
             print("    !", pr)
     print("SPELL_AIM_TEST " + ("OK" if not failed else f"FAIL ({failed})"))
+    sheet(work)
     sys.exit(1 if failed else 0)
+
+
+def sheet(work):
+    """OUT/sheet/*.png: each moving spell's preview from the raised camera (4:3 and 16:9) and from the side, and the
+    lob with the 3D paths on and off; captioned with the pictures' names, their full paths in index.txt"""
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        print("SPELL_AIM sheet: no PIL, no contact sheet")
+        return
+    pics = work / "pictures"
+    rows = [("rock1", "t_rock1_side"), ("rock2", "t_rock2"), ("rock3", "t_rock3_side"), ("bomb", "t_bomb"),
+            ("water", "t_water"), ("cyclone", "t_cyclone"), ("cutter", "t_cutter"), ("magma", "t_magma"),
+            ("roll1", "t_roll1"), ("roll2", "t_roll2"), ("fire1", "t_fire1"), ("fire2", "t_fire2"), ("fire3", "t_fire3"),
+            ("wind1", "t_wind1"), ("wind2", "t_wind2"), ("wind3", "t_wind3"), ("arrow1", "t_arrow1"), ("arrow2", "t_arrow2"),
+            ("off", "tubes_off")]
+    out = work / "sheet"
+    out.mkdir(exist_ok=True)
+    index = []
+    w, h, cap = 480, 270, 14
+    per = 5
+    for page in range(0, len(rows), per):
+        chunk = rows[page:page + per]
+        img = Image.new("RGB", (3 * w, len(chunk) * (h + cap)), (24, 24, 24))
+        d = ImageDraw.Draw(img)
+        for r, (side, raised) in enumerate(chunk):
+            files = [pics / f"{raised}-43-0.png", pics / f"{raised}-169-0.png", pics / f"side_{side}-169-0.png"]
+            if side == "off":  # (the lob, Rock Lv3, with the 3D paths on and off)
+                files = [pics / "tubes_off-169-0-on.png", pics / "tubes_off-169-0-off.png", pics / "tubes_off-43-0-off.png"]
+            for col, f in enumerate(files):
+                x, y = col * w, r * (h + cap)
+                if f.is_file():
+                    im = Image.open(f).convert("RGB")
+                    im.thumbnail((w, h))
+                    img.paste(im, (x + (w - im.width) // 2, y))
+                    index.append(str(f))
+                d.text((x + 4, y + h), f.name if f.is_file() else f"(no {f.name})", fill=(230, 230, 230))
+        name = out / f"sheet_{page // per + 1}.png"
+        img.save(name)
+        index.append(f"== {name}")
+    (out / "index.txt").write_text("\n".join(index) + "\n")
+    print(f"SPELL_AIM sheet {out}")
 
 
 if __name__ == "__main__":

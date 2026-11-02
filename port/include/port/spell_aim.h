@@ -1,8 +1,8 @@
 /* Click to aim spells (port/p0/spell_aim.c, docs/SPELL_AIM.md).
  *
  * In a battle, with a spell ready (put together and castable now), the pointer over the battlefield shows where the
- * spell would go and whom it would hit: its area on the ground (circles, lines, a fan, a landing circle), and a ring
- * under every monster it would hit. A left click turns the player to face the monster or the ground point under the
+ * spell would go and whom it would hit: its area on the ground (circles, lines, a fan, a landing circle), a moving
+ * spell's hit volume in 3D over it (a see-through tube in the air), and a ring under every monster it would hit. A left click turns the player to face the monster or the ground point under the
  * pointer and casts (the game's A). The spell keeps its own reach and rules: the only thing the aim sets is the
  * player's facing (Actor.rot) in Player_StartCastSpell, which the player could have set by turning before building the
  * spell. Who gets hit comes from a copy of the game's own movement and hit test (no game function with side effects is
@@ -19,11 +19,13 @@
 struct Player;
 struct Actor;
 
-/* The switch: the host's F1 "Click to aim spells" (settings.json controls.spell_aim, default on) and "Raise the camera
- * while aiming" (controls.spell_aim_camera); headless ELTALE_SPELL_AIM=1 (default off there) and
- * ELTALE_SPELL_AIM_CAMERA=0|1 (default 1). */
+/* The switch: the host's F1 "Click to aim spells" (settings.json controls.spell_aim, default on), "Raise the camera
+ * while aiming" (controls.spell_aim_camera) and "3D spell paths" (controls.spell_aim_tubes, default on); headless
+ * ELTALE_SPELL_AIM=1 (default off there), ELTALE_SPELL_AIM_CAMERA=0|1 (default 1) and ELTALE_SPELL_AIM_TUBES=0|1
+ * (default 1). */
 int Port_SpellAimEnabled(void);
-/* port/os/controller.c (through Port_SpellUiKeys), each read: the host's switches (2 aim, 4 camera), -1 none */
+/* port/os/controller.c (through Port_SpellUiKeys), each read: the host's switches (2 aim, 4 camera, 8 the 3D paths),
+ * -1 none */
 void Port_SpellAimSwitch(int on);
 
 /* port/os/controller.c, each read, after Port_MouseMenuRead: hover (the preview) and a click (the aim, and A) */
