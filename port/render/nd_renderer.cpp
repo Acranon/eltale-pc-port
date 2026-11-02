@@ -97,19 +97,6 @@ void to_object(const float *m, float x, float y, float z, float *out) {
     out[3] = 0;
 }
 
-// The eye in the world from a view matrix (row vectors: p_view = p R + T, so the eye is -T R^-1)
-void overlay_eye(const float *v, float *out) {
-    const double a = v[0], b = v[1], c = v[2], d = v[4], e = v[5], f = v[6], g = v[8], h = v[9], k = v[10];
-    const double det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
-    out[0] = out[1] = out[2] = out[3] = 0;
-    if (std::fabs(det) < 1e-12) return;
-    // R^-1 (the adjugate over the determinant), then -T R^-1
-    const double inv[9] = { (e * k - f * h) / det, (c * h - b * k) / det, (b * f - c * e) / det,
-                            (f * g - d * k) / det, (a * k - c * g) / det, (c * d - a * f) / det,
-                            (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det };
-    for (int j = 0; j < 3; j++) out[j] = float(-(v[12] * inv[j] + v[13] * inv[3 + j] + v[14] * inv[6 + j]));
-}
-
 GpuTile gpu_tile(const ElRdTile &t) {
     GpuTile g = {};
     g.texels = t.texels;
@@ -1056,12 +1043,6 @@ void NativeDraw::render(CommandBuffer &cmd, Image &picture, const Recording *rec
                 g.fog[3] = 511.0f * 32.0f * std::fabs(cam.perspective[14]) / g.fog[2];
                 g.tile_offset[2] = -cam.perspective[10];
                 g.tile_offset[3] = 1.0f;
-                // v11 (EL_RDV_RIM): this picture's eye, from its own view (between ticks too: the rim turns with the
-                // camera), and the rim's constants
-                overlay_eye(cam.view, g.light_dir[0]);
-                g.light_col[0][0] = EL_RD_RIM_FLOOR;
-                g.light_col[0][1] = EL_RD_RIM_POWER;
-                g.light_col[0][2] = EL_RD_RIM_SOFT;
                 options[i] = 0;
                 continue;
             }

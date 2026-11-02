@@ -12,8 +12,6 @@ layout(location = 1) in vec2 v_tc;
 layout(location = 2) noperspective in vec2 v_tc_affine;
 layout(location = 3) in float v_far;
 layout(location = 4) in vec2 v_zw;
-layout(location = 5) in vec3 v_world;
-layout(location = 6) in vec3 v_normal;
 layout(location = 0) out vec4 o_color;
 
 // The depth buffer as it was before this decal draw (nd_renderer.cpp copies it when a decal comes after
@@ -270,14 +268,6 @@ void main() {
     vec4 sh = v_shade;
     if ((m.geometry & 0x10000u) != 0u && (pc.options & OPT_N64_FOG) == 0u)
         sh.a = clamp(v_zw.x / v_zw.y * d.fog.x + d.fog.y, 0.0, 255.0) / 255.0;
-    // v11, an overlay's see-through surface (RDV_RIM: a normal came with it): the shade's alpha by how edge-on it is
-    // to this picture's eye (light_dir[0], nd_renderer.cpp; light_col[0]: the floor, the power and the soft outline,
-    // render.h EL_RD_RIM_*). |n.v|: its back faces get the same rim as its front
-    if (dot(v_normal, v_normal) > 0.0) {
-        float ndv = abs(dot(normalize(v_normal), normalize(d.light_dir[0].xyz - v_world)));
-        vec3 k = d.light_col[0].xyz;
-        sh.a *= (k.x + (1.0 - k.x) * pow(1.0 - ndv, k.y)) * smoothstep(0.0, k.z, ndv);
-    }
     shade = ivec4(to8(sh.r), to8(sh.g), to8(sh.b), to8(sh.a));
     prim_lod = int(m.misc & 255u);
     k4 = int(m.misc >> 8 & 255u);

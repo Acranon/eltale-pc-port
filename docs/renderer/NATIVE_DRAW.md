@@ -1116,7 +1116,7 @@ looked at or of the field of view is still a cut. Ticks without the flag are as 
 returns 181 degrees (no cone) while the view is the mouse camera's. `tools/interp_test.py` cases `mouse`
 and `mouse-battle`.
 
-## Overlays: the port's own pictures in the world (render.h v10, v11)
+## Overlays: the port's own pictures in the world (render.h v10)
 
 `ElRenderApi.overlay(vertices, count, material)` takes world-space triangles. The vertices are `ElRdVertex` in world
 units with their colours (`c`, `EL_RDV_SHADE`). The material comes from `material_2d`. Click to aim spells
@@ -1133,33 +1133,6 @@ section.
 - **Pictures between ticks.** The overlay is the earlier recording's, matched by nothing (nd_interp.cpp leaves it as
   it is, as the 2D). Being in world units and drawn through each picture's interpolated camera, it stays where it is on
   the ground at 240 pictures a second.
-
-### v11: see-through surfaces with a rim (`EL_RDV_RIM`)
-
-Click to aim's 3D spell paths (docs/SPELL_AIM.md "3D paths") are closed surfaces in the air that must not hide what is
-inside them. A vertex with `EL_RDV_RIM` (overlay vertices only) carries its world-space normal in `s`, `t` and the four
-bytes of `scale` (a float); its shade alpha is then scaled per pixel by how edge-on the surface is to the picture's eye:
-
-```
-alpha = shade alpha x (FLOOR + (1 - FLOOR) (1 - |n.v|)^POWER) x smoothstep(0, SOFT, |n.v|)
-```
-
-with `EL_RD_RIM_FLOOR` 0.06, `EL_RD_RIM_POWER` 3 and `EL_RD_RIM_SOFT` 0.12 (render.h). Face on a surface is nearly
-clear; toward its outline it glows; the last sliver at the very outline fades out again, so the outline is soft and the
-facets of its rings do not show as a hard polygon.
-
-- **Per picture.** nd_renderer.cpp puts the eye of the picture's own view (`overlay_eye`: -T R^-1 of `cam.view`) in the
-  overlay draw's `light_dir[0]` and the three constants in `light_col[0]` (an overlay has no lights). Pictures between
-  ticks have their own view (nd_interp.cpp `camera_at`), so the rim turns with the camera at 240 pictures a second
-  while the triangles stay the tick's.
-- **Both sides alike.** |n.v|: a back face gets the rim its front face gets, so a tube's far wall and near wall glow at
-  the same outline.
-- **The shaders.** nd.vert passes the world place (`v_world`) and the normal (`v_normal`, zero for every other vertex)
-  on; nd.frag scales `sh.a` before the combiner when the normal is not zero. Every other draw computes exactly what it
-  did. No new pipeline: the same material and state as v10's overlays (`warm_test --check`).
-- **Blending.** As every overlay: ZB_XLU_SURF, depth-tested and not written. The caller sorts its triangles back to
-  front (spell_aim.c `tube_sort`); where surfaces of one colour overlap, "over" blending gives the same picture in any
-  order (docs/SPELL_AIM.md "Order"), so a slightly stale order between ticks does not show.
 
 ## The presenter's robustness (2026-11-01, nr/present)
 

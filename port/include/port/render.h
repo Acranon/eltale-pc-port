@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 11
+#define EL_RENDER_API_VERSION 10
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -49,15 +49,7 @@ enum {
     EL_RDV_TEXGEN_LIN = 1 << 2, /* G_TEXTURE_GEN_LINEAR */
     EL_RDV_FOG = 1 << 3,        /* G_FOG: the shade alpha is the fog factor */
     EL_RDV_SHADE = 1 << 4,      /* G_SHADE */
-    /* v11, overlay vertices only (ElRenderApi.overlay): a see-through surface with a rim. s, t and the four bytes of
-     * scale (a float, memcpy) are its world-space normal x, y, z; the shade's alpha is then scaled per pixel by how
-     * edge-on the surface is to the picture's own eye, (0.06 + 0.94 (1 - |n.v|)^3) x smoothstep(0, 0.12, |n.v|):
-     * nearly clear face on, strongest just inside its outline (EL_RD_RIM_* below; nd.frag) */
-    EL_RDV_RIM = 1 << 5,
 };
-#define EL_RD_RIM_FLOOR 0.06f   /* the alpha left face on */
-#define EL_RD_RIM_POWER 3.0f    /* how fast it rises toward the edge */
-#define EL_RD_RIM_SOFT 0.12f    /* |n.v| under which the very outline fades out (no hard line at the silhouette) */
 
 /* A texture tile as the RDP samples it: the decoded texels (EL_RDT_*) plus the tile's addressing. */
 typedef struct ElRdTile {
@@ -312,8 +304,7 @@ typedef struct ElRenderApi {
      * recording's order: `count` vertices (3 a triangle) in world units with their colours (c, EL_RDV_SHADE), drawn
      * with the material's state (material_2d's: a 2D material's combiner and blender, depth-tested as its othermode
      * says) through each picture's own camera, so they stay on the ground in pictures between ticks (where they are
-     * the earlier tick's, as a 2D item's mesh is). v11: a vertex with EL_RDV_RIM carries a normal and is drawn with
-     * the rim (its alpha from the picture's eye: see-through tubes and domes, docs/SPELL_AIM.md "3D paths"). */
+     * the earlier tick's, as a 2D item's mesh is). */
     void (*overlay)(const ElRdVertex *vertices, uint32_t count, uint32_t material);
 } ElRenderApi;
 

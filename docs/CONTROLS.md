@@ -63,8 +63,8 @@ button does one thing: binding it takes it away from wherever it was. "Reset the
 puts back the table above. The page also has the mouse camera's speed (10-400%) and an invert switch for
 up and down, **Mouse in menus** (on by default; off: the mouse only turns the camera), **Spell panel and quick
 bar** (on by default; off: the game's own spell rows, and the keys 1-0, `,`, `.` and Esc do nothing:
-[SPELL_UI.md](SPELL_UI.md)), and **Click to aim spells** with **Raise the camera while aiming** and **3D spell paths**
-(all on by default: [SPELL_AIM.md](SPELL_AIM.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
+[SPELL_UI.md](SPELL_UI.md)), and **Click to aim spells** with **Raise the camera while aiming** (both on by default:
+[SPELL_AIM.md](SPELL_AIM.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
 minimap's `[` `]` and wheel are as they were.
 
 ## The mouse in menus
@@ -242,7 +242,6 @@ eye and the point looked at) for every tick the view is applied.
   "spell_ui": true,
   "spell_aim": true,
   "spell_aim_camera": true,
-  "spell_aim_tubes": true,
   "bindings": {
     "a": ["Space", "", "Pad a"],
     "c_up": ["Up", "", "Pad -righty"],

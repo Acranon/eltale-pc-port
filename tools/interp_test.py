@@ -39,10 +39,6 @@ CASES = [
     # click to aim spells (docs/SPELL_AIM.md): the camera rising and coming down, the preview's overlays, the cast
     ("aim", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2", "ELTALE_SPELL_UI": "1", "ELTALE_SPELL_AIM": "1"},
      ["--frames", "560", "--input", "tests/spell-aim.input"], "185-260", "battle-stuck"),
-    # its 3D paths (docs/SPELL_AIM.md "3D paths"): the tubes made again as the pointer moves, sorted each tick, their rim
-    # from each picture's eye while the camera rises
-    ("aim3d", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2", "ELTALE_SPELL_UI": "1", "ELTALE_SPELL_AIM": "1"},
-     ["--frames", "560", "--input", "tests/spell-aim-3d.input"], "185-480", "battle-stuck"),
     ("spells", {"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2"},
      ["--frames", "1600", "--input", "tests/battle-spells.input"], "60+100/40", "battle-stuck"),
     ("tour", {"ELTALE_MAP_TOUR": "1"}, ["--frames", "300000"], "600+1000/8", None),

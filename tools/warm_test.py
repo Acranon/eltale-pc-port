@@ -20,8 +20,7 @@ nothing, as on a first start.
 - shipped: a fresh data folder and nothing else: what the shipped list (port/render/nd_pipeline_list.h) covers.
 
 Cases: ng (New Game and a walk), spells (a battle with every element's spells), menu (the item menu and pages),
-ending, aim (click to aim spells: its preview's overlay, tests/spell-aim.input), aim3d (its 3D paths, render.h v11's rim:
-tests/spell-aim-3d.input), and tour (ELTALE_MAP_TOUR: every sub-area of every map, a few minutes; map 0's stone rooms made 2-4
+ending, aim (click to aim spells: its preview's overlay, tests/spell-aim.input), and tour (ELTALE_MAP_TOUR: every sub-area of every map, a few minutes; map 0's stone rooms made 2-4
 pipelines in play before it was in the list). Looks (LOOKS: the Graphics page's presets, plus "dither", Everything
 on with the N64 dither, and "border", Everything on at 4:3 with the N64 border and fog): each run's settings.json
 is the look's switches with "msaa" set to --msaa.
@@ -58,9 +57,6 @@ CASES = {
     # click to aim spells (docs/SPELL_AIM.md): its preview is the overlay (render.h v10), its own pipeline state
     "aim": ({"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2", "ELTALE_SPELL_UI": "1", "ELTALE_SPELL_AIM": "1"},
             ["--frames", "560", "--input", "tests/spell-aim.input"], "battle-stuck"),
-    # and its 3D paths (render.h v11's rim on the overlay: the same pipeline state)
-    "aim3d": ({"ELTALE_QUICK_LOAD_AT": "100", "ELTALE_BATTLE_LOG": "2", "ELTALE_SPELL_UI": "1", "ELTALE_SPELL_AIM": "1"},
-              ["--frames", "560", "--input", "tests/spell-aim-3d.input"], "battle-stuck"),
     "tour": ({"ELTALE_MAP_TOUR": "1"}, ["--frames", "300000"], None),
 }
 

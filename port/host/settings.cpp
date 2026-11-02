@@ -152,7 +152,6 @@ static void read_controls(const cJSON *j, Controls &c) {
     read_bool(item(j, "spell_ui"), c.spell_ui);
     read_bool(item(j, "spell_aim"), c.spell_aim);
     read_bool(item(j, "spell_aim_camera"), c.spell_aim_camera);
-    read_bool(item(j, "spell_aim_tubes"), c.spell_aim_tubes);
     const cJSON *b = item(j, "bindings");
     if (!cJSON_IsObject(b)) return;
     for (int a = 0; a < ACT_COUNT; a++) {
@@ -255,7 +254,6 @@ void save_settings() {
     cJSON_AddBoolToObject(controls, "spell_ui", s.controls.spell_ui);
     cJSON_AddBoolToObject(controls, "spell_aim", s.controls.spell_aim);
     cJSON_AddBoolToObject(controls, "spell_aim_camera", s.controls.spell_aim_camera);
-    cJSON_AddBoolToObject(controls, "spell_aim_tubes", s.controls.spell_aim_tubes);
     cJSON *bindings = cJSON_AddObjectToObject(controls, "bindings");
     for (int a = 0; a < ACT_COUNT; a++) {
         cJSON *list = cJSON_AddArrayToObject(bindings, action_key(a));

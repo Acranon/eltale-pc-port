@@ -72,7 +72,6 @@ struct Controls {
     bool spell_ui = true;        // the spell UI: panel and quick bar (port/spell_ui.h); off: the game's own
     bool spell_aim = true;       // click to aim spells in battle (port/spell_aim.h, docs/SPELL_AIM.md)
     bool spell_aim_camera = true; // ... and the camera rises while aiming (drawing only)
-    bool spell_aim_tubes = true;  // ... and the moving spells' paths in 3D (their hit volumes, drawing only)
     Controls();                  // the defaults
 };
 
@@ -151,7 +150,7 @@ void input_pointer(float *x, float *y, int *width, int *flags);
 // The game shows a menu, a text window or the spell panel (ElHost_SetScreen, each read): no mouse look over it
 void input_screen(int open);
 // The spell UI's keys pressed since the last call (port/spell_ui.h PORT_SPELLKEY_*) and its switches: 1 the spell UI,
-// 2 click to aim spells, 4 the camera rises while aiming, 8 the 3D spell paths (port/spell_aim.h)
+// 2 click to aim spells, 4 the camera rises while aiming (port/spell_aim.h)
 void input_spell_keys(unsigned *keys, int *on);
 void input_shutdown();
 // ELTALE_INPUT_TEST: queue the script's events that are due (SDL's own queue, this process only)
