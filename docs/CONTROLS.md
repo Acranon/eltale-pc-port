@@ -33,7 +33,15 @@ a controller slot.
 | Spell UI: fire / earth / water / wind crystal | 1 / 2 / 3 / 4 | (C up / left / down / right) |
 | Quick bar: slots 1-6 of the page shown | 5 6 7 8 9 0 | |
 | Quick bar: page before / after | `,` / `.` | |
-| Spell UI: take the elements back | Esc | |
+| Spell UI: take the elements back; pause menu: open / close | Esc | |
+| Pause menu: Options | O | Y (top) |
+
+In the pause menu (on by default; [PAUSE_MENU.md](PAUSE_MENU.md)) the game's buttons do what the Start menu's did,
+and the map's: Start, B or Esc close it; Z and L (Q, E) or C left (Left arrow) the region before, R or C right (Right
+arrow) the next; C up / C down (Up / Down arrows, the right stick), the wheel or `=` / `-` zoom the map; the D-pad
+(I J K L) and the stick (W A S D) pan it; A (Space) puts the marker at the cross (or takes it away); O (Y) opens
+Options, where the D-pad, the stick or the C buttons move the hand and change the value and B, Start, Esc or O close
+it.
 
 Fixed keys: F1 (or the controller's Back) the menu, F2 quick save, F4 quick load, F11 or Alt+Enter
 fullscreen, F8 the flash recorder (debug). Alt+Enter only switches fullscreen, never presses Start: from
@@ -59,7 +67,8 @@ button does one thing: binding it takes it away from wherever it was. "Reset the
 puts back the table above. The page also has the mouse camera's speed (10-400%) and an invert switch for
 up and down, **Mouse in menus** (on by default; off: the mouse only turns the camera) and **Spell panel and quick
 bar** (on by default; off: the game's own spell rows, and the keys 1-0, `,`, `.` and Esc do nothing:
-[SPELL_UI.md](SPELL_UI.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
+[SPELL_UI.md](SPELL_UI.md)) and **Unified pause menu** (on by default; off: the Start menu's four pages, and Esc and
+O do nothing there: [PAUSE_MENU.md](PAUSE_MENU.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
 minimap's `[` `]` and wheel are as they were.
 
 ## The mouse in menus
@@ -71,9 +80,10 @@ menus, takes the last element back from a spell, backs out of the save menu and 
 | Screen | Pointing | Left click |
 | --- | --- | --- |
 | Title | "Press Start": anywhere; the three choices; the confirmation's two rows | Start; A |
-| Start menu | the arrows at the top | Z / R (the page before / after) |
+| Start menu (the pause menu off) | the arrows at the top | Z / R (the page before / after) |
 | Start menu, map page | (while the marker moves, after A) the marker follows the pointer | puts the marker there (moving: sets it down, A) |
 | Start menu, options | | the text speed's or the music's value under it |
+| Pause menu (on) | a button, an arrow, a slider: a gold frame | [PAUSE_MENU.md](PAUSE_MENU.md): the arrows, zoom, Options, Close, Back, the sliders (a click or a drag); on the map a left drag pans, the wheel zooms, a right click puts the marker there or takes it away |
 | Item menu (R) | an item: the cursor | A (use it); the arrows under the row scroll by one |
 | Text windows | an answer of a question: the cursor | A on the answer; a message: A (next page, close) |
 | Save menu (save, load, delete) | the two saves shown: the cursor | A; the arrows page (a stick push); a message: A; a question's answers: the cursor, A |
@@ -129,7 +139,7 @@ rectangle), for writing tests.
 
 ## Mouse look and the game's screens
 
-No mouse look while the game shows a screen the pointer is for: its pause and save menus, the title, the Controller
+No mouse look while the game shows a screen the pointer is for: its pause menu (the unified one too) and save menus, the title, the Controller
 Pak manager, and in play the item menu, a text window, the spell panel (the spell input) and the element allocation.
 
 - When one opens, mouse look turns off: the Tab toggle is switched off, a right drag does not start (a right click
@@ -220,6 +230,9 @@ eye and the point looked at) for every tick the view is applied.
   with a save once (tests/tour-save.input, a few minutes). `MOUSE_MENU_TEST OK`.
 - `tools/spell_ui_test.py --exe EXE --rom ROM [--saves ...]`: the spell panel and the quick bar (docs/SPELL_UI.md
   "Tests"), with the host's path and mouse look in a hidden window. `SPELL_UI_TEST OK`.
+- `tools/pause_menu_test.py --exe EXE --rom ROM [--saves ...]`: the pause menu with the controller, the mouse, Esc and
+  O, the compass's cyan diamond, the marker kept with a quick save, the host's path in a hidden window
+  ([PAUSE_MENU.md](PAUSE_MENU.md) "Tests"). `PAUSE_MENU_TEST OK`.
 - `tools/mouse_host_test.py --exe EXE --rom ROM`: the host's window-to-picture mapping in a hidden window: 4:3,
   4:3 pillarboxed at scale 2, 16:9, 16:9 letterboxed at scale 3, "Match the window" narrow (letterboxed 4:3) and
   wide (686 wide): the same picture positions and the same pick ("Continue") in every case. `MOUSE_HOST_TEST OK`.
@@ -232,6 +245,7 @@ eye and the point looked at) for every tick the view is applied.
   "invert_y": false,
   "mouse_menus": true,
   "spell_ui": true,
+  "pause_menu": true,
   "bindings": {
     "a": ["Space", "", "Pad a"],
     "c_up": ["Up", "", "Pad -righty"],
@@ -243,7 +257,7 @@ eye and the point looked at) for every tick the view is applied.
 Each action (input.cpp's names: `stick_up`, `walk`, `a`, `b`, `z`, `start`, `l`, `r`, `c_up`..., `d_up`...,
 `look_hold`, `look_toggle`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `zoom_in`,
 `zoom_out`, `camera_reset`, `map`, `map_zoom_in`, `map_zoom_out`, `map_zones`, `spell_fire`, `spell_earth`,
-`spell_water`, `spell_wind`, `slot_1`..`slot_6`, `page_prev`, `page_next`, `spell_clear`) lists three bindings: SDL
+`spell_water`, `spell_wind`, `slot_1`..`slot_6`, `page_prev`, `page_next`, `spell_clear`, `menu_options`) lists three bindings: SDL
 scancode names, `Mouse Left|Middle|Right|X1|X2`,
 `Pad <SDL button name>` or `Pad +<axis>` / `Pad -<axis>`; `""` is none. An action left out keeps its
 defaults.

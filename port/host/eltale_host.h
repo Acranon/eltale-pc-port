@@ -90,7 +90,8 @@ ELHOST_API void ElHost_GetCamera(float *dx, float *dy, int *wheel, int *flags);
 ELHOST_API void ElHost_GetPointer(float *x, float *y, int *width, int *flags);
 
 /* The spell UI (port/spell_ui.h; docs/SPELL_UI.md): its keys pressed since the last call (PORT_SPELLKEY_*: 1-4 the
- * crystals, 5-0 the quick bar's slots, the pages, clearing) and its switch (on: 1). Call with ElHost_GetPointer. */
+ * crystals, 5-0 the quick bar's slots, the pages, clearing; the pause menu's Options key, port/pause_menu.h) and the
+ * switches (on: 1 the spell UI, 2 the unified pause menu). Call with ElHost_GetPointer. */
 ELHOST_API void ElHost_GetSpellKeys(unsigned *keys, int *on);
 
 /* The game shows a screen that takes the pointer (its menus, a text window, the spell panel or spell input, the

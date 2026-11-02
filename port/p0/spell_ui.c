@@ -22,6 +22,7 @@
 #include "port/mouse_menu.h"
 #include "port/os.h"
 #include "port/spell_ui.h"
+#include "port/pause_menu.h"
 #include "port/text.h"
 
 #include <math.h>
@@ -174,7 +175,9 @@ int Port_SpellUiEnabled(void) {
 
 void Port_SpellUiKeys(u32 keys, int on) {
     S.keys |= keys;
-    if (on >= 0) S.host_on = on;
+    if (on >= 0) S.host_on = on & 1;
+    /* the pause menu takes Esc and its own keys from the same path; its switch is bit 1 (port/pause_menu.h) */
+    Port_PauseMenuKeys(keys, on >= 0 ? (on >> 1) & 1 : -1);
 }
 
 /* ---- the game's rules ------------------------------------------------------------------------------------------ */
