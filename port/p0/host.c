@@ -68,8 +68,10 @@ static uint64_t monotonic_ns(void) {
 #endif
 }
 
+uint64_t Port_HostNowNs(void) { return monotonic_ns(); }
+
 #ifdef ELTALE_P1_OS
-/* sees every ROM DMA (the audio reference uses it to know which memory holds ROM bytes) */
+/* sees every ROM DMA (the audio reference check, tests only, uses it to know which memory holds ROM bytes) */
 void (*Port_PiDmaHook)(void *dst, u32 size);
 /* The native renderer's model cache (game/native_draw: nd_forget): what a ROM DMA overwrites */
 void (*Port_DmaForgetHook)(uintptr_t dst, u32 size);
