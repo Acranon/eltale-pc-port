@@ -6,7 +6,7 @@ ports (KF1, KF3, KF4): a full map on a key and a minimap in a corner. It is not 
 facing, in every area of the game; the doors and ways out, and the people, where they are now; the inns, the
 Traveler's Wings and the bread givers and the doors to them, the people with a story line, the signs; and, as cheats,
 the chests, the spirits, the bosses, the story item givers, the battle zones and a danger meter. Pointing at a mark
-names it. Fog of war comes later (see "Next").
+names it. Fog of war (on) draws only what the player has seen, kept with each save.
 
 ## Using it
 
@@ -25,19 +25,28 @@ names it. Fog of war comes later (see "Next").
   changes the reach of the kind of place you are in (indoors or outdoors), kept in settings.json; the reach shows
   on the minimap for a moment ("the whole room" when a room is fitted).
 - The F1 menu's **Map** page: pause while the map is open (off), the map's background (92%), the marks (doors and
-  ways out, people, inns/Wings/food, story people, signs: all on), the minimap on/off, its corner (bottom right),
+  ways out, people, inns/Wings/food, story people, signs: all on), fog of war (on), the minimap on/off, its corner (bottom right),
   size (24% of the picture's height), reach outdoors (800 units from its centre to its edge, 30 to 3000), reach
-  indoors (150, 20 to 1500), fit small rooms (on), opacity (85%), and the **Cheats**: show chests, show spirits, show
-  bosses, show story item givers, the battle zones button, the danger meter (all off). settings.json:
+  indoors (150, 20 to 1500), fit small rooms (on), opacity (85%), and the **Cheats**: show the whole map (no fog),
+  show chests, show spirits, show bosses, show story item givers, the battle zones button, the danger meter (all
+  off). settings.json:
 
 ```json
 "map": { "minimap": true, "minimap_corner": 1, "minimap_size": 24, "minimap_reach_outdoor": 800,
          "minimap_reach_indoor": 150, "minimap_fit_rooms": true, "minimap_opacity": 85, "background": 92,
          "pause_game": false, "doors": true, "people": true, "services": true, "story": true, "signs": true,
-         "cheat_chests": false, "cheat_spirits": false, "cheat_bosses": false, "cheat_givers": false,
-         "cheat_zones": false, "cheat_danger": false }
+         "fog": true, "cheat_chests": false, "cheat_spirits": false, "cheat_bosses": false, "cheat_givers": false,
+         "cheat_zones": false, "cheat_danger": false, "cheat_reveal": false }
 ```
 
+- **Fog of war** (on by default): the map draws only the floor, walls, water and marks the player has seen; the rest
+  is not drawn at all (on the minimap the game shows through there as it does beyond the area). Indoors a room that fits the minimap's indoor reach (houses, inns, the castle's rooms) is seen whole as you
+  walk in, as KF1's and KF3's rooms are; a bigger indoor place (a hall, a cave, a dungeon floor) is seen 150 units
+  round the player, and the outdoors 400, both by sight lines that stop at walls (KF4's rays), so a corridor fills in
+  as you walk it and a house hides what is behind it. The full map opens fitted to what has been seen. Doors, people,
+  signs and services show once their spot has been seen, and stay (a sign is easy to find again); the cheats' marks
+  (chests, spirits, bosses, story item givers, battle zones) show anyway, as in KF3 and KF4. "Show the whole map" (a
+  cheat) turns it off. What has been seen is kept with each save (see "Fog of war, per save").
 - **Battle zones** (cheat): with "Battle zones button" on, the full map of an area with random battles has a
   "Battle zones (hold)" button at its bottom. While it is held with the left button, or the `map_zones` key (B,
   Controls page) is held, the zones are shaded (translucent red, a red outline; on the minimap too while the key is
@@ -186,6 +195,38 @@ and only walls keep them in. So "walkable" is a question of walls, which is what
   exits, a person's place in the sub-area's NpcDef order, a chest's or spirit's slot, a sign's `textspot_table`
   index): the same each visit, so a later fog of war can keep "discovered" bits per save (see "Next").
 
+### Fog of war, per save
+
+- **Seen cells**: per sub-area, a byte per cell of the reach grid (3-unit cells, the grid the plan gives, the same
+  every visit), in the host only. Each tick the player has moved half a cell: a small indoor room (its reachable floor
+  within 150 units of its middle, as the minimap's fit) is all seen at once; elsewhere rays (about 6 per cell of reach,
+  64 to 1440) go out to 150 units indoors or 400 outdoors, marking each cell they cross and stopping after a cell a
+  wall passes through (the wall is seen). What is drawn is rebuilt from the seen cells (at once in a new area, else at
+  most four times a second while walking): the floor triangles all seen as they are, the seen cells of the triangles
+  partly seen as cell squares in the triangle's colour (the grid's `cell_tri`), the walls and the floor's edges cut
+  into cell-long pieces kept where a cell at or beside the piece's middle is seen (a ray grazing a wall sees only some
+  of its cells), the water's runs cut to seen cells. A mark is shown when a cell within one of it has been seen. The
+  full map opens fitted to the seen floor.
+- **Per save**: the game's own save and load are the moments: `SaveMenu_CaptureGameState` (the save menu's Save at
+  an inn, and an F2 quick save, which takes the same record) and `SaveMenu_RestoreGameState` (the save menu's Load,
+  the title's Continue, an F4 quick load) call `Port_AutomapSaveEvent` (patches/p0.patch, `ELTALE_P1_OS` only;
+  nd_automap.c), which hashes the saved record (FNV-1a 64 of the time played, the day, the map and sub-area, and the
+  chests, spirits, items and bosses block) and tells the host (`ElHost_AutomapSave`). A save writes
+  `automap/save_<hash>.fog` in the data folder; a load reads the file of the same hash, so a save carries its
+  exploring wherever it is kept: any Controller Pak note or slot (copied by the Pak manager too), any quick save
+  file. The hash is of the record's content, not of a Pak file and note: a save copied to another slot or Pak
+  keeps its exploring, and two saves with the very same record share it.
+- **New Game, reset, the title**: the intro or the title (`core_game_mode` 3 or 4) forgets what was seen, so New Game
+  starts with nothing and a reset or the game's end leaks nothing into the next load.
+- **Saves without a file** (all saves made before this build, the owner's own): a load finds no file and the
+  exploring starts empty from that point; the next save writes its file.
+- **The file**: little-endian, "ELTFOG\0\0", version 1, the areas (map, sub-area, the grid's size, origin and cell,
+  then the seen cells as run lengths, unseen and seen in turn) and an FNV-1a 64 of all before it; written to a .tmp
+  and renamed. A missing, short, damaged or other-version file reads as nothing seen (`P1_AUTOMAP_FOG ... result=-1`
+  or 0); an area whose grid differs (a later build cutting it otherwise) counts as all seen. Files are small (a few
+  kB to some tens of kB) and are never deleted by the game.
+- **Read-only**: the hook only reads the save's record; the game's state, saves and hashes are unchanged.
+
 ### The host: port/host/automap.cpp
 
 - **Reachable floor**: the floor is rasterised into a grid of 3-unit cells (more on the biggest maps, at most about
@@ -318,6 +359,14 @@ game's own region (P1_AUTOMAP_BATTLE rule_zone) was the zone shaded there each t
   the first town's doors to its inn and Wings giver, the second town's door to food, the field's sign and its five
   shaded zones. The pictures (full map at background 100%) are hashed
   against tests/automap_hashes.txt (`--update` writes it). Prints AUTOMAP_TEST_OK.
+- (Fog of war) `fog`, `fog-cheat`, `fog-newgame`, `fog-pak` in automap_test.py: tests/automap-fog.events after the
+  quick save compass-spirit (a save from before the fog: `P1_AUTOMAP_FOG event=read result=0`), a walk, F2 (event=write,
+  one file automap/save_<key>.fog in the test's data folder), a walk on (the full map's `P1_AUTOMAP_VIEW ... seen=N`
+  more than at the save), F4 (event=read result=1, the cells as written), with pictures (hashed) and the same with
+  "Show the whole map"; New Game (event=title, cells=0, nothing read); the inn's Controller Pak save and the
+  Continue hash to the same key (`ELTALE_AUTOMAP_FOG_LOG=1`: `P1_AUTOMAP_SAVE_KEY write/read`, headless too).
+  `ELTALE_AUTOMAP_OPEN_AT=N` (with ELTALE_AUTOMAP_DUMP) opens the full map N ticks into each area: with
+  `ELTALE_MAP_GOTO` the pictures of a partly explored area after a wander.
 - `ELTALE_AUTOMAP_LOG=1` prints each plan (P1_AUTOMAP plan: triangles, walls, exits, bounds, heights, flags), the
   object kinds of the sub-area, and its marks' sources: every exit (box, flags, item, door object, destination), the
   counts (people by talk kind, chests, spirits, boss, text spots, enemy area, encounter regions), each person
@@ -336,10 +385,6 @@ game's own region (P1_AUTOMAP_BATTLE rule_zone) was the zone shaded there each t
 
 ## Next
 
-- **Fog of war**: left out of this pass on purpose (accuracy first: the whole area is drawn). When it comes, explored
-  cells on the reach grid, kept per save (KF4's per-save files are the model: live, quick save and Controller Pak
-  copies). The marks are ready for it: each has its stable key (map, sub-area, id). A sign would be hidden until
-  its cell (or the cells within its `TextSpotDef.radius`) has been seen, then stay on the map for good (its key's
-  "discovered" bit kept with the save), so it is easy to find again; the cheats' marks (chests, spirits, bosses,
-  story item givers, battle zones) would show anyway, as in KF3 and KF4.
+- Fog of war per level (KF4 greys other heights); a mark's own "discovered" bit (the marks' stable keys, map,
+  sub-area and id, are ready for it) if a mark's cell ever needs to be told from its surroundings.
 - Place names for the title (the save menu's map labels), a look of its own for outdoor areas.

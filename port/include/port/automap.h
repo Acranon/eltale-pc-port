@@ -164,6 +164,14 @@ typedef struct ElAmPlayer {
     int16_t zone;           /* the region the player is in by the game's rule (-1 none, or no point in reach) */
     uint16_t pad2;
 } ElAmPlayer;
+/* (fog of war) the game saved, loaded or went back to the title: ElHost_AutomapSave(kind, key), key a hash of the
+ * saved record (nd_automap.c), so the host keeps what was explored with each save, in files of its own */
+enum {
+    EL_AM_SAVE_WRITE = 0, /* SaveMenu_CaptureGameState: the save menu's Save, an F2 quick save */
+    EL_AM_SAVE_READ = 1,  /* SaveMenu_RestoreGameState: the save menu's Load (the title's Continue), an F4 quick load */
+    EL_AM_SAVE_TITLE = 2, /* the intro or the title came: a reset, the game's end, before New Game */
+};
+
 enum {
     EL_AM_DANGER_ROLLS = 1,  /* the roll runs here: an enemy area, no battle, battle_flags 0x8000 clear, the player
                               * free to move (actor.animFlags bit 0 clear) */

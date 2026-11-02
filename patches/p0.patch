@@ -3054,7 +3054,7 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..dec2883 100644
+index f2ae77c..0fd3500 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
 @@ -13,6 +13,53 @@
@@ -3263,6 +3263,35 @@ index f2ae77c..dec2883 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
+@@ -1146,6 +1266,10 @@ void SaveMenu_DrawBackground(void) {
+     Menu_DrawSprite(0x47, 0xA2, 0xA6, 0x18, 0xE);
+ }
+ 
++#ifdef ELTALE_P1_OS
++void Port_AutomapSaveEvent(int kind, s32 slot); /* game/native_draw/nd_automap.c */
++#endif
++
+ void SaveMenu_CaptureGameState(s32 arg0) {
+     SaveHeader *e = &save_menu_save_headers[arg0];
+     u8 *d;
+@@ -1189,6 +1313,9 @@ void SaveMenu_CaptureGameState(s32 arg0) {
+     for (s = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
+         *d++ = *s++;
+     }
++#ifdef ELTALE_P1_OS
++    Port_AutomapSaveEvent(0, arg0); /* the area map's fog of war: what was explored, kept with this save */
++#endif
+ }
+ 
+ void SaveMenu_RestoreGameState(s32 arg0) {
+@@ -1231,4 +1358,7 @@ void SaveMenu_RestoreGameState(s32 arg0) {
+     for (d = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
+         *d++ = *s++;
+     }
++#ifdef ELTALE_P1_OS
++    Port_AutomapSaveEvent(1, arg0); /* the area map's fog of war: what was explored with this save, back */
++#endif
+ }
 diff --git a/src/game/text/text.c b/src/game/text/text.c
 index af00459..d8882c2 100644
 --- a/src/game/text/text.c

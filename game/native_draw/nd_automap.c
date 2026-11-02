@@ -29,6 +29,7 @@
 #include "game/enemy/boss.h"
 #include "game/item/item.h"
 #include "game/enemy/enemy.h"
+#include "game/save/save_menu.h"
 #include "port/data.h"
 #include "port/text.h"
 
@@ -39,10 +40,32 @@
 
 static void (*send_area)(const ElAmArea *);
 static void (*send_player)(const ElAmPlayer *);
+static void (*send_save)(int, uint64_t);
 
-void nd_automap_connect(void *area_fn, void *player_fn) {
+void nd_automap_connect(void *area_fn, void *player_fn, void *save_fn) {
     send_area = (void (*)(const ElAmArea *))area_fn;
     send_player = (void (*)(const ElAmPlayer *))player_fn;
+    send_save = (void (*)(int, uint64_t))save_fn;
+}
+
+/* (fog of war) the save menu's save or load of `slot`, an F2 or F4 (save_menu.c's SaveMenu_CaptureGameState and
+ * SaveMenu_RestoreGameState call it, patches/p0.patch): the host keeps what was explored with each save. The key is
+ * a hash of the saved record, the same when it is written and when it is read back (from the Controller Pak or a
+ * quick save file): the time played, the day, the place and the chests, spirits, items and bosses block. Read-only. */
+void Port_AutomapSaveEvent(int kind, s32 slot) {
+    if (slot < 0 || slot >= 17) return;
+    const SaveHeader *e = &save_menu_save_headers[slot];
+    uint64_t h = UINT64_C(0xCBF29CE484222325);
+    const u32 head[4] = { e->play_time, e->day_count, (u32)e->map_id, (u32)e->subarea };
+    const u8 *parts[2] = { (const u8 *)head, (const u8 *)&save_menu_game_state_block };
+    const size_t sizes[2] = { sizeof head, sizeof save_menu_game_state_block };
+    for (int k = 0; k < 2; k++)
+        for (size_t i = 0; i < sizes[k]; i++) h = (h ^ parts[k][i]) * UINT64_C(0x100000001B3);
+    /* ELTALE_AUTOMAP_FOG_LOG=1 (a test): the key, headless too (no host there to keep a file) */
+    static int log = -1;
+    if (log < 0) log = getenv("ELTALE_AUTOMAP_FOG_LOG") != NULL;
+    if (log) fprintf(stderr, "P1_AUTOMAP_SAVE_KEY %s slot=%d key=%016llx\n", kind ? "read" : "write", (int)slot, (unsigned long long)h);
+    if (send_save) send_save(kind ? EL_AM_SAVE_READ : EL_AM_SAVE_WRITE, h);
 }
 
 /* ---- the plan ------------------------------------------------------------------------------------------ */
@@ -754,6 +777,13 @@ void nd_automap_frame_begin(void) {
 
 void nd_automap_tick(unsigned frame) {
     if (!send_area || !send_player) return;
+    /* (fog of war) the intro or the title: what was explored is forgotten (a reset, the end, New Game) */
+    {
+        static int was_title;
+        const int title = core_game_mode == 3 || core_game_mode == 4;
+        if (title && !was_title && send_save) send_save(EL_AM_SAVE_TITLE, 0);
+        was_title = title;
+    }
     const int play = core_game_mode == 1 && !(core_flags & 0x80) && map_subarea_grid && map_objs && map_obj_models &&
                      map_subarea_def;
     if (play) {

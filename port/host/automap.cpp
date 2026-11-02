@@ -23,6 +23,8 @@
 #include <cstring>
 #include <cfloat>
 #include <string>
+#include <filesystem>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -78,6 +80,8 @@ struct Plan {
     float gx0 = 0, gz0 = 0, gcs = 1;
     int gnx = 0, gnz = 0;
     std::vector<uint8_t> walk;       // the cells walked to (reachable floor)
+    std::vector<uint8_t> blocked;    // the cells a wall passes through (fog of war's sight stops there)
+    std::vector<int32_t> cell_tri;   // the floor triangle a cell's centre lies in (-1 none)
     std::vector<uint8_t> zone_cell;  // the battle zone a battle can start in from that cell: region + 1, 0 none
     std::vector<Edge> zone_runs;     // the zones' cells as rectangles (x0, z0, x1, z1), for drawing
     std::vector<Edge> zone_edges;    // their outline
@@ -351,6 +355,8 @@ void reach(Plan &p, const std::vector<std::pair<float, float>> &seeds) {
     std::memcpy(p.reach_box, b, sizeof b);
     p.gx0 = x0; p.gz0 = z0; p.gcs = cs; p.gnx = nx; p.gnz = nz;
     p.walk = seen;
+    p.blocked = blocked;
+    p.cell_tri = tri_of;
     if (queue.empty()) // (nothing to start from: all the floor)
         for (size_t c = 0; c < p.walk.size(); c++) p.walk[c] = tri_of[c] >= 0;
     make_zones(p);
@@ -557,15 +563,29 @@ ImU32 floor_color(const ElAmTri &t, int corner, float slope, float py, float alp
     return rgba(FLOOR_R * k, FLOOR_G * k, FLOOR_B * k, 255.0f * alpha);
 }
 
+bool fog_on();
+extern std::vector<uint8_t> fog_tri;
+struct FogCell;
+void draw_fog_cells(ImDrawList *dl, const Xform &x, float py, float alpha);
+
 void draw_floor(ImDrawList *dl, const Xform &x, float py, float alpha) {
     const ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
     const ImU32 water_c = rgba(50, 88, 140, 255.0f * 0.85f * alpha);
-    const size_t n = plan.order.size();
+    // (fog of war: the triangles all seen; those partly seen as their seen cells, after)
+    const bool fog = fog_on() && fog_tri.size() == plan.tris.size();
+    std::vector<uint32_t> shown;
+    if (fog) {
+        shown.reserve(plan.order.size());
+        for (uint32_t i : plan.order)
+            if (i >= plan.tris.size() || fog_tri[i] == 2) shown.push_back(i);
+    }
+    const std::vector<uint32_t> &order = fog ? shown : plan.order;
+    const size_t n = order.size();
     for (size_t first = 0; first < n; first += 4096) {
         const size_t count = std::min<size_t>(4096, n - first);
         dl->PrimReserve(int(count * 3), int(count * 3));
         for (size_t k = 0; k < count; k++) {
-            const uint32_t i = plan.order[first + k];
+            const uint32_t i = order[first + k];
             const bool wet = i >= plan.tris.size();
             const ElAmTri &t = wet ? plan.water[i - plan.tris.size()] : plan.tris[i];
             const ImDrawIdx base = ImDrawIdx(dl->_VtxCurrentIdx);
@@ -582,11 +602,14 @@ void draw_floor(ImDrawList *dl, const Xform &x, float py, float alpha) {
             dl->_VtxCurrentIdx += 3;
         }
     }
+    if (fog) draw_fog_cells(dl, x, py, alpha);
 }
+
+extern std::vector<Edge> fog_walls, fog_edges, fog_wet;
 
 void draw_wet(ImDrawList *dl, const Xform &x, float alpha) {
     const ImU32 c = rgba(50, 88, 140, 255.0f * 0.85f * alpha);
-    for (const Edge &r : plan.wet) {
+    for (const Edge &r : fog_on() ? fog_wet : plan.wet) {
         const ImVec2 a = x.at(r.x0, r.z0), b = x.at(r.x1, r.z1);
         dl->AddRectFilled(ImVec2(std::min(a.x, b.x), std::min(a.y, b.y)), ImVec2(std::max(a.x, b.x), std::max(a.y, b.y)), c);
     }
@@ -595,6 +618,11 @@ void draw_wet(ImDrawList *dl, const Xform &x, float alpha) {
 void draw_lines(ImDrawList *dl, const Xform &x, float wall_w, float edge_w, float alpha, ImU32 wall_c = COL_WALL,
                 ImU32 edge_c = COL_EDGE) {
     auto fade = [alpha](ImU32 c) { return (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * alpha) << 24); };
+    if (fog_on()) { // (fog of war: cut to what has been seen)
+        for (const Edge &e : fog_edges) dl->AddLine(x.at(e.x0, e.z0), x.at(e.x1, e.z1), fade(edge_c), edge_w);
+        for (const Edge &w : fog_walls) dl->AddLine(x.at(w.x0, w.z0), x.at(w.x1, w.z1), fade(wall_c), wall_w);
+        return;
+    }
     for (const Edge &e : plan.edges) dl->AddLine(x.at(e.x0, e.z0), x.at(e.x1, e.z1), fade(edge_c), edge_w);
     for (const ElAmWall &w : plan.walls) dl->AddLine(x.at(w.x0, w.z0), x.at(w.x1, w.z1), fade(wall_c), wall_w);
 }
@@ -664,9 +692,11 @@ const char *const SVC_NAME[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "
 ImU32 fade(ImU32 c, float a) { return (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * std::clamp(a, 0.0f, 1.0f)) << 24); }
 
 // which marks are on (the Map page; `all` for the tests' pictures)
+bool discovered(const ElAmMarker &m);
 bool mark_shown(const ElAmMarker &m, bool all) {
     if (all) return true;
     const MapSettings &s = settings.map;
+    if (!discovered(m)) return false;
     switch (m.kind) {
     case EL_AM_MARK_DOOR:
     case EL_AM_MARK_EXIT: return s.doors;
@@ -1000,12 +1030,343 @@ void ensure_reach() {
     reach(plan, seeds);
 }
 
+// ---- fog of war ------------------------------------------------------------------------------------------
+//
+// What the player has seen, per sub-area, as cells of the reach grid (KF4's way: rays from the player stopped by
+// walls; KF1's and KF3's maps fill in as you walk). Indoors a room that fits in 150 units of the minimap (a house,
+// an inn, a castle room) is all seen as you enter it; a bigger indoor place (a hall, a cave, a dungeon floor) is seen
+// 150 units around the player, and outdoors 400, the rays stopping at walls (a town's houses hide what is behind
+// them). Unseen floor and walls are covered with the backdrop's colour (faint at the map's background opacity), and
+// marks there are not drawn, except the cheats' (chests, spirits, bosses, story item givers, battle zones), as in
+// KF3 and KF4. "Show the whole map" (a cheat) and the test pictures (ELTALE_AUTOMAP_SHOTS) turn it off.
+//
+// Kept per save, on the host only (the game's state is not touched): a save (the save menu's or F2's: the game's
+// SaveMenu_CaptureGameState) writes automap/save_<key>.fog in the data folder, a load (SaveMenu_RestoreGameState:
+// the save menu's, the title's Continue, F4) reads it back, the key being a hash of the saved record (nd_automap.c);
+// the title (a reset, the end of the game, New Game) forgets it. A save made without this build has no file: its
+// exploring starts from that point.
+
+struct Seen {
+    int nx = 0, nz = 0;
+    float x0 = 0, z0 = 0, cs = 0;
+    std::vector<uint8_t> cell; // 1: seen
+};
+std::map<uint32_t, Seen> seen_areas; // by map << 8 | sub-area
+// what is drawn of the plan with fog of war (build_fog): only what has been seen, nothing over the rest (so the
+// minimap's backdrop, where the game shows through, looks the same over unseen ground as beyond the area)
+std::vector<uint8_t> fog_tri;        // per floor triangle: 0 unseen, 1 partly seen, 2 seen
+struct FogCell {
+    float x0, z0, x1, z1;
+    uint32_t tri;
+};
+std::vector<FogCell> fog_cells;      // the seen cells of partly seen triangles (runs along x), drawn in their colour
+std::vector<Edge> fog_walls, fog_edges, fog_wet; // the walls, the floor's edges and the water, cut to the seen cells
+double fog_built_at = -1.0;
+bool fog_dirty = true;
+float fog_box[4];                    // the seen floor's bounds (the full map fits it)
+bool fog_box_ok = false;
+float rev_x = 1e30f, rev_z = 1e30f;  // where the last sight was taken
+uint32_t rev_serial;
+const bool fog_log = std::getenv("ELTALE_AUTOMAP_FOG_LOG") != nullptr;
+
+bool fog_on() { return settings.map.fog && !settings.map.cheat_reveal && !shots; }
+
+// the plan's seen cells (made, all unseen, when `make`); a record of another grid (a build that cuts the grid
+// otherwise) counts as all seen
+Seen *area_seen(bool make) {
+    if (!plan.valid() || plan.gnx <= 0) return nullptr;
+    const uint32_t k = uint32_t(plan.map) << 8 | uint32_t(plan.sub & 0xFF);
+    auto it = seen_areas.find(k);
+    const size_t n = size_t(plan.gnx) * size_t(plan.gnz);
+    if (it == seen_areas.end()) {
+        if (!make) return nullptr;
+        Seen sn;
+        sn.nx = plan.gnx; sn.nz = plan.gnz; sn.x0 = plan.gx0; sn.z0 = plan.gz0; sn.cs = plan.gcs;
+        sn.cell.assign(n, 0);
+        it = seen_areas.emplace(k, std::move(sn)).first;
+    }
+    Seen &sn = it->second;
+    if (sn.nx != plan.gnx || sn.nz != plan.gnz || std::fabs(sn.x0 - plan.gx0) > 0.01f || std::fabs(sn.z0 - plan.gz0) > 0.01f ||
+        std::fabs(sn.cs - plan.gcs) > 0.001f || sn.cell.size() != n) {
+        sn.nx = plan.gnx; sn.nz = plan.gnz; sn.x0 = plan.gx0; sn.z0 = plan.gz0; sn.cs = plan.gcs;
+        sn.cell.assign(n, 1);
+    }
+    return &sn;
+}
+
+size_t seen_count() {
+    size_t c = 0;
+    for (const auto &a : seen_areas)
+        for (uint8_t v : a.second.cell) c += v;
+    return c;
+}
+
+// What the player sees from (x, z): the whole of a small room, else rays out to the sight's reach, stopping at walls
+void reveal(float x, float z) {
+    if (!plan.reach_done || plan.gnx <= 0) return;
+    Seen *sn = area_seen(true);
+    if (!sn) return;
+    const bool again = rev_serial == plan.serial;
+    if (again && std::fabs(x - rev_x) < plan.gcs * 0.5f && std::fabs(z - rev_z) < plan.gcs * 0.5f) return;
+    rev_serial = plan.serial; rev_x = x; rev_z = z;
+    const bool indoor = !(plan.flags & EL_AM_AREA_SKY);
+    const float *b = plan.reach_box;
+    const float ext = std::max(b[2] - b[0], b[3] - b[1]) * 0.5f * 1.08f + 6.0f;
+    size_t added = 0;
+    if (indoor && ext <= 150.0f) { // a room: all of it
+        for (uint8_t &c : sn->cell)
+            if (!c) c = 1, added++;
+    } else {
+        const float reach = (indoor ? 150.0f : 400.0f) / plan.gcs;
+        const float px = (x - plan.gx0) / plan.gcs, pz = (z - plan.gz0) / plan.gcs;
+        const int rays = std::clamp(int(reach * 6.3f), 64, 1440);
+        for (int r = 0; r < rays; r++) {
+            const float a = float(r) * 6.2831853f / float(rays), dx = std::cos(a), dz = std::sin(a);
+            for (float t = 0; t <= reach; t += 0.5f) {
+                const int ix = int(std::floor(px + dx * t)), iz = int(std::floor(pz + dz * t));
+                if (ix < 0 || iz < 0 || ix >= plan.gnx || iz >= plan.gnz) break;
+                const size_t c = size_t(iz) * size_t(plan.gnx) + size_t(ix);
+                if (!sn->cell[c]) sn->cell[c] = 1, added++;
+                if (t > 1.5f && !plan.blocked.empty() && plan.blocked[c]) break; // (the wall itself is seen)
+            }
+        }
+    }
+    if (added) fog_dirty = true;
+}
+
+// What is drawn with fog of war: the triangles all seen, the seen cells of those partly seen, the walls, edges and
+// water cut to the seen cells; and the seen floor's bounds. Cells count by their triangle (the grid's cell_tri); a
+// triangle too small for a cell's centre goes by the cell under its middle.
+void build_fog() {
+    fog_dirty = false;
+    fog_built_at = ImGui::GetCurrentContext() ? ImGui::GetTime() : 0.0;
+    fog_tri.clear(); fog_cells.clear(); fog_walls.clear(); fog_edges.clear(); fog_wet.clear();
+    fog_box_ok = false;
+    if (!plan.valid() || plan.gnx <= 0 || plan.cell_tri.empty()) return;
+    const Seen *sn = area_seen(false);
+    const int nx = plan.gnx, nz = plan.gnz;
+    const float cs = plan.gcs;
+    auto seen = [&](size_t c) { return sn && sn->cell[c] != 0; };
+    auto seen_at = [&](float x, float z) {
+        int ix, iz;
+        return plan.cell_of(x, z, &ix, &iz) && seen(size_t(iz) * size_t(nx) + size_t(ix));
+    };
+    const size_t n = plan.tris.size();
+    std::vector<uint32_t> total(n, 0), got(n, 0);
+    float b[4] = { 1e30f, 1e30f, -1e30f, -1e30f };
+    for (int kz = 0; kz < nz; kz++)
+        for (int ix = 0; ix < nx; ix++) {
+            const size_t c = size_t(kz) * size_t(nx) + size_t(ix);
+            const bool sc = seen(c);
+            if (sc && !plan.walk.empty() && plan.walk[c]) {
+                const float x = plan.gx0 + float(ix) * cs, z = plan.gz0 + float(kz) * cs;
+                b[0] = std::min(b[0], x); b[1] = std::min(b[1], z); b[2] = std::max(b[2], x + cs); b[3] = std::max(b[3], z + cs);
+            }
+            const int32_t t = plan.cell_tri[c];
+            if (t >= 0 && size_t(t) < n) total[size_t(t)]++, got[size_t(t)] += sc;
+        }
+    fog_tri.assign(n, 0);
+    for (size_t t = 0; t < n; t++) {
+        if (!total[t]) {
+            const ElAmTri &tr = plan.tris[t];
+            fog_tri[t] = seen_at((tr.v[0][0] + tr.v[1][0] + tr.v[2][0]) / 3, (tr.v[0][2] + tr.v[1][2] + tr.v[2][2]) / 3) ? 2 : 0;
+        } else {
+            fog_tri[t] = !got[t] ? 0 : got[t] == total[t] ? 2 : 1;
+        }
+    }
+    for (int kz = 0; kz < nz; kz++) {
+        int run = -1, rt = -1;
+        for (int ix = 0; ix <= nx; ix++) {
+            int key = -1;
+            if (ix < nx) {
+                const size_t c = size_t(kz) * size_t(nx) + size_t(ix);
+                const int32_t t = plan.cell_tri[c];
+                if (t >= 0 && size_t(t) < n && fog_tri[size_t(t)] == 1 && seen(c)) key = t;
+            }
+            if (run >= 0 && key != rt) {
+                fog_cells.push_back({ plan.gx0 + float(run) * cs, plan.gz0 + float(kz) * cs, plan.gx0 + float(ix) * cs,
+                                      plan.gz0 + float(kz + 1) * cs, uint32_t(rt) });
+                run = -1;
+            }
+            if (key >= 0 && run < 0) run = ix, rt = key;
+        }
+    }
+    // a line cut into pieces of a cell, kept where a cell at or beside the piece's middle is seen (a ray that grazes a
+    // wall sees only some of the cells it runs through)
+    auto seen_near = [&](float x, float z) {
+        int ix, iz;
+        if (!plan.cell_of(x, z, &ix, &iz)) return false;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++) {
+                const int cx = ix + dx, cz = iz + dz;
+                if (cx >= 0 && cz >= 0 && cx < nx && cz < nz && seen(size_t(cz) * size_t(nx) + size_t(cx))) return true;
+            }
+        return false;
+    };
+    auto cut = [&](float x0, float z0, float x1, float z1, std::vector<Edge> &out) {
+        const float dx = x1 - x0, dz = z1 - z0, len = std::sqrt(dx * dx + dz * dz);
+        const int steps = std::max(1, int(std::ceil(len / cs)));
+        int start = -1;
+        for (int k = 0; k <= steps; k++) {
+            const bool on = k < steps && seen_near(x0 + dx * (float(k) + 0.5f) / float(steps), z0 + dz * (float(k) + 0.5f) / float(steps));
+            if (on && start < 0) start = k;
+            if (!on && start >= 0) {
+                out.push_back({ x0 + dx * float(start) / float(steps), z0 + dz * float(start) / float(steps), x0 + dx * float(k) / float(steps),
+                                z0 + dz * float(k) / float(steps) });
+                start = -1;
+            }
+        }
+    };
+    for (const ElAmWall &w : plan.walls) cut(w.x0, w.z0, w.x1, w.z1, fog_walls);
+    for (const Edge &e : plan.edges) cut(e.x0, e.z0, e.x1, e.z1, fog_edges);
+    for (const Edge &r : plan.wet) { // (a run of cells along x)
+        const float z = (r.z0 + r.z1) * 0.5f;
+        float start = 1e30f;
+        for (float x = r.x0; x < r.x1 + cs * 0.5f; x += cs) {
+            const bool on = x < r.x1 - cs * 0.01f && seen_at(x + cs * 0.5f, z);
+            if (on && start > 1e29f) start = x;
+            if (!on && start < 1e29f) {
+                fog_wet.push_back({ start, r.z0, std::min(x, r.x1), r.z1 });
+                start = 1e30f;
+            }
+        }
+    }
+    if (b[0] <= b[2]) {
+        std::memcpy(fog_box, b, sizeof b);
+        fog_box_ok = true;
+    }
+}
+
+// the seen cells of partly seen triangles, in their triangle's colour (its corners' mean)
+void draw_fog_cells(ImDrawList *dl, const Xform &x, float py, float alpha) {
+    for (const FogCell &fc : fog_cells) {
+        if (fc.tri >= plan.tris.size()) continue;
+        const ElAmTri &t = plan.tris[fc.tri];
+        const bool r = fc.tri < plan.reach.size() ? plan.reach[fc.tri] != 0 : true;
+        float sum[4] = {};
+        for (int j = 0; j < 3; j++) {
+            const ImU32 c = floor_color(t, j, plan.slope[fc.tri], py, alpha, r);
+            for (int k = 0; k < 4; k++) sum[k] += float((c >> (8 * k)) & 0xFF);
+        }
+        const ImU32 col = IM_COL32(int(sum[0] / 3), int(sum[1] / 3), int(sum[2] / 3), int(sum[3] / 3));
+        const ImVec2 a = x.at(fc.x0, fc.z0), b = x.at(fc.x1, fc.z1);
+        dl->AddRectFilled(ImVec2(std::min(a.x, b.x), std::min(a.y, b.y)), ImVec2(std::max(a.x, b.x), std::max(a.y, b.y)), col);
+    }
+}
+
+// a mark the player has seen the place of (or a cheat's, shown anyway)
+bool discovered(const ElAmMarker &m) {
+    if (!fog_on()) return true;
+    if (m.kind == EL_AM_MARK_CHEST || m.kind == EL_AM_MARK_SPIRIT || m.kind == EL_AM_MARK_BOSS) return true;
+    if (m.kind == EL_AM_MARK_PERSON && (m.flags & EL_AM_MARK_KEY_GIVER) && settings.map.cheat_givers) return true;
+    const Seen *sn = area_seen(false);
+    if (!sn) return false;
+    int ix, iz;
+    if (!plan.cell_of(m.x, m.z, &ix, &iz)) return false;
+    for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++) {
+            const int x = ix + dx, z = iz + dz;
+            if (x >= 0 && z >= 0 && x < plan.gnx && z < plan.gnz && sn->cell[size_t(z) * size_t(plan.gnx) + size_t(x)]) return true;
+        }
+    return false;
+}
+
+// ---- its files: automap/save_<key>.fog in the data folder, every number little-endian:
+//   "ELTFOG\0\0", u32 version (1), u32 areas, then per area: s32 map, s32 sub-area, s32 nx, s32 nz, f32 x0, z0, cell,
+//   u32 runs, then the runs' lengths (u32 each, unseen and seen in turn, starting unseen), and last a u64 FNV-1a hash
+//   of everything before it. Anything wrong (missing, short, another version, a bad hash): nothing seen.
+std::string fog_path(uint64_t key) {
+    char name[64];
+    std::snprintf(name, sizeof name, "/automap/save_%016llx.fog", (unsigned long long)key);
+    return data_dir() + name;
+}
+
+void put32(std::string &o, uint32_t v) { for (int i = 0; i < 4; i++) o += char((v >> (8 * i)) & 0xFF); }
+uint32_t get32(const unsigned char *p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24; }
+uint64_t fnv64(const std::string &s, size_t n) {
+    uint64_t h = 0xCBF29CE484222325ull;
+    for (size_t i = 0; i < n; i++) h = (h ^ (unsigned char)s[i]) * 0x100000001B3ull;
+    return h;
+}
+
+bool fog_write(uint64_t key) {
+    std::string o("ELTFOG\0\0", 8);
+    put32(o, 1);
+    put32(o, uint32_t(seen_areas.size()));
+    for (const auto &a : seen_areas) {
+        const Seen &sn = a.second;
+        put32(o, a.first >> 8); put32(o, a.first & 0xFF); put32(o, uint32_t(sn.nx)); put32(o, uint32_t(sn.nz));
+        uint32_t f[3];
+        std::memcpy(&f[0], &sn.x0, 4); std::memcpy(&f[1], &sn.z0, 4); std::memcpy(&f[2], &sn.cs, 4);
+        for (uint32_t v : f) put32(o, v);
+        std::vector<uint32_t> runs;
+        uint8_t want = 0;
+        uint32_t len = 0;
+        for (uint8_t c : sn.cell) {
+            if ((c != 0) != (want != 0)) { runs.push_back(len); len = 0; want ^= 1; }
+            len++;
+        }
+        runs.push_back(len);
+        put32(o, uint32_t(runs.size()));
+        for (uint32_t r : runs) put32(o, r);
+    }
+    const uint64_t h = fnv64(o, o.size());
+    put32(o, uint32_t(h)); put32(o, uint32_t(h >> 32));
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::u8path(data_dir() + "/automap"), ec);
+    const std::string path = fog_path(key), tmp = path + ".tmp";
+    FILE *f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+    const bool ok = std::fwrite(o.data(), 1, o.size(), f) == o.size();
+    std::fclose(f);
+    if (!ok) { std::remove(tmp.c_str()); return false; }
+    std::filesystem::rename(std::filesystem::u8path(tmp), std::filesystem::u8path(path), ec);
+    return !ec;
+}
+
+// 1 read, 0 no file, -1 a bad file (nothing taken)
+int fog_read(uint64_t key) {
+    FILE *f = std::fopen(fog_path(key).c_str(), "rb");
+    if (!f) return 0;
+    std::string d;
+    char buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) d.append(buf, n);
+    std::fclose(f);
+    const unsigned char *p = (const unsigned char *)d.data();
+    if (d.size() < 24 || d.compare(0, 8, std::string("ELTFOG\0\0", 8)) || get32(p + 8) != 1) return -1;
+    const uint64_t h = uint64_t(get32(p + d.size() - 8)) | uint64_t(get32(p + d.size() - 4)) << 32;
+    if (h != fnv64(d, d.size() - 8)) return -1;
+    std::map<uint32_t, Seen> got;
+    size_t at = 16;
+    const size_t end = d.size() - 8;
+    for (uint32_t i = get32(p + 12); i; i--) {
+        if (at + 32 > end) return -1;
+        Seen sn;
+        const uint32_t map = get32(p + at), sub = get32(p + at + 4);
+        sn.nx = int(get32(p + at + 8)); sn.nz = int(get32(p + at + 12));
+        uint32_t fv[3] = { get32(p + at + 16), get32(p + at + 20), get32(p + at + 24) };
+        std::memcpy(&sn.x0, &fv[0], 4); std::memcpy(&sn.z0, &fv[1], 4); std::memcpy(&sn.cs, &fv[2], 4);
+        const uint32_t runs = get32(p + at + 28);
+        at += 32;
+        if (sn.nx <= 0 || sn.nz <= 0 || size_t(sn.nx) * size_t(sn.nz) > (size_t(1) << 26) || map > 255 || sub > 255 ||
+            at + size_t(runs) * 4 > end)
+            return -1;
+        sn.cell.reserve(size_t(sn.nx) * size_t(sn.nz));
+        for (uint32_t r = 0; r < runs; r++, at += 4) sn.cell.insert(sn.cell.end(), get32(p + at), uint8_t(r & 1));
+        if (sn.cell.size() != size_t(sn.nx) * size_t(sn.nz)) return -1;
+        got[map << 8 | sub] = std::move(sn);
+    }
+    seen_areas = std::move(got);
+    return 1;
+}
+
 bool in_play() { return have_sample && plan.valid() && (newest.flags & EL_AM_PLAYER_PLAY) && newest.area == plan.serial; }
 
 void fit(const float *area) {
     // the plan's bounds, with a margin of 4%; small rooms are not blown up past a sixth of the picture's height a
     // hundred units
-    const float *b = plan.reach_box;
+    const float *b = fog_on() && fog_box_ok ? fog_box : plan.reach_box; // (the seen floor, with fog of war)
     const float w = std::max(b[2] - b[0], 50.0f) * 1.08f;
     const float h = std::max(b[3] - b[1], 50.0f) * 1.08f;
     const float aw = area[2] - area[0], ah = area[3] - area[1];
@@ -1085,8 +1446,8 @@ void draw_full(ImDrawList *dl, const float *g) {
         char name[32];
         std::snprintf(name, sizeof name, "automap_full_%d", view_changes);
         renderer()->request_dump(name);
-        std::printf("P1_AUTOMAP_VIEW n=%d map=%d sub=%d zoom=%.3f centre=%.1f,%.1f\n", view_changes, plan.map, plan.sub,
-                    view_zoom, view_cx, view_cz);
+        std::printf("P1_AUTOMAP_VIEW n=%d map=%d sub=%d zoom=%.3f centre=%.1f,%.1f seen=%zu\n", view_changes, plan.map, plan.sub,
+                    view_zoom, view_cx, view_cz, seen_count());
         std::fflush(stdout);
     }
     dl->PushClipRect(ImVec2(area[0], area[1]), ImVec2(area[2], area[3]), true);
@@ -1541,11 +1902,14 @@ void receive_area(const ElAmArea *a) {
     plan.points.clear();
     for (uint32_t i = 0; i < a->point_count; i++) plan.points.push_back({ a->points[i * 2], a->points[i * 2 + 1] });
     plan.walk.clear();
+    plan.blocked.clear();
+    plan.cell_tri.clear();
     plan.zone_cell.clear();
     plan.zone_runs.clear();
     plan.zone_edges.clear();
     plan.gnx = plan.gnz = 0;
     prepare(plan);
+    fog_dirty = true;
     fitted = false; // (a new area: the open map fits it)
 }
 
@@ -1581,6 +1945,14 @@ void receive_player(const ElAmPlayer *p) {
     samples[sample_next] = s;
     sample_next = (sample_next + 1) % SAMPLES;
     newest = s;
+    // fog of war: what the player sees from here (host only)
+    if ((s.flags & EL_AM_PLAYER_PLAY) && plan.valid() && s.area == plan.serial) {
+        have_sample = true;
+        ensure_reach();
+        const bool first = rev_serial != plan.serial;
+        reveal(s.x, s.z);
+        if (first && fog_dirty) build_fog();
+    }
     if (p->flags & (EL_AM_PLAYER_SHOT_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP)) {
         shot_latched |= p->flags & (EL_AM_PLAYER_SHOT_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP);
         if (p->flags & EL_AM_PLAYER_SHOT_OVER) shot_over_sample = s;
@@ -1590,6 +1962,36 @@ void receive_player(const ElAmPlayer *p) {
     }
     have_sample = true;
     samples_on_plan = p->area_serial == plan.serial ? samples_on_plan + 1 : 0;
+    // ELTALE_AUTOMAP_OPEN_AT=N (a test, with ELTALE_AUTOMAP_DUMP): the full map opens N ticks into each area (its
+    // picture: what has been explored by then)
+    static const int open_at = std::getenv("ELTALE_AUTOMAP_OPEN_AT") ? std::atoi(std::getenv("ELTALE_AUTOMAP_OPEN_AT")) : 0;
+    if (open_at > 0 && samples_on_plan == uint32_t(open_at) && !full && in_play()) {
+        full = true;
+        fitted = false;
+        view_changes++;
+    }
+}
+
+// The game saved, loaded or went back to the title (nd_automap.c): the fog of war's files
+void receive_save(int kind, uint64_t key) {
+    const char *what = kind == EL_AM_SAVE_WRITE ? "write" : kind == EL_AM_SAVE_READ ? "read" : "title";
+    int result = 1;
+    if (kind == EL_AM_SAVE_WRITE) {
+        result = fog_write(key) ? 1 : -1;
+    } else if (kind == EL_AM_SAVE_READ) {
+        seen_areas.clear();
+        result = fog_read(key); // (no file: a save from before, exploring starts here; a bad one: the same)
+        if (result < 0) seen_areas.clear();
+    } else {
+        seen_areas.clear(); // (the title: a reset, the game's end, before New Game or a load)
+    }
+    fog_dirty = true;
+    rev_serial = 0;
+    if (fog_log || dump_test) {
+        std::printf("P1_AUTOMAP_FOG event=%s key=%016llx result=%d areas=%zu cells=%zu\n", what, (unsigned long long)key, result,
+                    seen_areas.size(), seen_count());
+        std::fflush(stdout);
+    }
 }
 
 // ---- the host's side -----------------------------------------------------------------------------
@@ -1692,6 +2094,7 @@ void draw() {
     float g[4];
     if (!game_rect(g)) return;
     ensure_reach();
+    if (fog_dirty && (fog_tri.size() != plan.tris.size() || dump_test || ImGui::GetTime() - fog_built_at > 0.25)) build_fog();
     ImDrawList *dl = ImGui::GetBackgroundDrawList();
     // (a test's pictures: once per flagged tick; the same picture again until the renderer has written it, as a
     // retrace with no picture due shows none)
@@ -1778,6 +2181,9 @@ void settings_page() {
                           "and the doors to their houses: a coloured halo and the icon (moon: inn, wings, loaf: food).");
     changed |= ImGui::Checkbox("Story people", &m.story);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("A light blue ring round people with something to say about the story.");
+    changed |= ImGui::Checkbox("Fog of war", &m.fog);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Only what you have seen is drawn, and the marks there; kept with each save (quick saves too).");
     changed |= ImGui::Checkbox("Signs", &m.signs);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Signs and other things to read; point at one for its first line.");
     ImGui::Separator();
@@ -1795,6 +2201,8 @@ void settings_page() {
     changed |= ImGui::SliderInt("Opacity", &m.opacity, 20, 100, "%d%%");
     ImGui::Separator();
     ImGui::TextDisabled("Cheats (they stand in for a guide):");
+    changed |= ImGui::Checkbox("Show the whole map", &m.cheat_reveal);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("No fog of war: every area drawn whole, with its marks.");
     changed |= ImGui::Checkbox("Show chests", &m.cheat_chests);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Every chest, and what it holds (gold; opened: an outline).");
@@ -1821,3 +2229,4 @@ void settings_page() {
 
 extern "C" ELHOST_API void ElHost_AutomapArea(const ElAmArea *area) { host::automap::receive_area(area); }
 extern "C" ELHOST_API void ElHost_AutomapPlayer(const ElAmPlayer *player) { host::automap::receive_player(player); }
+extern "C" ELHOST_API void ElHost_AutomapSave(int kind, uint64_t key) { host::automap::receive_save(kind, key); }

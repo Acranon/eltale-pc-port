@@ -81,12 +81,14 @@ struct MapSettings {
     bool services = true; // ... (v3) the inns, the Wings and the food givers, and the doors to them
     bool story = true;    // ... (v3) a ring round people with a story or boss line
     bool signs = true;    // ... (v3) signs and other things to read
+    bool fog = true;      // fog of war: only what the player has seen (kept per save)
     bool cheat_chests = false;  // the cheats: chests (what they hold, opened or not)
     bool cheat_spirits = false; // ... spirits
     bool cheat_bosses = false;  // ... the bosses standing in the field, and how near starts the fight
     bool cheat_givers = false;  // ... (v3) the people who give a story item, and what
     bool cheat_zones = false;   // ... (v3) the battle zones (a button on the full map, and a key: shown while held)
     bool cheat_danger = false;  // ... (v3) the danger meter: the chance the next 50 units start a battle
+    bool cheat_reveal = false;  // ... no fog of war: every area whole
     int opacity = 85;     // the minimap's, percent (20..100)
     int background = 92;  // the full map's backdrop, percent (40..100)
     bool pause = false;   // the game waits while the full map is open

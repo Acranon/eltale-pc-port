@@ -202,6 +202,8 @@ void load_settings() {
     read_bool(item(j, "map", "cheat_givers"), s.map.cheat_givers);
     read_bool(item(j, "map", "cheat_zones"), s.map.cheat_zones);
     read_bool(item(j, "map", "cheat_danger"), s.map.cheat_danger);
+    read_bool(item(j, "map", "fog"), s.map.fog);
+    read_bool(item(j, "map", "cheat_reveal"), s.map.cheat_reveal);
     read_int(item(j, "map", "minimap_opacity"), s.map.opacity, 20, 100);
     read_int(item(j, "map", "background"), s.map.background, 40, 100);
     read_bool(item(j, "map", "pause_game"), s.map.pause);
@@ -269,6 +271,8 @@ void save_settings() {
     cJSON_AddBoolToObject(map, "cheat_givers", s.map.cheat_givers);
     cJSON_AddBoolToObject(map, "cheat_zones", s.map.cheat_zones);
     cJSON_AddBoolToObject(map, "cheat_danger", s.map.cheat_danger);
+    cJSON_AddBoolToObject(map, "fog", s.map.fog);
+    cJSON_AddBoolToObject(map, "cheat_reveal", s.map.cheat_reveal);
     cJSON_AddNumberToObject(map, "minimap_opacity", s.map.opacity);
     cJSON_AddNumberToObject(map, "background", s.map.background);
     cJSON_AddBoolToObject(map, "pause_game", s.map.pause);

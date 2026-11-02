@@ -42,7 +42,8 @@ game (unless the Map page's pause is on). With the map closed, the wheel over th
 the camera (not while mouse look has the cursor), as `]` / `[` do: the reach of the kind of place you are in, indoors
 or outdoors (down to 30 units outdoors and 20 indoors). With the battle zones cheat on, the full map has a "Battle
 zones" button at its bottom: hold it with the left button (or hold the `map_zones` key, B, also on the minimap) to
-shade where random battles can start; let go and they hide.
+shade where random battles can start; let go and they hide. With fog of war (on by default, the Map page) the map shows only
+what you have seen, kept with each save; the Cheats' "Show the whole map" turns it off.
 
 ## Rebinding
 

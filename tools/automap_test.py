@@ -28,6 +28,16 @@ Runs, each with its own data folder (sound off, map background 100%: the full ma
                        let go (held=0), the B key held (by=key) and let go, a picture each (hashed), the mouse on a zone
                        (ELTALE_AUTOMAP_HOVER=zone: its name and monsters); the danger meter (P1_AUTOMAP_DANGER: in a
                        zone or "Safe here"); the same walk without the map (positions must match).
+  fog, fog-cheat       fog of war: tests/automap-fog.events after the quick save compass-spirit (a save from before the
+                       fog: nothing explored, P1_AUTOMAP_FOG event=read result=0): a walk explores, F2 writes the
+                       explored cells (event=write, a file automap/save_<key>.fog in the test's data folder), a walk
+                       explores more, the full map (partly explored, hashed), F4 brings back what was saved (event=read
+                       result=1, the same cells as written), the full map again (hashed); with the cheat "Show the
+                       whole map" the same pictures show everything (hashed).
+  fog-newgame          New Game: the title forgets (event=title, nothing explored), no file is read.
+  fog-pak              the tour's save at the map-18 inn (the save menu's Save to the Controller Pak, headless) and the
+                       indoor-inn run's Continue hash the save to the same key (P1_AUTOMAP_SAVE_KEY write / read, the
+                       host's P1_AUTOMAP_FOG event=read with that key; no file: it was saved without the host).
   marks                (v3) the tour's plans: the first town's doors to the inn and the Wings giver (services), the
                        second town's food giver's door, the field's sign and its five battle zones.
 The hashes (of the pixels) are compared with tests/automap_hashes.txt; --update writes them. Prints AUTOMAP_TEST lines
@@ -125,6 +135,49 @@ def main() -> None:
     same = traces["keys-4x3"] == traces["none"] and len(traces["none"]) > 100
     print(f"AUTOMAP_TEST game unchanged by the map: {'OK' if same else 'FAIL'} ({len(traces['none'])} ticks traced)")
     fail |= not same
+
+    # fog of war: explored per save
+    def fog_lines(text: str) -> list:
+        return [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_FOG")]
+
+    def fog_field(line: str, k: str) -> str:
+        m = re.search(rf"{k}=(\S+)", line)
+        return m.group(1) if m else ""
+
+    for name, cheat in (("fog", False), ("fog-cheat", True)):
+        out = base / name
+        st = settings("off")
+        st["map"]["cheat_reveal"] = cheat
+        text = run(exe, a.rom, out, dict(keys_env, ELTALE_WINDOW_SIZE="1280x960", ELTALE_AUTOMAP_HOVER="",
+                                         ELTALE_INPUT_TEST=str(ROOT / "tests/automap-fog.events")),
+                   ["--frames", "700"], st, save)
+        for p in sorted((out / "shots").glob("automap_full_*.png")):
+            got[f"{name}/{p.name}"] = pixels_hash(p)
+        fl = fog_lines(text)
+        views = [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_VIEW")]
+        for l in fl + views:
+            print(f"AUTOMAP_TEST {name} {l}")
+        if name == "fog":
+            ev = [(fog_field(l, "event"), fog_field(l, "result")) for l in fl]
+            writes = [l for l in fl if "event=write" in l]
+            reads = [l for l in fl if "event=read" in l]
+            files = list((out / "data" / "automap").glob("save_*.fog"))
+            ok = (len(writes) == 1 and len(reads) == 2 and fog_field(reads[0], "result") == "0" and
+                  fog_field(reads[1], "result") == "1" and fog_field(reads[1], "key") == fog_field(writes[0], "key") and
+                  fog_field(reads[1], "cells") == fog_field(writes[0], "cells") and int(fog_field(writes[0], "cells") or 0) > 0
+                  and len(files) == 1)
+            seen = [int(fog_field(l, "seen") or 0) for l in views]
+            more = len(seen) >= 2 and seen[0] > int(fog_field(writes[0], "cells") or 0) if writes else False
+            print(f"AUTOMAP_TEST fog: events {ev}, explored at the save {fog_field(writes[0], 'cells') if writes else '?'}, "
+                  f"at the map {seen}, files {len(files)}: {'OK' if ok and more else 'FAIL'}")
+            fail |= not (ok and more)
+    out = base / "fog-newgame"
+    text = run(exe, a.rom, out, {"ELTALE_AUTOMAP_DUMP": "1", "ELTALE_WINDOW_SIZE": "1280x960"},
+               ["--frames", "900", "--input", str(ROOT / "tests/title-new-game.input")], settings("off"), None)
+    fl = fog_lines(text)
+    ok = any("event=title" in l and "cells=0" in l for l in fl) and not any("event=read" in l for l in fl)
+    print(f"AUTOMAP_TEST fog-newgame: {fl}: {'OK' if ok else 'FAIL'}")
+    fail |= not ok
 
     # (v3) the battle zones' button and key, the danger meter, in a field
     zsave = a.saves / "battle-stuck"
@@ -225,14 +278,23 @@ def main() -> None:
     out = base / "indoor-inn"
     pak = base / "inn.mpk"
     pak.unlink(missing_ok=True)
-    subprocess.run([str(exe), "--headless", "--fast", "--frames", "16000", "--input", str(ROOT / "tests/tour-save.input"),
-                    "--pak", str(pak), "--rom", a.rom], env=dict(os.environ, ELTALE_MAP_TOUR="1"), capture_output=True,
-                   cwd=exe.parent)
-    text = run(exe, a.rom, out, {"ELTALE_AUTOMAP_DUMP": "1", "ELTALE_AUTOMAP_MINIMAP_AT": "18,7",
+    saved = subprocess.run([str(exe), "--headless", "--fast", "--frames", "16000", "--input", str(ROOT / "tests/tour-save.input"),
+                            "--pak", str(pak), "--rom", a.rom], env=dict(os.environ, ELTALE_MAP_TOUR="1", ELTALE_AUTOMAP_FOG_LOG="1"),
+                           capture_output=True, text=True, errors="replace", cwd=exe.parent)
+    text = run(exe, a.rom, out, {"ELTALE_AUTOMAP_DUMP": "1", "ELTALE_AUTOMAP_MINIMAP_AT": "18,7", "ELTALE_AUTOMAP_FOG_LOG": "1",
                                  "ELTALE_WINDOW_SIZE": "1280x960"},
                ["--frames", "1400", "--input", str(ROOT / "tests/automap-continue.input"), "--pak", str(pak)],
                solid("off"), None)
     minimap("indoor-inn", out, text)
+    # fog-pak: the inn's save to the Controller Pak (the save menu's Save, headless) and the title's Continue (a window)
+    # hash the record to the same key, the name of its fog file; the host read it (no file: a save from elsewhere)
+    w = [l for l in saved.stderr.splitlines() if l.startswith("P1_AUTOMAP_SAVE_KEY write")]
+    rd = [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_SAVE_KEY read")]
+    hr = [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_FOG event=read")]
+    key = lambda l: re.search(r"key=(\S+)", l).group(1)
+    ok = bool(w and rd and hr) and key(w[-1]) == key(rd[-1]) == key(hr[-1]) and "result=0" in hr[-1]
+    print(f"AUTOMAP_TEST fog-pak: {w[-1:] + rd[-1:] + hr[-1:]}: {'OK' if ok else 'FAIL'}")
+    fail |= not ok
     out = base / "indoor-house"
     text = run(exe, a.rom, out, {"ELTALE_AUTOMAP_DUMP": "1", "ELTALE_AUTOMAP_MINIMAP_AT": "15,11", "ELTALE_MAP_TOUR": "1",
                                  "ELTALE_MAP_GOTO": "15,11,-1", "ELTALE_WINDOW_SIZE": "1280x960"},
