@@ -4,7 +4,8 @@ A PC overlay that shows the floor plan of the place the player is in, in the sty
 ports (KF1, KF3, KF4): a full map on a key and a minimap in a corner. It is not the game's own map in its pause menu
 (that one is untouched). It draws the area accurately: the true floor plan, the walls, water, the player's place and
 facing, in every area of the game; the doors and ways out, and the people, where they are now; the inns, the
-Traveler's Wings and the bread givers and the doors to them, the people with a story line, the signs; and, as cheats,
+Traveler's Wings, the bread and the MP remedy givers and the doors to them, the people with a story line, the signs;
+and, as cheats,
 the chests, the spirits, the bosses, the story item givers, the battle zones and a danger meter. Pointing at a mark
 names it. Fog of war (on) draws only what the player has seen, kept with each save.
 
@@ -25,7 +26,7 @@ names it. Fog of war (on) draws only what the player has seen, kept with each sa
   changes the reach of the kind of place you are in (indoors or outdoors), kept in settings.json; the reach shows
   on the minimap for a moment ("the whole room" when a room is fitted).
 - The F1 menu's **Map** page: pause while the map is open (off), the map's background (92%), the marks (doors and
-  ways out, people, inns/Wings/food, story people, signs: all on), fog of war (on), the minimap on/off, its corner (bottom right),
+  ways out, people, inns/Wings/food/MP remedies, story people, signs: all on), fog of war (on), the minimap on/off, its corner (bottom right),
   size (24% of the picture's height), reach outdoors (800 units from its centre to its edge, 30 to 3000), reach
   indoors (150, 20 to 1500), fit small rooms (on), opacity (85%), and the **Cheats**: show the whole map (no fog),
   show chests, show spirits, show bosses, show story item givers, the battle zones button, the danger meter (all
@@ -79,8 +80,8 @@ names it. Fog of war (on) draws only what the player has seen, kept with each sa
 | Way through | a faint white box, the exit's own trigger box, with an orange arrow the way through (stairs, a passage) |
 | Way to another area | the box with a white arrow (a road's end, a cave mouth) |
 | Person | a pink disc with a white rim, where they stand now (moving with them, between ticks too) |
-| Inn, Wings, Food | the person's disc with a badge: a teal disc with a crescent moon (an innkeeper: rest and save), a sky-blue one with wings (gives Traveler's Wings when you have none), a wheat one with a loaf (gives bread when you have none) |
-| Door to a service | the door's bar (or a way through's box) with a halo in the service's colour and its badge on this side; its label names the service ("Inn", "Traveler's Wings", "Food") |
+| Inn, Wings, Food, MP remedy | the person's disc with a badge: a teal disc with a crescent moon (an innkeeper: rest and save), a sky-blue one with wings (gives Traveler's Wings when you have none), a wheat one with a loaf (gives bread when you have none), a lavender one with a drop (gives an MP remedy when you have none: Mint Leaves, Morning Dew or Smelling Salts; pointing at them names it) |
+| Door to a service | the door's bar (or a way through's box) with a halo in the service's colour and its badge on this side; its label names the service ("Inn", "Traveler's Wings", "Food", "MP remedy") |
 | Story line | a light blue ring round the person's disc |
 | Sign | a small signpost; its label is "Sign: " and the text's first line |
 | Story item giver (cheat) | a gold ring round the person and a gold key on the disc; the label names the item |
@@ -160,8 +161,10 @@ and only walls keep them in. So "walkable" is a question of walls, which is what
     the item's own definition (`D_803AAAA0[item]`, the ItemDef table, swapped to native): handler 2 is
     `Item_UseWarp`, the **Traveler's Wings** (items 14-19, the six town Wings); handler 1 is `Item_UseRestore`, and
     with HP to give (`unk4`, items 0-3) it is **food** (the Honey Bread of the Darlam tavern and the trainee's
-    friend, and one 150 HP gift). An MP restorer (handler 1 with only `unk6`: Mint Leaves, Morning Dew, Smelling
-    Salts) is not marked (see "Other things"). Any other item (handler 0: no use) is a story key item: the
+    friend, and one 150 HP gift); with MP only (`unk6`, no `unk4`) it is an **MP remedy** (Mint Leaves, Morning Dew,
+    Smelling Salts: Prude in the castle, map 13 area 7, and Garita at the inn of map 17 area 0 give Mint Leaves;
+    Marble, map 16 area 13 behind the food door of the second town, Morning Dew; Rhett, map 22 area 20, and
+    Fackel, map 23 area 18, Smelling Salts). Any other item (handler 0: no use) is a story key item: the
     **story item giver** cheat (Shannon's Book of Ether and Key to the Dark Prison). Found in the tour: 17
     innkeepers, 6 Wings givers, 3 food givers, 5 MP-remedy givers, 2 story item givers.
   - **Doors to a service** (v3): for each exit whose destination is a building (no sky, no enemies: `dest_info`),
@@ -173,7 +176,8 @@ and only walls keep them in. So "walkable" is a question of walls, which is what
     0x1E) that lead to another building of the same map (not back to the room the door is in), up to two hops and
     16 rooms. The door's `services` are the bits (`EL_AM_SVC_BIT`) of all of them, so a street door to an inn whose
     keeper stands in the inner room still gets its halo. Exits to a street or a field are not service doors (a house's
-    way back out does not light up for the town's people). Cached per (map, sub-area).
+    way back out does not light up for the town's people). Cached per (map, sub-area). In the castle (map 13) every
+    room's door to its halls is two doors from Prude (area 7), so they all carry the MP remedy's halo: the way to her.
   - **Story people** (v3): talk kind 5 (`Npc_StartTalk`: a line that changes once a boss is beaten): 56 in the tour.
   - **Signs** (v3): `textspot_list[0..textspot_count)` (`TextSpot_LoadForMap`: the sub-area's entries of
     `textspot_table`), at `TextSpotDef.x/z`, id = the `textspot_table` index. The text is read where
@@ -356,7 +360,8 @@ game's own region (P1_AUTOMAP_BATTLE rule_zone) was the zone shaded there each t
   map's "Battle zones" button held and let go, the B key held and let go (`P1_AUTOMAP_ZONES held=1 by=button`, ...,
   a picture each), the mouse on a zone (`ELTALE_AUTOMAP_HOVER=zone`), the danger meter (`P1_AUTOMAP_DANGER`), and
   the same walk without the map (tests/automap-zones-none.events: the same positions); and from the tour's plans,
-  the first town's doors to its inn and Wings giver, the second town's door to food, the field's sign and its five
+  the first town's doors to its inn and Wings giver, the second town's door to food, the first town's door to the
+  castle (an MP remedy: Prude, two rooms in), the field's sign and its five
   shaded zones. The pictures (full map at background 100%) are hashed
   against tests/automap_hashes.txt (`--update` writes it). Prints AUTOMAP_TEST_OK.
 - (Fog of war) `fog`, `fog-cheat`, `fog-newgame`, `fog-pak` in automap_test.py: tests/automap-fog.events after the
@@ -374,10 +379,6 @@ game's own region (P1_AUTOMAP_BATTLE rule_zone) was the zone shaded there each t
 
 ## Other things the game data could mark (not drawn: for the owner to decide)
 
-- **MP remedy givers** (5: talk kind 2 with an item that restores MP only, `D_803AAAA0[item].unk6`: Mint Leaves
-  from Prude in the castle and Garita, Morning Dew from Marble, Smelling Salts from Rhett and Fackel): the same
-  "when you have none" gift as the bread, in the same towns. A clear candidate for a fourth service ("Remedies") or
-  for the shops later; not marked (the Map page's services are the inn, the Wings and food).
 - Nothing else repeats from town to town: no shops, no save points apart from the inns, no warp spots on the field
   (the Traveler's Wings are items), no hidden pickups apart from the chests and spirits, and no event triggers apart
   from the bosses' (the scenes of `SceneEntry` are the ending's). The people with ordinary lines (talk kinds 0, 1)

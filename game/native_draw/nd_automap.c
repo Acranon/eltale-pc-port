@@ -424,7 +424,7 @@ static int holds_item(u32 item) {
 /* What a person offers (EL_AM_SVC_*), from their NpcDef: talk kind 6 is the innkeeper's rest choice; talk kind 2
  * gives def item when the player holds none (Npc_StartTalk: Item_CountInInventory == 0, then Item_AddToInventory),
  * and the item's own use (D_803AAAA0[item].handler_index: 2 Item_UseWarp, the Traveler's Wings; 1
- * Item_UseRestore with HP to give, unk4: the bread) says which. Other items (no use: the story's key items) are 0 with *key set. */
+ * Item_UseRestore with HP to give, unk4: the bread; with MP only, unk6: an MP remedy) says which. Other items (no use: the story's key items) are 0 with *key set. */
 static int service_of(u32 talk, u32 item, int *key) {
     if (key) *key = 0;
     if (talk == 6) return EL_AM_SVC_INN;
@@ -432,7 +432,8 @@ static int service_of(u32 talk, u32 item, int *key) {
     const u32 h = item < 25 ? D_803AAAA0[item].handler_index : 0;
     if (h == 2) return EL_AM_SVC_WINGS;
     if (h == 1 && D_803AAAA0[item].unk4 > 0) return EL_AM_SVC_FOOD; /* restores HP (unk4; unk6 is MP) */
-    if (h == 1) return EL_AM_SVC_NONE; /* (an MP remedy: not marked, docs/AUTOMAP.md) */
+    if (h == 1 && D_803AAAA0[item].unk6 > 0) return EL_AM_SVC_MP;   /* restores MP only: Mint Leaves, Morning Dew, ... */
+    if (h == 1) return EL_AM_SVC_NONE;
     if (key) *key = 1;
     return EL_AM_SVC_NONE;
 }
@@ -508,7 +509,7 @@ static int services_behind(s32 map, s32 sub, s32 from) {
     return bits;
 }
 
-static const char *const service_names[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "Food" };
+static const char *const service_names[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "Food", "MP remedy" };
 
 static void services_text(char *out, size_t size, int bits) {
     size_t at = 0;
@@ -568,7 +569,7 @@ static void build_marks(void) {
         } else {
             snprintf(m->label, sizeof m->label, "%s%s", what, where);
         }
-        /* the services behind it (an inn, the Wings, food: in the building or a room or two further in) */
+        /* the services behind it (an inn, the Wings, food, an MP remedy: in the building or a room or two further in) */
         m->services = (u8)services_behind((s32)x->dest[0], (s32)x->dest[1], (s32)x->dest[0] == map_id ? map_subarea : -1);
         if (m->services) services_text(m->detail, sizeof m->detail, m->services);
     }

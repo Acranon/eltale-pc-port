@@ -1,5 +1,5 @@
-fog-cheat/automap_full_1.png d4b1b94c495fb149
-fog-cheat/automap_full_3.png b9f661f2526ef456
+fog-cheat/automap_full_1.png 7cdfb397e184083c
+fog-cheat/automap_full_3.png d04f44b5e06d8d4e
 fog/automap_full_1.png 05d4431f86cdf37f
 fog/automap_full_3.png 228c2f7f44da4758
 indoor-castle/minimap fffaf2d967fe096a
@@ -16,11 +16,11 @@ keys-4x3/automap_full_3.png e02d02565d675afb
 keys-4x3/automap_full_4.png 700cf208b8aeeb22
 keys-4x3/automap_full_5.png db88778d9fe8bf33
 tour/am_00_00_map.png 6a791e07f8b3e343
-tour/am_00_01_map.png 1a5ebc5d70a9eb52
+tour/am_00_01_map.png 8f7d6635e1e1a46b
 tour/am_00_02_map.png a0b5a3f46ac066ff
 tour/am_00_03_map.png 16cb5c486874c44e
 tour/am_00_04_map.png 84512eee25c22359
-tour/am_01_00_map.png 4b307062c1baebea
+tour/am_01_00_map.png cc82ee626275ee35
 tour/am_02_00_map.png 781d7456faa2145b
 tour/am_03_00_map.png 8a49d6ead9f4f3c6
 tour/am_03_01_map.png 25a04f5f64e59434

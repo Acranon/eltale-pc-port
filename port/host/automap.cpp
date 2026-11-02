@@ -684,10 +684,11 @@ constexpr ImU32 COL_SIGN = IM_COL32(200, 160, 110, 255);
 constexpr ImU32 COL_STORY = IM_COL32(130, 210, 255, 255);  // the ring round a person with a story line
 constexpr ImU32 COL_GIVER = IM_COL32(255, 215, 80, 255);   // (cheat) a person who gives a story item
 constexpr ImU32 COL_ZONE = IM_COL32(230, 45, 40, 255);     // (cheat) the battle zones
-// the services (EL_AM_SVC_*): the inn's teal, the Wings' sky blue, the food's wheat
+// the services (EL_AM_SVC_*): the inn's teal, the Wings' sky blue, the food's wheat, the MP remedies' lavender
 constexpr ImU32 COL_SVC[EL_AM_SVC_COUNT] = { IM_COL32(255, 255, 255, 255), IM_COL32(70, 215, 175, 255),
-                                             IM_COL32(120, 185, 255, 255), IM_COL32(250, 210, 110, 255) };
-const char *const SVC_NAME[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "Food" };
+                                             IM_COL32(120, 185, 255, 255), IM_COL32(250, 210, 110, 255),
+                                             IM_COL32(190, 170, 255, 255) };
+const char *const SVC_NAME[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "Food", "MP remedy" };
 
 ImU32 fade(ImU32 c, float a) { return (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * std::clamp(a, 0.0f, 1.0f)) << 24); }
 
@@ -730,7 +731,7 @@ std::string hover_text(const ElAmMarker &m, bool all) {
     return t;
 }
 
-// A service's icon: a disc in its colour, a dark glyph (the inn's crescent moon, a pair of wings, a loaf)
+// A service's icon: a disc in its colour, a dark glyph (the inn's crescent moon, a pair of wings, a loaf, a drop)
 void draw_service_icon(ImDrawList *dl, ImVec2 p, float k, int svc, float alpha) {
     if (svc <= 0 || svc >= EL_AM_SVC_COUNT) return;
     const ImU32 bg = fade(COL_SVC[svc], alpha), ink = fade(IM_COL32(25, 22, 18, 255), alpha);
@@ -755,6 +756,14 @@ void draw_service_icon(ImDrawList *dl, ImVec2 p, float k, int svc, float alpha) 
         for (int i = -1; i <= 1; i++)
             dl->AddLine(ImVec2(p.x + i * k * 0.3f - k * 0.08f, p.y - k * 0.2f), ImVec2(p.x + i * k * 0.3f + k * 0.08f, p.y + k * 0.2f), bg,
                         std::max(1.0f, k * 0.12f));
+        break;
+    }
+    case EL_AM_SVC_MP: { // a drop (dew, a remedy): a round bottom and a point on top
+        const ImVec2 c(p.x, p.y + k * 0.18f);
+        const float r = k * 0.42f;
+        dl->AddCircleFilled(c, r, ink, 16);
+        dl->AddTriangleFilled(ImVec2(p.x, p.y - k * 0.7f), ImVec2(c.x - r * 0.93f, c.y - r * 0.36f), ImVec2(c.x + r * 0.93f, c.y - r * 0.36f), ink);
+        dl->AddCircleFilled(ImVec2(c.x - r * 0.35f, c.y - r * 0.05f), r * 0.22f, bg, 10); // a glint
         break;
     }
     default: break;
@@ -2175,10 +2184,11 @@ void settings_page() {
                           "(a white box: stairs, a passage, a road). A white arrow: it leads to another area (a field, a dungeon, another town).");
     changed |= ImGui::Checkbox("People", &m.people);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Everyone you can talk to, where they are now (pink).");
-    changed |= ImGui::Checkbox("Inns, Wings and food", &m.services);
+    changed |= ImGui::Checkbox("Inns, Wings, food and MP remedies", &m.services);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("The innkeepers (rest and save), the people who give Traveler's Wings and bread when you have none,\n"
-                          "and the doors to their houses: a coloured halo and the icon (moon: inn, wings, loaf: food).");
+        ImGui::SetTooltip("The innkeepers (rest and save), the people who give Traveler's Wings, bread and MP remedies (Mint Leaves,\n"
+                          "Morning Dew, Smelling Salts) when you have none, and the doors to their houses: a coloured halo and the\n"
+                          "icon (moon: inn, wings, loaf: food, drop: MP remedy).");
     changed |= ImGui::Checkbox("Story people", &m.story);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("A light blue ring round people with something to say about the story.");
     changed |= ImGui::Checkbox("Fog of war", &m.fog);

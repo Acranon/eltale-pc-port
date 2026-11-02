@@ -63,6 +63,7 @@ enum {
     EL_AM_SVC_INN = 1,   /* an innkeeper (NpcDef.talk_kind 6: the rest choice; resting is where the game saves) */
     EL_AM_SVC_WINGS = 2, /* gives Traveler's Wings when you have none (talk kind 2, an item whose use is a warp) */
     EL_AM_SVC_FOOD = 3,  /* gives bread when you have none (talk kind 2, an item whose use restores HP) */
+    EL_AM_SVC_MP = 4,    /* gives an MP remedy when you have none (talk kind 2, an item whose use restores MP only) */
     EL_AM_SVC_COUNT
 };
 #define EL_AM_SVC_BIT(s) (1u << (s))

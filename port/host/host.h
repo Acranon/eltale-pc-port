@@ -78,7 +78,7 @@ struct MapSettings {
     bool fit_rooms = true; // a room smaller than the reach fills the minimap (and stays put while you walk in it)
     bool doors = true;    // the marks: doors and ways out
     bool people = true;   // ... people
-    bool services = true; // ... (v3) the inns, the Wings and the food givers, and the doors to them
+    bool services = true; // ... (v3) the inns, the Wings, the food and MP remedy givers, and the doors to them
     bool story = true;    // ... (v3) a ring round people with a story or boss line
     bool signs = true;    // ... (v3) signs and other things to read
     bool fog = true;      // fog of war: only what the player has seen (kept per save)

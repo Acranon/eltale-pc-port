@@ -23,7 +23,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 KINDS = {1: "door", 2: "way", 3: "person", 4: "chest", 5: "spirit", 6: "boss", 7: "sign"}
-SERVICES = {2: "inn", 4: "wings", 8: "food"}
+SERVICES = {2: "inn", 4: "wings", 8: "food", 16: "mp"}
 
 
 def over_xform(plan: dict):
@@ -132,9 +132,11 @@ def main() -> None:
             marks_name = f"marks_{mp:02d}.png"
             tile_sheet(tiles, args.tile, args.out / marks_name)
         sheets.append((mp, name, len(subs), marks_name, len(tiles)))
-    # the services (every door to an inn, the Wings or food, and every person offering one) and the signs, close up
+    # the services (every door to an inn, the Wings, food or an MP remedy, and every person offering one), the MP remedy
+    # givers and their doors alone, and the signs, close up
     extra = []
     for what, pick in (("services", lambda m: m.get("services", 0) or m.get("service", 0)),
+                       ("mp_remedies", lambda m: m.get("service", 0) == 4 or m.get("services", 0) & 16),
                        ("signs", lambda m: m["kind"] == 7)):
         tiles = []
         for mp in sorted(areas):
@@ -172,7 +174,7 @@ def main() -> None:
         f.write("<h1>Area map against the truth view</h1><p>Per sub-area: the real geometry from above (truth), the "
                 "map's walls (magenta), floor edges (yellow) and marks (named) over it (over), the full map as shown "
                 "(map), the battle zones shaded red (where the game's rule lets a random battle start, numbered). Then per "
-                "map a close-up of every mark: truth | over (a door to an inn, the Wings or food has a coloured halo, and "
+                "map a close-up of every mark: truth | over (a door to an inn, the Wings, food or an MP remedy has a coloured halo, and "
                 "its service named).</p>\n")
         for what, n in extra:
             f.write(f"<h2>All {what} ({n})</h2><img src='{what}.png'>\n")

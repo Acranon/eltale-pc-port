@@ -39,7 +39,8 @@ Runs, each with its own data folder (sound off, map background 100%: the full ma
                        indoor-inn run's Continue hash the save to the same key (P1_AUTOMAP_SAVE_KEY write / read, the
                        host's P1_AUTOMAP_FOG event=read with that key; no file: it was saved without the host).
   marks                (v3) the tour's plans: the first town's doors to the inn and the Wings giver (services), the
-                       second town's food giver's door, the field's sign and its five battle zones.
+                       second town's food giver's door (and MP remedy giver's), the first town's door to the castle
+                       (an MP remedy), the field's sign and its five battle zones.
 The hashes (of the pixels) are compared with tests/automap_hashes.txt; --update writes them. Prints AUTOMAP_TEST lines
 and AUTOMAP_TEST_OK or AUTOMAP_TEST_FAIL at the end. The DLLs used are those beside the exe.
 """
@@ -225,6 +226,8 @@ def main() -> None:
         "first town: a door to the inn": any(m["services"] & 2 for m in plan(0, 0)["marks"]),
         "first town: a door to the Wings giver": any(m["services"] & 4 for m in plan(0, 0)["marks"]),
         "second town: a door to food": any(m["services"] & 8 for m in plan(1, 0)["marks"]),
+        "first town: the door to the castle's MP remedy giver": any(m["services"] & 16 for m in plan(0, 1)["marks"]),
+        "second town: a door to food and an MP remedy": any(m["services"] & 24 == 24 for m in plan(1, 0)["marks"]),
         "field: a sign with its text": any(m["kind"] == 7 and m["label"].startswith("Sign: ") for m in plan(2, 0)["marks"]),
         "field: five battle zones, each shaded": len(plan(2, 0)["zones"]) == 5 and all(z["cells"] > 0 for z in plan(2, 0)["zones"]),
     }
