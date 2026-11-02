@@ -102,6 +102,12 @@ void controls_page() {
     if (ImGui::SliderInt("Mouse camera speed", &c.mouse_sensitivity, 10, 400, "%d%%")) save_settings();
     if (ImGui::Checkbox("Invert the camera's up and down", &c.invert_y)) save_settings();
     if (ImGui::Checkbox("Mouse in menus", &c.mouse_menus)) save_settings();
+    if (ImGui::Checkbox("Spell panel and quick bar", &c.spell_ui)) save_settings();
+    help("While you put a spell together: the spell on a plate (click it to cast, right click takes the last element "
+         "back), the four crystals (click or 1-4) and under each the spell it would make. The quick bar at the bottom "
+         "keeps spells for each save: click an empty slot (or drag the plate onto one) to keep the spell you made, "
+         "click a slot or press 5-0 to cast it; the wheel over the bar, , and . change its page. Off: the game's own "
+         "spell panel.");
     help("Point at a menu's options, items and answers to move the game's cursor there; a left click picks (A), a "
          "right click backs out (B). Click an element crystal at the bottom left for its spell list, then a spell's "
          "name to add it and the middle name to cast.");

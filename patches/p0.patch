@@ -3054,7 +3054,7 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..0fd3500 100644
+index f2ae77c..dd0f0cd 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
 @@ -13,6 +13,53 @@
@@ -3263,33 +3263,36 @@ index f2ae77c..0fd3500 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -1146,6 +1266,10 @@ void SaveMenu_DrawBackground(void) {
+@@ -1146,6 +1266,11 @@ void SaveMenu_DrawBackground(void) {
      Menu_DrawSprite(0x47, 0xA2, 0xA6, 0x18, 0xE);
  }
  
 +#ifdef ELTALE_P1_OS
 +void Port_AutomapSaveEvent(int kind, s32 slot); /* game/native_draw/nd_automap.c */
++void Port_SpellUiSaveEvent(int kind, s32 slot); /* port/spell_ui.h: the spell UI's quick bar, per save */
 +#endif
 +
  void SaveMenu_CaptureGameState(s32 arg0) {
      SaveHeader *e = &save_menu_save_headers[arg0];
      u8 *d;
-@@ -1189,6 +1313,9 @@ void SaveMenu_CaptureGameState(s32 arg0) {
+@@ -1189,6 +1314,10 @@ void SaveMenu_CaptureGameState(s32 arg0) {
      for (s = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
 +#ifdef ELTALE_P1_OS
 +    Port_AutomapSaveEvent(0, arg0); /* the area map's fog of war: what was explored, kept with this save */
++    Port_SpellUiSaveEvent(0, arg0); /* port: the spell UI's quick bar, kept with this save */
 +#endif
  }
  
  void SaveMenu_RestoreGameState(s32 arg0) {
-@@ -1231,4 +1358,7 @@ void SaveMenu_RestoreGameState(s32 arg0) {
+@@ -1231,4 +1360,8 @@ void SaveMenu_RestoreGameState(s32 arg0) {
      for (d = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
 +#ifdef ELTALE_P1_OS
 +    Port_AutomapSaveEvent(1, arg0); /* the area map's fog of war: what was explored with this save, back */
++    Port_SpellUiSaveEvent(1, arg0); /* port: the spell UI's quick bar of this save, back */
 +#endif
  }
 diff --git a/src/game/text/text.c b/src/game/text/text.c
@@ -3585,19 +3588,20 @@ index 4f9f215..8b492fe 100644
  }
  #else
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..4daf582 100644
+index e6f79b4..6735c06 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
-@@ -1,3 +1,8 @@
+@@ -1,3 +1,9 @@
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
 +#include "port/text.h"
 +#include "port/mouse_menu.h"
++#include "port/spell_ui.h"
 +#endif
  #include "game/ui/hud.h"
  #include "game/camera/camera.h"
  #include "game/gfx/effect.h"
-@@ -13,6 +18,7 @@
+@@ -13,6 +19,7 @@
  #include "game/player/player.h"
  #include "game/ui/menu.h"
  #include "game/core/main.h"
@@ -3605,7 +3609,7 @@ index e6f79b4..4daf582 100644
  
  /*
   * In-game HUD: meters, compass, spell input, status indicators, and text primitives.
-@@ -82,6 +88,15 @@ extern HudTextureDesc D_803A8748;
+@@ -82,6 +89,15 @@ extern HudTextureDesc D_803A8748;
  extern MagicVisualDef D_803AA690[];
  extern EnemyEffectDef D_803AA6C4[];
  
@@ -3621,7 +3625,7 @@ index e6f79b4..4daf582 100644
  
  void Hud_ResetState(void) {
      D_8008C168 = 0;
-@@ -128,7 +143,7 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -128,7 +144,7 @@ void Hud_Draw(GfxFrameData* buf) {
      }
      if (!(core_flags & 0xC00)) {
          Hud_DrawPlayerMeters((Actor*)&player_state.actor);
@@ -3630,7 +3634,31 @@ index e6f79b4..4daf582 100644
          if (hud_panel_transition_state == 1) {
              if (++hud_panel_transition_frame >= 13) {
                  hud_panel_transition_frame = 12;
-@@ -192,6 +207,9 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -177,7 +193,13 @@ void Hud_Draw(GfxFrameData* buf) {
+         }
+     }
+     if (core_flags & 4) {
++#ifdef ELTALE_P1_OS
++        Port_SpellUiReplaceBegin(); /* port: the spell UI's panel shows the spell input instead (port/spell_ui.h) */
++#endif
+         Hud_DrawSpellInput(buf, (Player*)&player_state);
++#ifdef ELTALE_P1_OS
++        Port_SpellUiReplaceEnd();
++#endif
+     } else if (core_flags & 8) {
+         Hud_UpdateElementAllocation(buf, (Player*)&player_state);
+     }
+@@ -185,6 +207,9 @@ void Hud_Draw(GfxFrameData* buf) {
+         Hud_DrawSpellName(&player_state);
+         hud_spell_name_timer--;
+     }
++#ifdef ELTALE_P1_OS
++    Port_SpellUiDraw(); /* port: the spell UI's panel and quick bar (native 2D only) */
++#endif
+ }
+ 
+ 
+@@ -192,6 +217,9 @@ void Hud_Draw(GfxFrameData* buf) {
  extern HudTextureDesc D_803A86F8;
  
  void Hud_DrawPlayerMeters(Actor* arg0) {
@@ -3640,7 +3668,7 @@ index e6f79b4..4daf582 100644
      ActorStats* st;
      s32 w;
      s32 d;
-@@ -237,7 +255,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+@@ -237,7 +265,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
  extern Gfx D_803AA3C8[];
  extern Gfx D_803AA2F8[];
  
@@ -3652,7 +3680,7 @@ index e6f79b4..4daf582 100644
      s32 x;
      f32 fx;
      f32 fy;
-@@ -287,6 +308,23 @@ void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
+@@ -287,6 +318,23 @@ void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
          gSPDisplayList(gfx_dl_head++, D_803AA2F8);
          hud_element_gain_flash_timer--;
      }
@@ -3676,7 +3704,7 @@ index e6f79b4..4daf582 100644
  }
  
  
-@@ -295,6 +333,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -295,6 +343,9 @@ extern HudTextureDesc D_803A86F8;
  f32 sqrtf(f32);
  
  void Hud_DrawCompass(GfxFrameData* buf) {
@@ -3686,7 +3714,7 @@ index e6f79b4..4daf582 100644
      f32 dx;
      f32 dz;
      f32 dist;
-@@ -340,6 +381,11 @@ extern HudTextureDesc D_803A8718;
+@@ -340,6 +391,11 @@ extern HudTextureDesc D_803A8718;
  extern Gfx D_803AA2F8[];
  
  void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
@@ -3698,7 +3726,7 @@ index e6f79b4..4daf582 100644
      s32 i;
      s32 x1;
      u8* col;
-@@ -383,6 +429,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -383,6 +439,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          gDPSetRenderMode(gfx_dl_head++, 0x504240, 0);
          /* Keep this block on one line for IDO scheduling. */
          { Gfx* _g = gfx_dl_head++; if (i) {} _g->words.w0 = 0xFCFF9BFF; _g->words.w1 = 0xFF34FE7F; }
@@ -3708,7 +3736,7 @@ index e6f79b4..4daf582 100644
          gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255 - i * 255 / 64);
      }
      if (arg1->spell_input_count < 3) {
-@@ -401,6 +450,31 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -401,6 +460,31 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          Hud_DrawSpellLabel(x2, y2 + 3, str, i + 1, arg1->stats->mp);
          str[i] = 3;
          Hud_DrawSpellLabel(x3, y3 + 3, str, i + 1, arg1->stats->mp);
@@ -3740,7 +3768,7 @@ index e6f79b4..4daf582 100644
      }
      hud_draw_origin_x = 0x69;
      hud_draw_origin_y = 0x32;
-@@ -421,6 +495,21 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -421,6 +505,21 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          x0 += 0xC;
      }
      Hud_DrawSpellLabel(0, yoff + 3, arg1->spell_input_dirs, arg1->spell_input_count, arg1->stats->mp);
@@ -3762,7 +3790,7 @@ index e6f79b4..4daf582 100644
      hud_draw_origin_x = 0x22;
      hud_draw_origin_y = 0x8C;
      if (arg1->spell_input_count != 3) {
-@@ -441,6 +530,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -441,6 +540,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], hud_spell_input_anim_timer * 255 / 8);
          gSPDisplayList(gfx_dl_head++, D_803AA2F8);
      }
@@ -3772,7 +3800,7 @@ index e6f79b4..4daf582 100644
      if (hud_spell_input_anim_timer) {
          hud_spell_input_anim_timer--;
      }
-@@ -448,12 +540,49 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -448,12 +550,49 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
  
  
  
@@ -3822,7 +3850,7 @@ index e6f79b4..4daf582 100644
      s32 tmp;
      volatile s32 id;
      s32 t;
-@@ -465,7 +594,17 @@ void Hud_DrawSpellName(void* arg0) {
+@@ -465,7 +604,17 @@ void Hud_DrawSpellName(void* arg0) {
      hud_draw_origin_y = 0x32;
      w = ((Player *)arg0)->spell_id;
      id = (u8)w;
@@ -3840,7 +3868,7 @@ index e6f79b4..4daf582 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureFilter(gfx_dl_head++, G_TF_POINT);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
-@@ -496,6 +635,9 @@ extern u8 D_8039ADB0[];
+@@ -496,6 +645,9 @@ extern u8 D_8039ADB0[];
  extern Gfx D_803AA2F8[];
  
  void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
@@ -3850,7 +3878,7 @@ index e6f79b4..4daf582 100644
      u16 alpha;
      s32 yoff;
      s32 t;
-@@ -531,6 +673,14 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+@@ -531,6 +683,14 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
      Hud_DrawNumber(5, 0xA, yoff + 0x34, player_stats.element_levels[1]);
      Hud_DrawNumber(5, 0x1C, yoff + 0x43, player_stats.element_levels[2]);
      Hud_DrawNumber(5, 0x2E, yoff + 0x34, player_stats.element_levels[3]);
@@ -3865,7 +3893,7 @@ index e6f79b4..4daf582 100644
      if (hud_element_input_timer && (hud_element_allocation_flags & 1)) {
          col = hud_element_colors[hud_selected_element_index];
          pos = (f32*)hud_element_icon_positions + hud_selected_element_index * 2;
-@@ -580,6 +730,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+@@ -580,6 +740,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
  
  
  void Hud_DrawNpcTalkMarker(void) {
@@ -3875,7 +3903,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 bob;
      Actor* p;
-@@ -600,6 +753,9 @@ void Hud_DrawNpcTalkMarker(void) {
+@@ -600,6 +763,9 @@ void Hud_DrawNpcTalkMarker(void) {
  }
  
  void Hud_DrawSpiritMarker(void) {
@@ -3885,7 +3913,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -617,6 +773,9 @@ void Hud_DrawSpiritMarker(void) {
+@@ -617,6 +783,9 @@ void Hud_DrawSpiritMarker(void) {
  }
  
  void Hud_DrawChestMarker(void) {
@@ -3895,7 +3923,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -634,6 +793,9 @@ void Hud_DrawChestMarker(void) {
+@@ -634,6 +803,9 @@ void Hud_DrawChestMarker(void) {
  }
  
  void Hud_DrawTextSpotMarker(void) {
@@ -3905,7 +3933,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -654,6 +816,9 @@ void Hud_DrawTextSpotMarker(void) {
+@@ -654,6 +826,9 @@ void Hud_DrawTextSpotMarker(void) {
  extern Gfx D_803AA5B0[];
  
  void Hud_DrawMeleeTargetMarker(u16 arg0) {
@@ -3915,7 +3943,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -681,6 +846,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
+@@ -681,6 +856,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
  }
  
  void Hud_DrawOutOfRangeIcon(void) {
@@ -3925,7 +3953,7 @@ index e6f79b4..4daf582 100644
      s32 sx;
      s32 sy;
      f32 y;
-@@ -745,6 +913,9 @@ typedef struct {
+@@ -745,6 +923,9 @@ typedef struct {
  extern Struct_803AA628 D_803AA628[];
  
  void Hud_UpdateAndDrawActorStatusIndicators(Actor* arg0) {
@@ -3935,7 +3963,7 @@ index e6f79b4..4daf582 100644
      ActorBattle* s = arg0->battle;
      f32 y;
      s32 vis;
-@@ -874,6 +1045,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -874,6 +1055,9 @@ extern HudTextureDesc D_803A86F8;
  extern HudTextureDesc D_803A8718;
  
  void Hud_DrawEnemyInfoPanel(void) {
@@ -3945,7 +3973,7 @@ index e6f79b4..4daf582 100644
      s32 d;
  
      hud_draw_origin_x = 0xB5;
-@@ -895,7 +1069,18 @@ void Hud_DrawEnemyInfoPanel(void) {
+@@ -895,7 +1079,18 @@ void Hud_DrawEnemyInfoPanel(void) {
          Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
          Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
      }
@@ -3965,7 +3993,7 @@ index e6f79b4..4daf582 100644
      Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
      if (enemy_turn_current->battle.status_bits & 0x80) {
-@@ -946,6 +1131,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
+@@ -946,6 +1141,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
  }
  
  void Hud_DrawPopups(void) {
@@ -3975,7 +4003,7 @@ index e6f79b4..4daf582 100644
      s32 i;
      HudPopup* p;
      f32 x;
-@@ -984,14 +1172,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -984,14 +1182,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -4004,7 +4032,7 @@ index e6f79b4..4daf582 100644
      w = Hud_MeasureGlyphString(str);
      arg0 = arg0 - w / 2 + 0x37;
      Hud_DrawGlyphString(arg0, arg1, hud_spell_label_palettes[flags], str);
-@@ -1001,9 +1202,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1001,9 +1212,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 cur = 8;
      s32 col;
      s32 row;
@@ -4021,7 +4049,7 @@ index e6f79b4..4daf582 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1013,6 +1221,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1013,6 +1231,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              x += 1;
          } else if (*str == 0x82) {
              x += 4;
@@ -4032,7 +4060,7 @@ index e6f79b4..4daf582 100644
          } else {
              col = (*str & 0xF) * 8;
              row = (*str & 0x70) >> 4;
-@@ -1022,7 +1234,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1022,7 +1244,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              }
              row *= 9;
              Hud_DrawClippedTextureRect(x, y, 8, 9, col, row, 0x400, 0x400);
@@ -4044,7 +4072,7 @@ index e6f79b4..4daf582 100644
          }
          str++;
      }
-@@ -1030,10 +1246,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1030,10 +1256,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
  
  s32 Hud_MeasureGlyphString(u8* str) {
      s32 w = 0;
@@ -4066,7 +4094,7 @@ index e6f79b4..4daf582 100644
          } else if (*str == 0x80 || *str == 0x81) {
              w += 1;
          } else if (*str == 0x82) {
-@@ -1065,6 +1292,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1302,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
@@ -4082,7 +4110,7 @@ index e6f79b4..4daf582 100644
      if (tex->is4b == 0) {
          gDPLoadTextureTile(gfx_dl_head++, tex->img, G_IM_FMT_CI, G_IM_SIZ_8b, tex->width, 0, x, y, x + w, y + h, 0,
                             G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
-@@ -1077,6 +1313,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
+@@ -1077,6 +1323,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
  }
  
  void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32 dsdx, s32 dtdy) {
@@ -4096,7 +4124,7 @@ index e6f79b4..4daf582 100644
      x += hud_draw_origin_x;
      x2 += x;
      y += hud_draw_origin_y;
-@@ -1108,6 +1351,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
+@@ -1108,6 +1361,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
          y = hud_clip_top;
      }
      gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, x2 << 2, y2 << 2, 0, s << 5, t << 5, dsdx, dtdy);

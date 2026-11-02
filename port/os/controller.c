@@ -3,6 +3,7 @@
 #include "port/mouse_camera.h"
 #include "port/mouse_menu.h"
 #include "port/os.h"
+#include "port/spell_ui.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -22,7 +23,9 @@ static unsigned row_count, next_row;
  * (turn counts, wheel steps, flags 1 = reset); not repeated. The menus' pointer (port/mouse_menu.h): flags 2 a
  * left click, 4 a right click, 8 the pointer gone (hidden, out of the window); X Y move it, in the 1x picture's
  * units (x across the picture as wide as its shape makes it: 320 at 4:3, 426 at 16:9; y down 240). Once given,
- * the pointer stays where it was put and is shown. */
+ * the pointer stays where it was put and is shown. For the spell UI's drags (port/spell_ui.h): flags 16 the left
+ * button held from then on (18: pressed and held), 32 let go; a left click (2) without 16 is pressed and let go at
+ * once. */
 enum { MAX_MOUSE_ROWS = 4096 };
 typedef struct MouseRow {
     uint64_t vi;
@@ -35,7 +38,15 @@ static MouseRow mouse_rows[MAX_MOUSE_ROWS];
 static unsigned mouse_count, next_mouse;
 /* an input script's pointer: where its rows put it (shown once placed) */
 static float script_x, script_y;
-static int script_pointer;
+static int script_pointer, script_held;
+/* `spellkey VI MASK`: the spell UI's keys (port/spell_ui.h PORT_SPELLKEY_*) pressed at the read at that VI */
+enum { MAX_KEY_ROWS = 1024 };
+typedef struct KeyRow {
+    uint64_t vi;
+    unsigned mask;
+} KeyRow;
+static KeyRow key_rows[MAX_KEY_ROWS];
+static unsigned key_count, next_key;
 
 /* `repeat FROM PERIOD`: after the last row, the rows from VI FROM on play again every PERIOD VIs */
 static unsigned repeat_first;
@@ -46,7 +57,8 @@ static u8 channels = 4;
 int Port_ControllerLoadScript(const char *path) {
     row_count = next_row = 0;
     mouse_count = next_mouse = 0;
-    script_pointer = 0;
+    key_count = next_key = 0;
+    script_pointer = script_held = 0;
     repeat_period = repeat_offset = 0;
     memset(&current_pad, 0, sizeof current_pad);
     if (!path) return 0;
@@ -73,6 +85,16 @@ int Port_ControllerLoadScript(const char *path) {
             continue;
         }
         unsigned long long vi;
+        int kmask;
+        if (sscanf(line, "spellkey %llu %i", &vi, &kmask) == 2) {
+            if (key_count == MAX_KEY_ROWS || (key_count && vi <= key_rows[key_count - 1].vi)) {
+                fprintf(stderr, "input script %s:%u: too many or unordered spellkey rows\n", path, lineno);
+                fclose(file);
+                return -1;
+            }
+            key_rows[key_count++] = (KeyRow){ (uint64_t)vi, (unsigned)kmask };
+            continue;
+        }
         int buttons;
         int x, y;
         float mdx, mdy;
@@ -110,17 +132,28 @@ void (*Port_LivePad)(u16 *buttons, s8 *stick_x, s8 *stick_y);
 void (*Port_LiveCamera)(float *dx, float *dy, int *wheel, int *flags);
 /* and the menus' pointer (port/mouse_menu.h): picture units, the 1x picture's width, PORT_POINTER_* */
 void (*Port_LivePointer)(float *x, float *y, int *width, int *flags);
+/* and the spell UI's keys since the last read (port/spell_ui.h PORT_SPELLKEY_*) and whether it is on */
+void (*Port_LiveSpellKeys)(unsigned *keys, int *on);
+/* and, first, whether a screen that takes the pointer is shown (no mouse look over it: port/mouse_menu.h) */
+void (*Port_LiveScreen)(int open);
 
 static void update_camera(void) {
     float dx = 0.0f, dy = 0.0f;
     int wheel = 0, flags = 0;
     if (Port_LiveCamera && row_count == 0 && mouse_count == 0) {
+        if (Port_LiveScreen) Port_LiveScreen(Port_MouseScreenOpen());
         Port_LiveCamera(&dx, &dy, &wheel, &flags);
         if (Port_LivePointer) {
             float x = 0.0f, y = 0.0f;
             int width = 0, pflags = 0;
             Port_LivePointer(&x, &y, &width, &pflags);
             Port_MousePointerSet(x, y, width, pflags);
+        }
+        if (Port_LiveSpellKeys) {
+            unsigned keys = 0;
+            int on = 0;
+            Port_LiveSpellKeys(&keys, &on);
+            Port_SpellUiKeys(keys, on);
         }
     } else {
         uint64_t now = Port_OsViCount();
@@ -144,13 +177,24 @@ static void update_camera(void) {
             }
             if (m->flags & 8) script_pointer = 0;
             clicks |= m->flags & 6;
+            if (m->flags & 16) script_held = 1;
+            else if ((m->flags & 2) && !script_held) clicks |= 32; /* a click: pressed and let go */
+            if ((m->flags & 32) && script_held) script_held = 0, clicks |= 32;
         }
-        /* flags 2 / 4: a left / right click */
+        /* flags 2 / 4: a left / right click; 16 held, 32 let go */
         Port_MousePointerSet(script_x, script_y, 0,
                              script_pointer ? PORT_POINTER_IN | PORT_POINTER_SHOWN | ((clicks & 2) ? PORT_POINTER_LEFT : 0) |
-                                                  ((clicks & 4) ? PORT_POINTER_RIGHT : 0)
+                                                  ((clicks & 4) ? PORT_POINTER_RIGHT : 0) | (script_held ? PORT_POINTER_HELD : 0) |
+                                                  ((clicks & 32) ? PORT_POINTER_UP : 0)
                                             : 0);
+        unsigned keys = 0;
+        while (next_key < key_count && key_rows[next_key].vi <= now) {
+            fprintf(stderr, "P1_INPUT vi=%llu spellkey=%#x\n", (unsigned long long)now, key_rows[next_key].mask);
+            keys |= key_rows[next_key++].mask;
+        }
+        Port_SpellUiKeys(keys, -1);
     }
+    wheel = Port_SpellUiWheel(wheel);
     Port_CameraInputSet(dx, dy, wheel, flags);
 }
 
@@ -205,7 +249,9 @@ void osContGetReadData(OSContPad *pads) {
     update_pad();
     memset(pads, 0, 4 * sizeof *pads);
     pads[0] = current_pad;
-    /* the menus' pointer: hover, and a click pressed for this read (port/mouse_menu.h) */
+    /* the spell UI's panel, bar and keys (port/spell_ui.h), then the menus' pointer: hover, and a click pressed for
+     * this read (port/mouse_menu.h) */
+    Port_SpellUiRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     Port_MouseMenuRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     if (hold_start_at_boot) {
         pads[0].button |= START_BUTTON;

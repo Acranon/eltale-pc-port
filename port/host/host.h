@@ -50,6 +50,10 @@ enum Action {
     ACT_MAP, // the area map (automap.cpp)
     ACT_MAP_ZOOM_IN, ACT_MAP_ZOOM_OUT, // the minimap's reach (automap.cpp)
     ACT_MAP_ZONES, // (hold) the battle zones on the map, with the cheat on (automap.cpp)
+    // the spell UI (port/spell_ui.h, docs/SPELL_UI.md): the crystals, the quick bar's slots and pages, clearing
+    ACT_SPELL_FIRE, ACT_SPELL_EARTH, ACT_SPELL_WATER, ACT_SPELL_WIND,
+    ACT_SLOT_1, ACT_SLOT_2, ACT_SLOT_3, ACT_SLOT_4, ACT_SLOT_5, ACT_SLOT_6,
+    ACT_PAGE_PREV, ACT_PAGE_NEXT, ACT_SPELL_CLEAR,
     ACT_COUNT
 };
 enum { BIND_SLOTS = 3, BIND_PAD_SLOT = 2 };
@@ -65,6 +69,7 @@ struct Controls {
     int mouse_sensitivity = 100; // percent
     bool invert_y = false;       // mouse and camera keys: up looks down
     bool mouse_menus = true;     // the mouse points and clicks in the game's menus (port/mouse_menu.h)
+    bool spell_ui = true;        // the spell UI: panel and quick bar (port/spell_ui.h); off: the game's own
     Controls();                  // the defaults
 };
 
@@ -132,6 +137,10 @@ void input_pad(uint16_t *buttons, int8_t *stick_x, int8_t *stick_y);
 void input_camera(float *dx, float *dy, int *wheel, int *flags);
 // The menus' pointer (ElHost_GetPointer): where it is on the picture shown, and the clicks since the last call
 void input_pointer(float *x, float *y, int *width, int *flags);
+// The game shows a menu, a text window or the spell panel (ElHost_SetScreen, each read): no mouse look over it
+void input_screen(int open);
+// The spell UI's keys pressed since the last call (port/spell_ui.h PORT_SPELLKEY_*) and its switch
+void input_spell_keys(unsigned *keys, int *on);
 void input_shutdown();
 // ELTALE_INPUT_TEST: queue the script's events that are due (SDL's own queue, this process only)
 void input_test_pump();

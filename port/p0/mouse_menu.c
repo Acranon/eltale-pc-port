@@ -67,9 +67,13 @@ void Port_MouseFrameBegin(void) {
     frame_seen = 1;
 }
 
+static int muted;
+
+void Port_MouseMute(int on) { muted = on; }
+
 static Target *add(s32 tag, s32 anchor, s32 x, s32 y, s32 w, s32 h, u32 click) {
     Target *t;
-    if (building_count == MAX_TARGETS || w <= 0 || h <= 0) return NULL;
+    if (muted || building_count == MAX_TARGETS || w <= 0 || h <= 0) return NULL;
     t = &building[building_count++];
     memset(t, 0, sizeof *t);
     t->tag = (s16)tag;
@@ -97,7 +101,9 @@ void Port_MouseTargetFn(s32 tag, s32 anchor, s32 x, s32 y, s32 w, s32 h, PortMou
     t->value = arg;
 }
 
-void Port_MouseBack(void) { building_back = 1; }
+void Port_MouseBack(void) {
+    if (!muted) building_back = 1;
+}
 
 s32 Port_MouseHoverTag(void) { return hover_tag; }
 
@@ -129,6 +135,21 @@ static void to_anchor(int anchor, float *x, float *y) {
     *x = ptr_x - (anchor == PORT_MOUSE_LEFT ? 0.0f : anchor == PORT_MOUSE_RIGHT ? 2.0f * side : side);
     *y = ptr_y;
 }
+
+void Port_MouseToAnchor(int anchor, float *x, float *y) { to_anchor(anchor, x, y); }
+
+int Port_MouseScreenOpen(void) {
+    if (pak_running || core_game_mode == 2 || core_game_mode == 3 || core_game_mode == 4) return 1;
+    return core_game_mode == 1 && (core_flags & 0xF) != 0;
+}
+
+void Port_MousePointerGet(float *x, float *y, int *flags) {
+    *x = ptr_x;
+    *y = ptr_y;
+    *flags = ptr_flags;
+}
+
+void Port_MousePointerTake(int flags) { ptr_flags &= ~flags; }
 
 static void set_var(const Target *t) {
     switch (t->size) {

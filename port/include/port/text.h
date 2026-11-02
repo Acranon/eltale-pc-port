@@ -57,6 +57,8 @@ const char *Port_TextSpell(int element, int index);
 /* The same in the battle HUD's font (en_images.c), or NULL while the text is Japanese. */
 const uint8_t *Port_HudSpellName(int element, int index);
 const uint8_t *Port_HudSpellLocked(void);
+/* Any ASCII text in the battle HUD's font (its Latin letters: English only; NULL in Japanese): into buf */
+const uint8_t *Port_HudEncode(const char *text, uint8_t *buf, int cap);
 /* The English name of the monster whose Japanese name (HUD kana codes, up to 0xFF) is `jp`, or NULL;
  * and the same in the battle HUD's font (the enemy info panel), or NULL while the text is Japanese. */
 const char *Port_TextMonster(const uint8_t *jp);

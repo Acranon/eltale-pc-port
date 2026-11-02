@@ -30,12 +30,18 @@ a controller slot.
 | Area map (open/close) | M | |
 | Minimap zoom in / out | `]` / `[` | |
 | Map: battle zones (hold; the Map page's "Battle zones button" cheat on) | B | |
+| Spell UI: fire / earth / water / wind crystal | 1 / 2 / 3 / 4 | (C up / left / down / right) |
+| Quick bar: slots 1-6 of the page shown | 5 6 7 8 9 0 | |
+| Quick bar: page before / after | `,` / `.` | |
+| Spell UI: take the elements back | Esc | |
 
 Fixed keys: F1 (or the controller's Back) the menu, F2 quick save, F4 quick load, F11 or Alt+Enter
 fullscreen, F8 the flash recorder (debug). Alt+Enter only switches fullscreen, never presses Start: from
 its press, Enter is not a game key until it is let go and 400 ms have passed (port/host/input.cpp).
 
-In the game's menus the mouse points and clicks (below, "The mouse in menus"): left click A, right click B.
+In the game's menus the mouse points and clicks (below, "The mouse in menus"): left click A, right click B. Spells have
+their own panel and quick bar (on by default; [SPELL_UI.md](SPELL_UI.md)): click a crystal or press 1-4, click the
+plate to cast, right click to take an element back; the quick bar's slots cast with a click or 5-0.
 While the full area map is open (docs/AUTOMAP.md) the mouse is the map's: the wheel zooms it, a left drag moves it,
 a right click fits it again, pointing at a mark names it, and Esc closes it; the keyboard and the pad still drive the
 game (unless the Map page's pause is on). With the map closed, the wheel over the minimap zooms the minimap instead of
@@ -51,7 +57,10 @@ On the Controls page click a binding, then press the key or mouse button (or, in
 controller button or a stick or trigger push). Esc cancels, Backspace or Delete clears the slot. A key or
 button does one thing: binding it takes it away from wherever it was. "Reset the controls to the defaults"
 puts back the table above. The page also has the mouse camera's speed (10-400%) and an invert switch for
-up and down, and **Mouse in menus** (on by default; off: the mouse only turns the camera).
+up and down, **Mouse in menus** (on by default; off: the mouse only turns the camera) and **Spell panel and quick
+bar** (on by default; off: the game's own spell rows, and the keys 1-0, `,`, `.` and Esc do nothing:
+[SPELL_UI.md](SPELL_UI.md)). The spell UI's keys were free before (1-0, `,`, `.`, Esc); Q, E, Enter, Space and the
+minimap's `[` `]` and wheel are as they were.
 
 ## The mouse in menus
 
@@ -69,8 +78,9 @@ menus, takes the last element back from a spell, backs out of the save menu and 
 | Text windows | an answer of a question: the cursor | A on the answer; a message: A (next page, close) |
 | Save menu (save, load, delete) | the two saves shown: the cursor | A; the arrows page (a stick push); a message: A; a question's answers: the cursor, A |
 | HUD crystals (field and battle) | the crystal glows | its C button: that element's spell list (or adds the element to the spell being made) |
-| Spell list | a name: its element's gem glows at its ends | its C button: the element added (refused as with the controller when the spell is not known) |
-| The spell being made (the middle name) | its last element's gems glow | A: cast it |
+| Spell list (the spell UI off) | a name: its element's gem glows at its ends | its C button: the element added (refused as with the controller when the spell is not known) |
+| The spell being made (the middle name; the spell UI off) | its last element's gems glow | A: cast it |
+| The spell panel and the quick bar (the spell UI on) | a plate, a slot: a yellow frame; a slot: its name box | [SPELL_UI.md](SPELL_UI.md) |
 | Element allocation (a spirit found) | the cross's four elements | that element raised (its C button) |
 | Controller Pak manager | the answers and the note rows: the selection steers there | A on it (after the selection got there) |
 
@@ -107,6 +117,24 @@ ImGui's. "Mouse in menus" off: no pointer reaches the game.
 pointer, the target, what was pressed) and `P1_MOUSE_STATE` (at the next read: the menus' state: cursors, spell,
 save, choice, title, Pak manager); `=2` also `P1_MOUSE_TARGETS` (each new set of targets: anchor, tag,
 rectangle), for writing tests.
+
+## Mouse look and the game's screens
+
+No mouse look while the game shows a screen the pointer is for: its pause and save menus, the title, the Controller
+Pak manager, and in play the item menu, a text window, the spell panel (the spell input) and the element allocation.
+
+- When one opens, mouse look turns off: the Tab toggle is switched off, a right drag does not start (a right click
+  there is the screen's: B, or the spell panel's undo, and never turns the view), the camera keys still work. The
+  pointer is shown and clicks reach the screen.
+- When it closes, mouse look stays off: turn it on again with Tab, or let go of the right button (or the hold key) and
+  hold it again. Tab while a screen is shown does nothing.
+- How: each controller read the game tells the host whether such a screen is shown (`Port_MouseScreenOpen`,
+  port/p0/mouse_menu.c; `ElHost_SetScreen`); the host (port/host/input.cpp `input_screen`) clears the toggle and
+  blocks mouse look from that moment until the screen is closed and every mouse-look-hold key and button is up. Only
+  the host's camera input changes; the game is the same. `ELTALE_MOUSE_LOG=1` prints `P1_HOST_LOOK on|off` when mouse
+  look starts or stops (`screen=1`: a screen is shown). `tools/spell_ui_test.py` (window) checks it: Tab on, the
+  spell panel opened (mouse look off), clicks and a right drag in it (undo, no turning), the panel closed, mouse
+  motion: still off.
 
 ## The mouse camera
 
@@ -154,7 +182,9 @@ eye and the point looked at) for every tick the view is applied.
   0.006 rad across and 0.004 up and down, wheel steps with + zooming in, flags 1 = reset; once each). For the menus:
   X Y put the pointer at that place of the 1x picture (picture units, as above: a CENTRE menu's x is 53 more at
   16:9, the LEFT crystals' the same) and it stays there, shown; flags 2 a left click, 4 a right click, 8 the pointer
-  gone.
+  gone; for the spell UI's drags 16 the left button held from then on (18 pressed and held) and 32 let go (a lone 2
+  is pressed and let go at once). `spellkey VI MASK` rows press the spell UI's keys (port/spell_ui.h `PORT_SPELLKEY_*`:
+  1 << element for 1-4, 0x10 << slot for 5-0, 0x400 / 0x800 the pages, 0x1000 Esc).
   `tools/interp_test.py` runs both (`mouse`, `mouse-battle`): ends exact, no flashes.
 - `ELTALE_INPUT_TEST=FILE` (host, with `ELTALE_HIDDEN_WINDOW=1`): events put in SDL's own queue at pad
   read N, `N key_down NAME` / `key_up` (SDL scancode names: W, Space, Left Shift, PageUp, Keypad 4; an
@@ -179,6 +209,8 @@ eye and the point looked at) for every tick the view is applied.
   confirm, B). It checks the states after the clicks, the same states and game sound at 4:3 and 16:9, and the same
   ending as the controller's (last_hash; the Pak manager's last screen). Without --pak it makes a Controller Pak
   with a save once (tests/tour-save.input, a few minutes). `MOUSE_MENU_TEST OK`.
+- `tools/spell_ui_test.py --exe EXE --rom ROM [--saves ...]`: the spell panel and the quick bar (docs/SPELL_UI.md
+  "Tests"), with the host's path and mouse look in a hidden window. `SPELL_UI_TEST OK`.
 - `tools/mouse_host_test.py --exe EXE --rom ROM`: the host's window-to-picture mapping in a hidden window: 4:3,
   4:3 pillarboxed at scale 2, 16:9, 16:9 letterboxed at scale 3, "Match the window" narrow (letterboxed 4:3) and
   wide (686 wide): the same picture positions and the same pick ("Continue") in every case. `MOUSE_HOST_TEST OK`.
@@ -190,6 +222,7 @@ eye and the point looked at) for every tick the view is applied.
   "mouse_sensitivity": 100,
   "invert_y": false,
   "mouse_menus": true,
+  "spell_ui": true,
   "bindings": {
     "a": ["Space", "", "Pad a"],
     "c_up": ["Up", "", "Pad -righty"],
@@ -200,7 +233,9 @@ eye and the point looked at) for every tick the view is applied.
 
 Each action (input.cpp's names: `stick_up`, `walk`, `a`, `b`, `z`, `start`, `l`, `r`, `c_up`..., `d_up`...,
 `look_hold`, `look_toggle`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `zoom_in`,
-`zoom_out`, `camera_reset`, `map`, `map_zoom_in`, `map_zoom_out`, `map_zones`) lists three bindings: SDL scancode names, `Mouse Left|Middle|Right|X1|X2`,
+`zoom_out`, `camera_reset`, `map`, `map_zoom_in`, `map_zoom_out`, `map_zones`, `spell_fire`, `spell_earth`,
+`spell_water`, `spell_wind`, `slot_1`..`slot_6`, `page_prev`, `page_next`, `spell_clear`) lists three bindings: SDL
+scancode names, `Mouse Left|Middle|Right|X1|X2`,
 `Pad <SDL button name>` or `Pad +<axis>` / `Pad -<axis>`; `""` is none. An action left out keeps its
 defaults.
 

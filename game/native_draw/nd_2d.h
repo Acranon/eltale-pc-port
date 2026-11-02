@@ -39,6 +39,12 @@ void nd_2d_element(int element, int anchor);
 /* R7: the HUD's clip columns (Hud_DrawClippedTextureRect's hud_clip_left/right) for the current element: on a
  * picture wider than 4:3 a WORLD element's reach the picture's sides; else unchanged */
 void nd_2d_clip_x(int32_t *left, int32_t *right);
+/* The spell UI (port/p0/spell_ui.c): while muted the code that follows records nothing (its state is still kept),
+ * so a game draw it replaces runs as always and only its pictures are left out; push/pop keep the RDP state, the
+ * element and the anchor around drawing of the port's own, so the game's draws after it see what they always did */
+void nd_2d_mute(int on);
+void nd_2d_push(void);
+void nd_2d_pop(void);
 
 /* The RDP state, as the gbi macros set it */
 void nd_2d_othermode(uint32_t cmd, uint32_t shift, uint32_t len, uint32_t data);   /* G_SETOTHERMODE_H/L */
@@ -81,6 +87,9 @@ void nd_2d_forget(uintptr_t host, uint32_t bytes);
 #define nd_2d_section(k) ((void)0)
 #define nd_2d_element(e, a) ((void)0)
 #define nd_2d_clip_x(l, r) ((void)0)
+#define nd_2d_mute(on) ((void)0)
+#define nd_2d_push() ((void)0)
+#define nd_2d_pop() ((void)0)
 
 #endif
 
