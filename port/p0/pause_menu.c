@@ -963,8 +963,13 @@ static void panel(float X, float Y, float W, float H) {
     swatch(SPR_TAN, X + W - 2, Y + 1, 1, H - 2);
 }
 
-/* a button: a raised parchment plate (spec 2.1 "Plate"), a gold line round it when pointed at */
-static void plate(Rect r, int hover) {
+static void el(int id) { nd_2d_element(id, EL_RD2D_ANCHOR_LEFT); }
+
+/* a button: a raised parchment plate (spec 2.1 "Plate"), a gold line round it when pointed at. Element `id` the plate,
+ * id + 1 the gold line, id + 2 (left set) what goes on it: a piece that comes and goes has ids of its own, so the
+ * pictures between ticks never pair it with another */
+static void plate(Rect r, int hover, int id) {
+    el(id);
     parchment(r.x, r.y, r.w, r.h);
     flat(r.x, r.y, r.w, 1, 0xF4, 0xEC, 0xD6, 255);
     flat(r.x, r.y + 1, 1, r.h - 1, 0xF4, 0xEC, 0xD6, 255);
@@ -972,7 +977,9 @@ static void plate(Rect r, int hover) {
     flat(r.x + r.w - 1, r.y + 1, 1, r.h - 2, 0x3A, 0x2E, 0x1C, 255);
     flat(r.x + 1, r.y + r.h, r.w, 1, 0, 0, 0, 255);
     flat(r.x + r.w, r.y + 1, 1, r.h, 0, 0, 0, 255);
+    el(id + 1);
     if (hover) outline(r.x - 1, r.y - 1, r.w + 2, r.h + 2, 0xF2, 0xC4, 0x2A, 255);
+    el(id + 2);
 }
 
 /* the menu's digits (8x10, 7 apart: the pages' numbers) */
@@ -1084,7 +1091,8 @@ static void draw_map(const Layout *L, int r, int alpha) {
     alpha_mul = alpha_mul * alpha / 255;
     env(255, 255, 255, 255);
     clip(in);
-    nd_2d_element(0x100 + r * 4 + S.zoom, EL_RD2D_ANCHOR_LEFT); /* (the region and zoom in the ids: a change is a cut) */
+    /* (each strip, the region and the zoom in the ids: a change is a cut, never a slide) */
+    el(0x1000 + r * 0x80 + S.zoom * 0x20 + 0x1F);
     tlut(map_tlut[r]);
     if (region_has_map(r)) {
         float ox, oy;
@@ -1094,6 +1102,7 @@ static void draw_map(const Layout *L, int r, int alpha) {
             const int rows = row + 8 <= MAP_H ? 8 : MAP_H - row;
             const float y0 = oy + row * z;
             if (y0 + rows * z <= in.y || y0 >= in.y + in.h) continue;
+            el(0x1000 + r * 0x80 + S.zoom * 0x20 + row / 8);
             load_ci8(map_tex[r], MAP_W, 0, row, MAP_W - 1, row + rows - 1, 0, 0, 0);
             rect(ox, y0, MAP_W * z, rows * z, 0, (float)row, 1.0f / z, 1.0f / z);
         }
@@ -1143,8 +1152,11 @@ static void draw_main(const Layout *L) {
     const Rect ra = arrow_rect(L, 0), rb = arrow_rect(L, 1);
     const int more = region_step(S.region, 1) != S.region;
     if (more) {
+        el(0xE2);
         if (S.hover == T_PREV) outline(ra.x, ra.y, ra.w, ra.h, 0xF2, 0xC4, 0x2A, 255);
+        el(0xE3);
         if (S.hover == T_NEXT) outline(rb.x, rb.y, rb.w, rb.h, 0xF2, 0xC4, 0x2A, 255);
+        el(0xE1);
         spr(SPR_ARROW_L, ra.x + 2 + wob, ra.y + 2 + (S.pressed_t == T_PREV));
         spr(SPR_ARROW_R, rb.x + 2 - wob, rb.y + 2 + (S.pressed_t == T_NEXT));
     }
@@ -1172,10 +1184,12 @@ static void draw_main(const Layout *L) {
             swatch(SPR_SHADOW, mx - 2, my - 1, 5, 1);
             spr(SPR_QUILL, mx - 2, my - 12 + drop[S.drop_t < 2 ? S.drop_t : 2]);
         }
+        el(0xE8);
         if (player_on_map(S.region, &x, &y) && (menu_frame_counter & 0x20))
             spr(SPR_PIN, floorf(ox + x * z) - 4, floorf(oy + y * z) - 16);
     }
     /* the reticle: where A puts the marker */
+    el(0xE9);
     flat(in.x + in.w / 2 - 3, in.y + in.h / 2, 7, 1, 0x3E, 0x3A, 0x32, 128);
     flat(in.x + in.w / 2, in.y + in.h / 2 - 3, 1, 7, 0x3E, 0x3A, 0x32, 128);
     unclip();
@@ -1183,7 +1197,7 @@ static void draw_main(const Layout *L) {
         for (int zi = 1; zi >= 0; zi--) {
             const Rect zr = zoom_rect(L, zi);
             const int off = zi ? S.zoom == 2 : S.zoom == 0;
-            plate(zr, S.hover == (zi ? T_ZIN : T_ZOUT) && !off);
+            plate(zr, S.hover == (zi ? T_ZIN : T_ZOUT) && !off, zi ? 0xD0 : 0xD4);
             const int keep = alpha_mul;
             if (off) alpha_mul = alpha_mul * 40 / 100;
             env(255, 255, 255, 255);
@@ -1198,8 +1212,9 @@ static void draw_main(const Layout *L) {
     flat(fx + L->div_x + 1, fy + 20, 1, 176, 0xE8, 0xDC, 0xC0, 255);
     /* Options and Close */
     const Rect ro = opt_rect(L), rc = close_rect(L);
-    plate(ro, S.hover == T_OPT);
-    plate(rc, S.hover == T_CLOSE);
+    plate(rc, S.hover == T_CLOSE, 0xDC);
+    own(rc.x + 3, rc.y + 3 + (S.pressed_t == T_CLOSE), 7, 7, ART_CROSS_S);
+    plate(ro, S.hover == T_OPT, 0xD8);
     {
         const int dn = S.pressed_t == T_OPT;
         const u8 *s = encode("Options", buf, sizeof buf);
@@ -1210,7 +1225,6 @@ static void draw_main(const Layout *L) {
             x += 9;
         }
         if (s) text(x, ro.y + 2 + dn, s, ink_text);
-        own(rc.x + 3, rc.y + 3 + (S.pressed_t == T_CLOSE), 7, 7, ART_CROSS_S);
     }
     /* Status */
     const int cx = fx + L->col_x;
@@ -1295,10 +1309,12 @@ static void draw_modal(const Layout *L) {
     swatch(SPR_RULE, mx + 53, my + 56, 167, 2);
     for (int row = 0; row < 2; row++) {
         const int ty = row ? 78 : 32;
+        el(0xC0 + row);
         if (S.hover == T_ROW0 + row) {
             Rect r = slider_rect(L, row);
             outline(r.x, r.y + rise, r.w, r.h, 0xF2, 0xC4, 0x2A, 255);
         }
+        el(0xC2 + row);
         spr(row ? SPR_SOFT : SPR_SLOW, mx + 68, my + ty - 2 + row);
         spr(row ? SPR_LOUD : SPR_FAST, mx + 193, my + ty - 2 + row);
         spr(SPR_TRACK, mx + 101, my + ty);
@@ -1311,7 +1327,7 @@ static void draw_modal(const Layout *L) {
     /* Back */
     Rect rb = back_rect(L);
     rb.y += rise;
-    plate(rb, S.hover == T_BACK);
+    plate(rb, S.hover == T_BACK, 0xCC);
     {
         const int dn = S.pressed_t == T_BACK;
         const u8 *s = encode("Back", buf, sizeof buf);
@@ -1319,6 +1335,7 @@ static void draw_modal(const Layout *L) {
         else spr(SPR_ARROW_L, rb.x + 12, rb.y + 1 + dn);
     }
     /* the game's hand cursor on the row */
+    el(0xC8);
     const int wob = wobble(1);
     if (S.modal_row < ROW_BACK) spr(SPR_HAND, mx - 10 - wob, my + row_y[S.modal_row]);
     else spr(SPR_HAND, rb.x - 18 - wob, rb.y);
