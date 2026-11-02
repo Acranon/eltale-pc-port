@@ -75,10 +75,28 @@ extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
  * the player's position. Ends the run after the last map. Its pad presses Start on the intro and
  * title, A while a text window is open (so it never starts a conversation), B in menus, and in
  * battles a C button and A in turn (casting one-element spells). */
+#include <math.h>
+/* ELTALE_MAP_GOTO=map,sub[,seed] (a test, docs/AUTOMAP.md: the battle zones' walk): New Game, then the tour's way to
+ * that sub-area at its first entry point, and there the tour's pad wanders: the stick turns every 400 VIs to a new
+ * heading (the seed picks the order; -1: it stands still), battles are fought as the tour fights them. */
+static int goto_map = -2, goto_sub, goto_seed, goto_there;
+static void goto_parse(void) {
+    if (goto_map != -2) return;
+    const char *e = getenv("ELTALE_MAP_GOTO");
+    goto_map = -1;
+    if (e && sscanf(e, "%d,%d,%d", &goto_map, &goto_sub, &goto_seed) < 2) goto_map = -1;
+}
+
 static void tour_pad(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     uint64_t vi = Port_OsViCount();
     *stick_x = *stick_y = 0;
     *buttons = 0;
+    goto_parse();
+    if (goto_there && goto_seed >= 0 && core_game_mode == 1 && !(battle_flags & 1) && text_active_window_count == 0) {
+        const double a = (double)(((vi / 400) * 137 + (uint64_t)goto_seed * 61) % 360) * 0.017453292519943295;
+        *stick_x = (s8)(75.0 * sin(a));
+        *stick_y = (s8)(75.0 * cos(a));
+    }
     if (vi % 30 >= 2) return;
     if (core_game_mode == 3 || core_game_mode == 4) *buttons = 0x1000;
     else if (core_game_mode == 2) *buttons = 0x4000;
@@ -232,6 +250,19 @@ void Port_MapTourStep(void) {
     if (on < 0) on = getenv("ELTALE_MAP_TOUR") != NULL;
     static int blocked;
     if (!on) return;
+    goto_parse();
+    if (goto_map >= 0) { /* (ELTALE_MAP_GOTO: one trip, then wander) */
+        static int gwait;
+        if (goto_there || core_game_mode != 1 || (core_flags & 0x87) || (battle_flags & 1) || ++gwait < 60) return;
+        fprintf(stderr, "P1_GOTO map=%d sub=%d vi=%llu\n", goto_map, goto_sub, (unsigned long long)Port_OsViCount());
+        exit_destination.map = goto_map;
+        exit_destination.subarea = goto_sub;
+        exit_destination.entry = 0;
+        core_flags |= 0x80;
+        core_transition_timer = 0x14;
+        goto_there = 1;
+        return;
+    }
     if ((core_flags & 0x87) || (battle_flags & 1)) {
         if (++blocked == 3000)
             fprintf(stderr, "P1_TOUR blocked at map=%d sub=%d: core_flags=%x battle_flags=%x\n", map, sub,

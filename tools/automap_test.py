@@ -20,6 +20,16 @@ Runs, each with its own data folder (sound off, map background 100%: the full ma
                        (P1_AUTOMAP_MINIMAP indoor=1 fitted=1; the minimap's square of automap_minimap.png hashed).
   indoor-inn           the tour saves at the map-18 inn (tests/tour-save.input, as tests/p1_checks.sh does), then the
                        title's Continue loads it (tests/automap-continue.input): the minimap in the inn (hashed).
+  indoor-house         New Game, then ELTALE_MAP_GOTO=15,11 (the tour's way there): the minimap in the first town's Wings
+                       giver's house (hashed). The three indoor runs print the room's share of the minimap (the floor's
+                       extent over the minimap's side: 80-90% wanted).
+  zones, zones-none    (v3) tests/automap-zones.events after the quick save battle-stuck (map 2 area 0, a field), the
+                       cheats on: the full map with its "Battle zones" button held (P1_AUTOMAP_ZONES held=1 by=button),
+                       let go (held=0), the B key held (by=key) and let go, a picture each (hashed), the mouse on a zone
+                       (ELTALE_AUTOMAP_HOVER=zone: its name and monsters); the danger meter (P1_AUTOMAP_DANGER: in a
+                       zone or "Safe here"); the same walk without the map (positions must match).
+  marks                (v3) the tour's plans: the first town's doors to the inn and the Wings giver (services), the
+                       second town's food giver's door, the field's sign and its five battle zones.
 The hashes (of the pixels) are compared with tests/automap_hashes.txt; --update writes them. Prints AUTOMAP_TEST lines
 and AUTOMAP_TEST_OK or AUTOMAP_TEST_FAIL at the end. The DLLs used are those beside the exe.
 """
@@ -81,7 +91,7 @@ def main() -> None:
         return {"version": 2, "audio": {"volume": 0}, "game": {"language": "en"},
                 "graphics": {"preset": "custom", "widescreen": wide},
                 "map": {"background": 100, "minimap": True, "cheat_chests": True, "cheat_spirits": True,
-                        "cheat_bosses": True}}
+                        "cheat_bosses": True, "cheat_givers": True, "cheat_zones": True, "cheat_danger": True}}
     save = a.saves / "compass-spirit"
     got: dict[str, str] = {}
     traces: dict[str, list[str]] = {}
@@ -115,6 +125,34 @@ def main() -> None:
     same = traces["keys-4x3"] == traces["none"] and len(traces["none"]) > 100
     print(f"AUTOMAP_TEST game unchanged by the map: {'OK' if same else 'FAIL'} ({len(traces['none'])} ticks traced)")
     fail |= not same
+
+    # (v3) the battle zones' button and key, the danger meter, in a field
+    zsave = a.saves / "battle-stuck"
+    for name, events in (("zones", "automap-zones.events"), ("zones-none", "automap-zones-none.events")):
+        out = base / name
+        text = run(exe, a.rom, out, dict(keys_env, ELTALE_WINDOW_SIZE="1280x960", ELTALE_AUTOMAP_HOVER="zone",
+                                         ELTALE_INPUT_TEST=str(ROOT / "tests" / events)),
+                   ["--frames", "700"], settings("off"), zsave)
+        traces[name] = [re.sub(r"frame=\d+ ", "", l) for l in text.splitlines() if l.startswith("P1_AUTOMAP_POS")]
+        if name == "zones-none":
+            continue
+        for p in sorted((out / "shots").glob("automap_full_*.png")):
+            got[f"{name}/{p.name}"] = pixels_hash(p)
+        held = [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_ZONES")]
+        for l in held:
+            print(f"AUTOMAP_TEST {name} {l}")
+        want = ["held=1 by=button", "held=0 by=none", "held=1 by=key", "held=0 by=none"]
+        if [" ".join(l.split()[1:3]) for l in held] != want or "zones=5" not in (held[0] if held else ""):
+            print(f"AUTOMAP_TEST FAIL {name}: the zones button and key (want {want})")
+            fail = True
+        danger = [l for l in text.splitlines() if l.startswith("P1_AUTOMAP_DANGER")]
+        print(f"AUTOMAP_TEST {name} {danger[0] if danger else 'no danger meter'}")
+        if not danger or not re.search(r"text=(Battle \d+% next step|Safe here)", danger[0]):
+            print(f"AUTOMAP_TEST FAIL {name}: the danger meter")
+            fail = True
+    same = traces["zones"] == traces["zones-none"] and len(traces["zones"]) > 100
+    print(f"AUTOMAP_TEST game unchanged by the zones: {'OK' if same else 'FAIL'} ({len(traces['zones'])} ticks traced)")
+    fail |= not same
     out = base / "tour"
     run(exe, a.rom, out, {"ELTALE_AUTOMAP_SHOTS": "1", "ELTALE_MAP_TOUR": "1", "ELTALE_WINDOW_SIZE": "1280x960"},
         ["--frames", "2600"], settings("off"), None)
@@ -125,6 +163,21 @@ def main() -> None:
         if not (out / "shots" / need).exists():
             print(f"AUTOMAP_TEST FAIL tour: no {need}")
             fail = True
+
+    # (v3) the marks: services behind the first and second towns' doors, a sign, the field's zones
+    def plan(m: int, s: int) -> dict:
+        p = out / "shots" / f"am_{m:02d}_{s:02d}_plan.json"
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"marks": [], "zones": []}
+    checks = {
+        "first town: a door to the inn": any(m["services"] & 2 for m in plan(0, 0)["marks"]),
+        "first town: a door to the Wings giver": any(m["services"] & 4 for m in plan(0, 0)["marks"]),
+        "second town: a door to food": any(m["services"] & 8 for m in plan(1, 0)["marks"]),
+        "field: a sign with its text": any(m["kind"] == 7 and m["label"].startswith("Sign: ") for m in plan(2, 0)["marks"]),
+        "field: five battle zones, each shaded": len(plan(2, 0)["zones"]) == 5 and all(z["cells"] > 0 for z in plan(2, 0)["zones"]),
+    }
+    for k, v in checks.items():
+        print(f"AUTOMAP_TEST marks {k}: {'OK' if v else 'FAIL'}")
+        fail |= not v
 
     # the minimap indoors: a castle room (New Game's throne room) and a house (the map-18 inn)
     def minimap(name: str, out: Path, text: str) -> None:
@@ -144,6 +197,21 @@ def main() -> None:
         # (inside its rounded corners: the minimap is solid at opacity 100, the game shows through nowhere)
         Image.open(pic).convert("RGBA").crop((r[0] + 12, r[1] + 12, r[2] - 12, r[3] - 12)).save(crop)
         got[f"{name}/minimap"] = pixels_hash(crop)
+        # the room's share of the minimap: the floor's (warm grey) and walls' extent over the minimap's side
+        im = Image.open(pic).convert("RGB").crop((r[0] + 4, r[1] + 4, r[2] - 4, r[3] - 4))
+        px, (w, h) = im.load(), im.size
+        xs, ys = [], []
+        for y in range(h):
+            for x in range(w):
+                c = px[x, y]
+                if max(c) > 45 and abs(c[0] - c[2]) < 60:
+                    xs.append(x)
+                    ys.append(y)
+        share = max(max(xs) - min(xs), max(ys) - min(ys)) / (r[2] - r[0]) if xs else 0.0
+        print(f"AUTOMAP_TEST {name} room share of the minimap: {share:.0%}")
+        if "fitted=1" in lines[0] and not 0.78 <= share <= 0.95:
+            print(f"AUTOMAP_TEST FAIL {name}: a fitted room should fill 80-90% of the minimap")
+            fail = True
 
     def solid(wide: str) -> dict:
         d = settings(wide)
@@ -165,6 +233,11 @@ def main() -> None:
                ["--frames", "1400", "--input", str(ROOT / "tests/automap-continue.input"), "--pak", str(pak)],
                solid("off"), None)
     minimap("indoor-inn", out, text)
+    out = base / "indoor-house"
+    text = run(exe, a.rom, out, {"ELTALE_AUTOMAP_DUMP": "1", "ELTALE_AUTOMAP_MINIMAP_AT": "15,11", "ELTALE_MAP_TOUR": "1",
+                                 "ELTALE_MAP_GOTO": "15,11,-1", "ELTALE_WINDOW_SIZE": "1280x960"},
+               ["--frames", "1800"], solid("off"), None)
+    minimap("indoor-house", out, text)
 
     if a.update:
         HASHES.write_text("".join(f"{k} {v}\n" for k, v in sorted(got.items())), encoding="utf-8", newline="\n")

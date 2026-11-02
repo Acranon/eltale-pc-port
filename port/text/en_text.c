@@ -506,6 +506,16 @@ const char *Port_TextMonster(const uint8_t *jp) {
     return NULL;
 }
 
+/* The English of a monster's name (HUD kana codes) whatever the text language, or NULL: the area map's labels */
+const char *Port_TextMonsterPlain(const uint8_t *jp) {
+    Port_TextInit();
+    if (!jp || jp[0] == 0xFF) return NULL;
+    uint64_t h = hash_bytes(jp);
+    for (int i = 0; i < monster_count; i++)
+        if (monsters[i].hash == h) return monsters[i].text;
+    return NULL;
+}
+
 int Port_TextLineWidth(const uint8_t *s) {
     int x = 0, best = 0, font = 0, page = 0, sw, w, xoff;
     for (; *s != 0xFF; s++) {

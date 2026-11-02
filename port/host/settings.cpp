@@ -188,14 +188,20 @@ void load_settings() {
         read_int(item(j, "map", "minimap_reach"), s.map.reach, 1, 30);
         s.map.reach *= 100;
     }
-    read_int(item(j, "map", "minimap_reach_outdoor"), s.map.reach, 100, 3000);
-    read_int(item(j, "map", "minimap_reach_indoor"), s.map.reach_in, 25, 1500);
+    read_int(item(j, "map", "minimap_reach_outdoor"), s.map.reach, 30, 3000);
+    read_int(item(j, "map", "minimap_reach_indoor"), s.map.reach_in, 20, 1500);
     read_bool(item(j, "map", "minimap_fit_rooms"), s.map.fit_rooms);
     read_bool(item(j, "map", "doors"), s.map.doors);
     read_bool(item(j, "map", "people"), s.map.people);
     read_bool(item(j, "map", "cheat_chests"), s.map.cheat_chests);
     read_bool(item(j, "map", "cheat_spirits"), s.map.cheat_spirits);
     read_bool(item(j, "map", "cheat_bosses"), s.map.cheat_bosses);
+    read_bool(item(j, "map", "services"), s.map.services);
+    read_bool(item(j, "map", "story"), s.map.story);
+    read_bool(item(j, "map", "signs"), s.map.signs);
+    read_bool(item(j, "map", "cheat_givers"), s.map.cheat_givers);
+    read_bool(item(j, "map", "cheat_zones"), s.map.cheat_zones);
+    read_bool(item(j, "map", "cheat_danger"), s.map.cheat_danger);
     read_int(item(j, "map", "minimap_opacity"), s.map.opacity, 20, 100);
     read_int(item(j, "map", "background"), s.map.background, 40, 100);
     read_bool(item(j, "map", "pause_game"), s.map.pause);
@@ -257,6 +263,12 @@ void save_settings() {
     cJSON_AddBoolToObject(map, "cheat_chests", s.map.cheat_chests);
     cJSON_AddBoolToObject(map, "cheat_spirits", s.map.cheat_spirits);
     cJSON_AddBoolToObject(map, "cheat_bosses", s.map.cheat_bosses);
+    cJSON_AddBoolToObject(map, "services", s.map.services);
+    cJSON_AddBoolToObject(map, "story", s.map.story);
+    cJSON_AddBoolToObject(map, "signs", s.map.signs);
+    cJSON_AddBoolToObject(map, "cheat_givers", s.map.cheat_givers);
+    cJSON_AddBoolToObject(map, "cheat_zones", s.map.cheat_zones);
+    cJSON_AddBoolToObject(map, "cheat_danger", s.map.cheat_danger);
     cJSON_AddNumberToObject(map, "minimap_opacity", s.map.opacity);
     cJSON_AddNumberToObject(map, "background", s.map.background);
     cJSON_AddBoolToObject(map, "pause_game", s.map.pause);

@@ -29,6 +29,7 @@ a controller slot.
 | Camera reset | middle mouse button, keypad 5 | |
 | Area map (open/close) | M | |
 | Minimap zoom in / out | `]` / `[` | |
+| Map: battle zones (hold; the Map page's "Battle zones button" cheat on) | B | |
 
 Fixed keys: F1 (or the controller's Back) the menu, F2 quick save, F4 quick load, F11 or Alt+Enter
 fullscreen, F8 the flash recorder (debug). Alt+Enter only switches fullscreen, never presses Start: from
@@ -39,7 +40,9 @@ While the full area map is open (docs/AUTOMAP.md) the mouse is the map's: the wh
 a right click fits it again, pointing at a mark names it, and Esc closes it; the keyboard and the pad still drive the
 game (unless the Map page's pause is on). With the map closed, the wheel over the minimap zooms the minimap instead of
 the camera (not while mouse look has the cursor), as `]` / `[` do: the reach of the kind of place you are in, indoors
-or outdoors.
+or outdoors (down to 30 units outdoors and 20 indoors). With the battle zones cheat on, the full map has a "Battle
+zones" button at its bottom: hold it with the left button (or hold the `map_zones` key, B, also on the minimap) to
+shade where random battles can start; let go and they hide.
 
 ## Rebinding
 
@@ -196,7 +199,7 @@ eye and the point looked at) for every tick the view is applied.
 
 Each action (input.cpp's names: `stick_up`, `walk`, `a`, `b`, `z`, `start`, `l`, `r`, `c_up`..., `d_up`...,
 `look_hold`, `look_toggle`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `zoom_in`,
-`zoom_out`, `camera_reset`, `map`, `map_zoom_in`, `map_zoom_out`) lists three bindings: SDL scancode names, `Mouse Left|Middle|Right|X1|X2`,
+`zoom_out`, `camera_reset`, `map`, `map_zoom_in`, `map_zoom_out`, `map_zones`) lists three bindings: SDL scancode names, `Mouse Left|Middle|Right|X1|X2`,
 `Pad <SDL button name>` or `Pad +<axis>` / `Pad -<axis>`; `""` is none. An action left out keeps its
 defaults.
 

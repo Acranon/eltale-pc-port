@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-enum { EL_AM_VERSION = 2 };
+enum { EL_AM_VERSION = 3 };
 
 /* A floor triangle the player walks on: one of the sub-area's collision triangles (CollTri) with an actor flag
  * (0x200 or 0x800: the player's query is 0xA01), in world space. */
@@ -53,7 +53,19 @@ enum {
     EL_AM_MARK_CHEST = 4,  /* a chest (chest_objects): item = what it holds (ChestDef.animSetIndex) */
     EL_AM_MARK_SPIRIT = 5, /* a spirit (spirit_objects): an element point to raise */
     EL_AM_MARK_BOSS = 6,   /* a boss standing on the field (boss_field_record); radius = how near starts the fight */
+    EL_AM_MARK_SIGN = 7,   /* something to read (textspot_list: a signpost, a door shut fast, a spirit stone); radius =
+                            * how near the player must stand */
 };
+/* What a person offers (v3): ElAmMarker.service of a person, and as bits (EL_AM_SVC_BIT) in a door's `services`
+ * (what the building or room behind it holds, a couple of doors deep). A small enum: shops could join it. */
+enum {
+    EL_AM_SVC_NONE = 0,
+    EL_AM_SVC_INN = 1,   /* an innkeeper (NpcDef.talk_kind 6: the rest choice; resting is where the game saves) */
+    EL_AM_SVC_WINGS = 2, /* gives Traveler's Wings when you have none (talk kind 2, an item whose use is a warp) */
+    EL_AM_SVC_FOOD = 3,  /* gives bread when you have none (talk kind 2, an item whose use restores HP) */
+    EL_AM_SVC_COUNT
+};
+#define EL_AM_SVC_BIT(s) (1u << (s))
 enum {
     EL_AM_MARK_DONE = 1,      /* opened, taken (the game's chest_opened_flags / spirit_collected_flags) */
     EL_AM_MARK_LOCKED = 2,    /* an exit that needs an item the player has not got (MapExit flags 0x10) */
@@ -61,6 +73,8 @@ enum {
     EL_AM_MARK_AWAY = 8,      /* an exit to another area: another map, with a field or a dungeon (an enemy area) on
                                * one side or both (a town gate, a road, a cave mouth), not a house or room of the
                                * same town or castle */
+    EL_AM_MARK_KEY_GIVER = 0x10, /* a person who gives a story item (talk kind 2, an item with no use): a cheat */
+    EL_AM_MARK_STORY = 0x20,     /* a person with a story or boss line (talk kind 5) */
 };
 
 typedef struct ElAmMarker {
@@ -71,12 +85,27 @@ typedef struct ElAmMarker {
     float radius;             /* a boss's: how near starts the fight */
     uint16_t item;            /* a chest's item, a locked exit's key item (the game's item ids) */
     int16_t to_map, to_sub;   /* an exit's destination */
-    uint16_t pad;
+    uint8_t service;          /* a person's EL_AM_SVC_* */
+    uint8_t services;         /* a door's or exit's: EL_AM_SVC_BIT()s of what lies behind it */
     char label[96];           /* what it is, in English (port text: text/en.tsv), for hover */
+    char detail[96];          /* more for hover (a service, the item a person gives: shown when its mark is) */
 } ElAmMarker;
+/* A mark's stable key, for fog of war's "discovered" bits kept per save: (map, sub-area, id). The id is the kind and
+ * the game's own index (an exit's in MapSubareaDef.exits, a person's NpcDef order in the sub-area, a chest's or
+ * spirit's slot, a sign's textspot_table index), the same every visit. */
+
+/* A random battle region (v3: EncounterRegion of battle_encounter_region_table): a battle can start while the
+ * player is inside the rectangle (the first one listing them wins) and an encounter point lies 50..90 units away. */
+typedef struct ElAmZone {
+    float x0, z0, x1, z1;     /* the rectangle: x0 <= x <= x1, z0 <= z <= z1 */
+    uint16_t group_count;     /* the region's group list (EncounterRegion.group_list) */
+    uint16_t groups[7];
+    char label[160];          /* its monsters in English, by group ("Slime x2-3 / Bat"), or the group ids */
+} ElAmZone;
 
 enum {
     EL_AM_AREA_SKY = 1,     /* the sub-area has a sky (an outdoor field: map_env_flags & 4) */
+    EL_AM_AREA_ENEMY = 2,   /* random battles can start here (map_subarea_flags bit 0 and the area's tables) */
 };
 
 /* One sub-area's plan, sent when the player enters it (and again if its data moves). */
@@ -98,12 +127,18 @@ typedef struct ElAmArea {
      * scrolling texture), obj its index */
     const ElAmTri *water;
     uint32_t water_count;
+    /* (v3) random battles: the regions and the encounter points (battle_encounter_group_table->points) */
+    const ElAmZone *zones;
+    uint32_t zone_count;
+    const float *points;    /* x, z pairs */
+    uint32_t point_count;
 } ElAmArea;
 
 enum {
     EL_AM_PLAYER_PLAY = 1,   /* in play (gameplay mode, no area transition): the map can open */
     EL_AM_PLAYER_BATTLE = 2, /* a battle is on */
     EL_AM_PLAYER_TRUTH = 4,  /* (a test) this tick is drawn from straight above (ELTALE_AUTOMAP_TRUTH) */
+    EL_AM_PLAYER_RANDOM_BATTLE = 8, /* the battle on is a random one (battle_flags 0x100 clear: not a boss) */
     /* (a test, ELTALE_AUTOMAP_SHOTS) the host writes a picture: the truth view alone, the map's lines over it, the
      * full map as the player sees it */
     EL_AM_PLAYER_SHOT_TRUTH = 0x100,
@@ -120,7 +155,20 @@ typedef struct ElAmPlayer {
     float x, y, z, rot;
     const ElAmMarker *markers; /* this tick's marks (v2) */
     uint32_t marker_count;
+    /* (v3) the random battle roll, read-only (Battle_TryStartRandomEncounter): every 50 units walked
+     * (battle_travel_accumulator) the limit grows by 50 (battle_encounter_roll_limit) and a battle starts when
+     * Math_Rand(2000) < limit, the player is in a region and a point is 50..90 units away (then the limit is 0) */
+    float travel;           /* battle_travel_accumulator: 0..50 */
+    uint16_t roll_limit;    /* battle_encounter_roll_limit */
+    uint16_t danger;        /* EL_AM_DANGER_* */
+    int16_t zone;           /* the region the player is in by the game's rule (-1 none, or no point in reach) */
+    uint16_t pad2;
 } ElAmPlayer;
+enum {
+    EL_AM_DANGER_ROLLS = 1,  /* the roll runs here: an enemy area, no battle, battle_flags 0x8000 clear, the player
+                              * free to move (actor.animFlags bit 0 clear) */
+    EL_AM_DANGER_ZONE = 2,   /* and a battle could start where the player stands (a region and a point 50..90 away) */
+};
 
 #ifdef __cplusplus
 }

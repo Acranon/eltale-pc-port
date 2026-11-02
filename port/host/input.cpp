@@ -60,6 +60,7 @@ const ActionInfo actions[ACT_COUNT] = {
     { "map", "Area map (open/close)", 0 },
     { "map_zoom_in", "Minimap zoom in", 0 },
     { "map_zoom_out", "Minimap zoom out", 0 },
+    { "map_zones", "Map: battle zones (hold, cheat)", 0 },
 };
 
 // The camera keys' turn per tick, in mouse counts (port/p0/mouse_camera.c: 0.006 rad a count across, 0.004 up
@@ -391,6 +392,8 @@ void load_test_script() {
 
 } // namespace
 
+bool action_held(int action) { return action >= 0 && action < ACT_COUNT && held(action); }
+
 Controls::Controls() {
     std::memset(bind, 0, sizeof bind);
     auto key = [](SDL_Scancode s) { return BIND_KEY | s; };
@@ -428,6 +431,7 @@ Controls::Controls() {
     set(ACT_MAP, key(SDL_SCANCODE_M), 0, 0);
     set(ACT_MAP_ZOOM_IN, key(SDL_SCANCODE_RIGHTBRACKET), 0, 0);
     set(ACT_MAP_ZOOM_OUT, key(SDL_SCANCODE_LEFTBRACKET), 0, 0);
+    set(ACT_MAP_ZONES, key(SDL_SCANCODE_B), 0, 0);
 }
 
 const char *action_label(int a) { return a >= 0 && a < ACT_COUNT ? actions[a].label : ""; }

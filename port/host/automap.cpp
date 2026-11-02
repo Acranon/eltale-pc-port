@@ -70,8 +70,127 @@ struct Plan {
     std::vector<uint8_t> reach;
     bool reach_done = false;
     float reach_box[4] = {}; // the reachable floor's bounds (the full map fits it)
+    // (v3) random battles: the regions and the encounter points the game sent
+    std::vector<ElAmZone> zones;
+    std::vector<std::pair<float, float>> points;
+    // the reach grid (reach()), kept for the battle zones (and fog of war): cell (ix, iz) covers
+    // [gx0 + ix * gcs, +gcs) x [gz0 + iz * gcs, +gcs)
+    float gx0 = 0, gz0 = 0, gcs = 1;
+    int gnx = 0, gnz = 0;
+    std::vector<uint8_t> walk;       // the cells walked to (reachable floor)
+    std::vector<uint8_t> zone_cell;  // the battle zone a battle can start in from that cell: region + 1, 0 none
+    std::vector<Edge> zone_runs;     // the zones' cells as rectangles (x0, z0, x1, z1), for drawing
+    std::vector<Edge> zone_edges;    // their outline
+    bool cell_of(float x, float z, int *ix, int *iz) const {
+        if (gnx <= 0) return false;
+        *ix = int(std::floor((x - gx0) / gcs));
+        *iz = int(std::floor((z - gz0) / gcs));
+        return *ix >= 0 && *iz >= 0 && *ix < gnx && *iz < gnz;
+    }
+    int zone_at(float x, float z) const { // the shaded zone at (x, z): region + 1, 0 none
+        int ix, iz;
+        return zone_cell.empty() || !cell_of(x, z, &ix, &iz) ? 0 : zone_cell[size_t(iz) * size_t(gnx) + size_t(ix)];
+    }
     bool valid() const { return serial != 0; }
 };
+
+// The game's rule at an exact point (Battle_FindEncounterRegion, the first region holding it; and
+// Battle_ChooseNearbyEncounterPoint, a point at squared distance 2500..8100): region + 1, 0 none
+int zone_rule(const Plan &p, float x, float z) {
+    int found = -1;
+    for (size_t i = 0; i < p.zones.size(); i++) {
+        const ElAmZone &r = p.zones[i];
+        if (r.x0 <= x && r.z0 <= z && x - r.x0 <= r.x1 - r.x0 && z - r.z0 <= r.z1 - r.z0) { found = int(i); break; }
+    }
+    if (found < 0) return 0;
+    for (const auto &pt : p.points) {
+        const float dx = pt.first - x, dz = pt.second - z, d = dx * dx + dz * dz;
+        if (d >= 2500.0f && d <= 8100.0f) return found + 1;
+    }
+    return 0;
+}
+
+// The battle zones on the reach grid: a reachable cell where some point satisfies the game's rule (the cell has a
+// point 50..90 units from an encounter point, and it touches a region; its zone is the first region holding its
+// centre, else the first it touches), so every place a battle can start is shaded, and at most a cell more; as
+// rectangles of runs and an outline of merged cell sides
+void make_zones(Plan &p) {
+    p.zone_cell.clear();
+    p.zone_runs.clear();
+    p.zone_edges.clear();
+    if (p.zones.empty() || p.points.empty() || p.gnx <= 0) return;
+    const int nx = p.gnx, nz = p.gnz;
+    const float cs = p.gcs;
+    std::vector<uint8_t> ring(size_t(nx) * size_t(nz), 0);
+    for (const auto &pt : p.points) {
+        int i0, k0, i1, k1;
+        p.cell_of(pt.first - 91.0f, pt.second - 91.0f, &i0, &k0);
+        p.cell_of(pt.first + 91.0f, pt.second + 91.0f, &i1, &k1);
+        i0 = std::max(i0, 0); k0 = std::max(k0, 0); i1 = std::min(i1, nx - 1); k1 = std::min(k1, nz - 1);
+        for (int kz = k0; kz <= k1; kz++)
+            for (int ix = i0; ix <= i1; ix++) {
+                // the cell's nearest and farthest points from the encounter point: some point of the cell is 50..90
+                // units away when [near, far] meets [50, 90] (the distance is continuous over the square)
+                const float cx0 = p.gx0 + float(ix) * cs, cz0 = p.gz0 + float(kz) * cs, cx1 = cx0 + cs, cz1 = cz0 + cs;
+                const float nxd = std::max({ cx0 - pt.first, 0.0f, pt.first - cx1 }), nzd = std::max({ cz0 - pt.second, 0.0f, pt.second - cz1 });
+                const float fxd = std::max(std::fabs(pt.first - cx0), std::fabs(pt.first - cx1));
+                const float fzd = std::max(std::fabs(pt.second - cz0), std::fabs(pt.second - cz1));
+                if (nxd * nxd + nzd * nzd <= 8100.0f && fxd * fxd + fzd * fzd >= 2500.0f) ring[size_t(kz) * size_t(nx) + size_t(ix)] = 1;
+            }
+    }
+    p.zone_cell.assign(size_t(nx) * size_t(nz), 0);
+    for (int kz = 0; kz < nz; kz++)
+        for (int ix = 0; ix < nx; ix++) {
+            const size_t c = size_t(kz) * size_t(nx) + size_t(ix);
+            if (!ring[c] || !p.walk[c]) continue;
+            // the region: the first holding the cell's centre (the game's first match), else the first the cell
+            // touches (a cell across a region's edge)
+            const float x = p.gx0 + (float(ix) + 0.5f) * cs, z = p.gz0 + (float(kz) + 0.5f) * cs, h = cs * 0.5f;
+            for (size_t i = 0; i < p.zones.size() && !p.zone_cell[c]; i++) {
+                const ElAmZone &r = p.zones[i];
+                if (r.x0 <= x && r.z0 <= z && x <= r.x1 && z <= r.z1) p.zone_cell[c] = uint8_t(i + 1);
+            }
+            for (size_t i = 0; i < p.zones.size() && !p.zone_cell[c]; i++) {
+                const ElAmZone &r = p.zones[i];
+                if (r.x0 <= x + h && r.z0 <= z + h && x - h <= r.x1 && z - h <= r.z1) p.zone_cell[c] = uint8_t(i + 1);
+            }
+        }
+    auto id = [&](int ix, int iz) { return ix < 0 || iz < 0 || ix >= nx || iz >= nz ? 0 : p.zone_cell[size_t(iz) * size_t(nx) + size_t(ix)]; };
+    for (int kz = 0; kz < nz; kz++) {
+        int run = -1, rid = 0;
+        for (int ix = 0; ix <= nx; ix++) {
+            const int v = ix < nx ? id(ix, kz) : 0;
+            if (run >= 0 && v != rid) {
+                p.zone_runs.push_back({ p.gx0 + float(run) * cs, p.gz0 + float(kz) * cs, p.gx0 + float(ix) * cs, p.gz0 + float(kz + 1) * cs });
+                run = -1;
+            }
+            if (v && run < 0) run = ix, rid = v;
+        }
+    }
+    // the outline: sides between cells of different zones (or a zone and none), merged along their line
+    for (int bx = 0; bx <= nx; bx++) { // vertical sides at x = gx0 + bx * cs
+        int run = -1;
+        for (int kz = 0; kz <= nz; kz++) {
+            const bool side = kz < nz && id(bx - 1, kz) != id(bx, kz);
+            if (side && run < 0) run = kz;
+            if (!side && run >= 0) {
+                p.zone_edges.push_back({ p.gx0 + float(bx) * cs, p.gz0 + float(run) * cs, p.gx0 + float(bx) * cs, p.gz0 + float(kz) * cs });
+                run = -1;
+            }
+        }
+    }
+    for (int bz = 0; bz <= nz; bz++) {
+        int run = -1;
+        for (int ix = 0; ix <= nx; ix++) {
+            const bool side = ix < nx && id(ix, bz - 1) != id(ix, bz);
+            if (side && run < 0) run = ix;
+            if (!side && run >= 0) {
+                p.zone_edges.push_back({ p.gx0 + float(run) * cs, p.gz0 + float(bz) * cs, p.gx0 + float(ix) * cs, p.gz0 + float(bz) * cs });
+                run = -1;
+            }
+        }
+    }
+}
 Plan plan;
 
 // the player, by the tick's frame number (the native renderer's recordings carry the same)
@@ -79,6 +198,9 @@ struct Sample {
     uint32_t frame = 0, area = 0, flags = 0;
     float x = 0, y = 0, z = 0, rot = 0;
     std::vector<ElAmMarker> marks; // the tick's marks (doors, people, chests...)
+    float travel = 0;              // (v3) the battle roll: battle_travel_accumulator
+    uint16_t roll_limit = 0, danger = 0;
+    int16_t zone = -1;
 };
 constexpr size_t SAMPLES = 64;
 Sample samples[SAMPLES];
@@ -227,6 +349,11 @@ void reach(Plan &p, const std::vector<std::pair<float, float>> &seeds) {
             }
     if (b[0] > b[2]) std::memcpy(b, p.bounds, sizeof b);
     std::memcpy(p.reach_box, b, sizeof b);
+    p.gx0 = x0; p.gz0 = z0; p.gcs = cs; p.gnx = nx; p.gnz = nz;
+    p.walk = seen;
+    if (queue.empty()) // (nothing to start from: all the floor)
+        for (size_t c = 0; c < p.walk.size(); c++) p.walk[c] = tri_of[c] >= 0;
+    make_zones(p);
 
     // Water where it is seen from above: the water's surface over a cell, and either no floor there that is reached
     // from the grid's edge without crossing floor (the open sea and lakes; not a building's footprint inside the
@@ -356,6 +483,14 @@ bool dragging = false;
 float mouse_x = -1, mouse_y = -1; // the cursor (ImGui's units)
 float wheel_acc = 0;
 bool right_click = false;
+bool zones_mouse = false;     // the full map's "Battle zones" button is held with the left button
+float zb_rect[4];             // where that button was last drawn
+bool zb_shown = false;
+const bool zones_test = std::getenv("ELTALE_AUTOMAP_ZONES") != nullptr; // (a test: shown as if held)
+
+// the battle zones are shown: the cheat on, the area has some, and the button or the key held
+bool zones_held() { return zones_mouse || action_held(ACT_MAP_ZONES); }
+bool zones_on() { return settings.map.cheat_zones && !plan.zone_runs.empty() && (zones_held() || zones_test); }
 
 // the game's picture in ImGui's units (x0, y0, x1, y1)
 bool game_rect(float *r) {
@@ -517,6 +652,14 @@ constexpr ImU32 COL_CHEST = IM_COL32(230, 170, 60, 255);
 constexpr ImU32 COL_SPIRIT = IM_COL32(190, 130, 255, 255); // (the game's sparkles are violet)
 constexpr ImU32 COL_BOSS = IM_COL32(235, 50, 50, 255);
 constexpr ImU32 COL_MARK_OUTLINE = IM_COL32(0, 0, 0, 205);
+constexpr ImU32 COL_SIGN = IM_COL32(200, 160, 110, 255);
+constexpr ImU32 COL_STORY = IM_COL32(130, 210, 255, 255);  // the ring round a person with a story line
+constexpr ImU32 COL_GIVER = IM_COL32(255, 215, 80, 255);   // (cheat) a person who gives a story item
+constexpr ImU32 COL_ZONE = IM_COL32(230, 45, 40, 255);     // (cheat) the battle zones
+// the services (EL_AM_SVC_*): the inn's teal, the Wings' sky blue, the food's wheat
+constexpr ImU32 COL_SVC[EL_AM_SVC_COUNT] = { IM_COL32(255, 255, 255, 255), IM_COL32(70, 215, 175, 255),
+                                             IM_COL32(120, 185, 255, 255), IM_COL32(250, 210, 110, 255) };
+const char *const SVC_NAME[EL_AM_SVC_COUNT] = { "", "Inn", "Traveler's Wings", "Food" };
 
 ImU32 fade(ImU32 c, float a) { return (c & 0x00FFFFFFu) | (ImU32(float(c >> 24) * std::clamp(a, 0.0f, 1.0f)) << 24); }
 
@@ -531,8 +674,76 @@ bool mark_shown(const ElAmMarker &m, bool all) {
     case EL_AM_MARK_CHEST: return s.cheat_chests;
     case EL_AM_MARK_SPIRIT: return s.cheat_spirits;
     case EL_AM_MARK_BOSS: return s.cheat_bosses;
+    case EL_AM_MARK_SIGN: return s.signs;
     default: return false;
     }
+}
+
+// a person's or door's extras, as the Map page has them on (`all`: the tests' pictures)
+bool service_shown(bool all) { return all || settings.map.services; }
+bool story_shown(const ElAmMarker &m, bool all) { return (m.flags & EL_AM_MARK_STORY) && (all || settings.map.story); }
+bool giver_shown(const ElAmMarker &m, bool all) { return (m.flags & EL_AM_MARK_KEY_GIVER) && (all || settings.map.cheat_givers); }
+// the services a door leads to, shown
+unsigned door_services(const ElAmMarker &m, bool all) {
+    return (m.kind == EL_AM_MARK_DOOR || m.kind == EL_AM_MARK_EXIT) && service_shown(all) ? m.services : 0u;
+}
+
+// The hover text: the label and, when its mark is shown, the detail
+std::string hover_text(const ElAmMarker &m, bool all) {
+    std::string t = m.label;
+    bool more = false;
+    if (m.kind == EL_AM_MARK_PERSON)
+        more = (m.service && service_shown(all)) || story_shown(m, all) || giver_shown(m, all);
+    else if (door_services(m, all))
+        more = true;
+    if (more && m.detail[0]) t += std::string("\n") + m.detail;
+    return t;
+}
+
+// A service's icon: a disc in its colour, a dark glyph (the inn's crescent moon, a pair of wings, a loaf)
+void draw_service_icon(ImDrawList *dl, ImVec2 p, float k, int svc, float alpha) {
+    if (svc <= 0 || svc >= EL_AM_SVC_COUNT) return;
+    const ImU32 bg = fade(COL_SVC[svc], alpha), ink = fade(IM_COL32(25, 22, 18, 255), alpha);
+    dl->AddCircleFilled(p, k, bg, 18);
+    dl->AddCircle(p, k, fade(COL_MARK_OUTLINE, alpha), 18, 1.0f);
+    switch (svc) {
+    case EL_AM_SVC_INN: // a crescent moon (rest)
+        dl->AddCircleFilled(p, k * 0.62f, ink, 16);
+        dl->AddCircleFilled(ImVec2(p.x + k * 0.3f, p.y - k * 0.2f), k * 0.52f, bg, 16);
+        break;
+    case EL_AM_SVC_WINGS: { // two wings
+        for (float sgn : { -1.0f, 1.0f }) {
+            const ImVec2 a(p.x + sgn * k * 0.08f, p.y - k * 0.1f), b(p.x + sgn * k * 0.72f, p.y - k * 0.5f),
+                c(p.x + sgn * k * 0.55f, p.y + k * 0.15f), d(p.x + sgn * k * 0.12f, p.y + k * 0.35f);
+            dl->AddQuadFilled(a, b, c, d, ink);
+        }
+        break;
+    }
+    case EL_AM_SVC_FOOD: { // a loaf with its cuts
+        const ImVec2 a(p.x - k * 0.62f, p.y - k * 0.32f), b(p.x + k * 0.62f, p.y + k * 0.36f);
+        dl->AddRectFilled(a, b, ink, k * 0.32f);
+        for (int i = -1; i <= 1; i++)
+            dl->AddLine(ImVec2(p.x + i * k * 0.3f - k * 0.08f, p.y - k * 0.2f), ImVec2(p.x + i * k * 0.3f + k * 0.08f, p.y + k * 0.2f), bg,
+                        std::max(1.0f, k * 0.12f));
+        break;
+    }
+    default: break;
+    }
+}
+
+// the icons of every service in `bits`, side by side about p
+void draw_service_icons(ImDrawList *dl, ImVec2 p, float k, unsigned bits, float alpha) {
+    int n = 0;
+    for (int s = 1; s < EL_AM_SVC_COUNT; s++) n += (bits >> s) & 1;
+    float x = p.x - (float(n) - 1.0f) * k * 1.1f;
+    for (int s = 1; s < EL_AM_SVC_COUNT; s++)
+        if (bits & EL_AM_SVC_BIT(s)) { draw_service_icon(dl, ImVec2(x, p.y), k, s, alpha); x += k * 2.2f; }
+}
+// the first service's colour (a door's halo)
+ImU32 service_color(unsigned bits) {
+    for (int s = 1; s < EL_AM_SVC_COUNT; s++)
+        if (bits & EL_AM_SVC_BIT(s)) return COL_SVC[s];
+    return COL_SVC[0];
 }
 
 // an exit's way through and its side, on the screen (world (sin a, cos a) and (cos a, -sin a)), unit length
@@ -551,9 +762,10 @@ void draw_chevron(ImDrawList *dl, ImVec2 p, ImVec2 fwd, ImVec2 side, float k, Im
     dl->AddTriangle(tip, l, r, fade(COL_MARK_OUTLINE, alpha), 1.0f);
 }
 
-void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, float alpha) {
+void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, float alpha, bool all = false) {
     const ImVec2 p = x.at(m.x, m.z);
     const bool done = (m.flags & EL_AM_MARK_DONE) != 0;
+    const unsigned svc = door_services(m, all);
     switch (m.kind) {
     case EL_AM_MARK_DOOR: {
         // a bar across the doorway, on the wall line (KF4's door); an exit to another map points the way out
@@ -563,6 +775,12 @@ void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, flo
         const ImVec2 a(p.x - side.x * hw, p.y - side.y * hw), b(p.x + side.x * hw, p.y + side.y * hw);
         const ImU32 c = (m.flags & EL_AM_MARK_LOCKED) ? COL_LOCKED : (m.flags & EL_AM_MARK_SHUT) ? COL_SHUT : COL_DOOR;
         const float w = std::clamp(r * 0.55f, 3.0f, 9.0f);
+        if (svc) { // a door to a service: a halo in its colour round the bar, its icon on this side of it
+            dl->AddLine(a, b, fade(service_color(svc), alpha * 0.55f), w + 9.0f);
+            dl->AddLine(a, b, fade(service_color(svc), alpha), w + 5.0f);
+            const float k = std::clamp(r * 0.62f, 5.0f, 12.0f), off = w * 0.5f + k * 1.6f;
+            draw_service_icons(dl, ImVec2(p.x - fwd.x * off, p.y - fwd.y * off), k, svc, alpha);
+        }
         dl->AddLine(a, b, fade(COL_MARK_OUTLINE, alpha), w + 2.5f);
         dl->AddLine(a, b, fade(c, alpha), w);
         if (m.flags & EL_AM_MARK_LOCKED) dl->AddCircleFilled(p, w * 0.45f, fade(IM_COL32(20, 10, 8, 255), alpha), 8); // a keyhole
@@ -585,6 +803,11 @@ void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, flo
             ImVec2(p.x - side.x * hw + fwd.x * hd, p.y - side.y * hw + fwd.y * hd),
         };
         const ImU32 c = (m.flags & EL_AM_MARK_LOCKED) ? COL_LOCKED : (m.flags & EL_AM_MARK_SHUT) ? COL_SHUT : COL_EXIT;
+        if (svc) {
+            dl->AddPolyline(q, 4, fade(service_color(svc), alpha), ImDrawFlags_Closed, std::max(3.0f, r * 0.45f));
+            const float k = std::clamp(r * 0.62f, 5.0f, 12.0f), off = hd + k * 1.6f;
+            draw_service_icons(dl, ImVec2(p.x - fwd.x * off, p.y - fwd.y * off), k, svc, alpha);
+        }
         dl->AddConvexPolyFilled(q, 4, fade(c, alpha * 0.22f));
         dl->AddPolyline(q, 4, fade(c, alpha * 0.8f), ImDrawFlags_Closed, std::max(1.0f, r * 0.15f));
         const float k = std::clamp(std::min(hw, hd * 2.0f) * 0.8f, r * 0.45f, r * 1.1f);
@@ -593,9 +816,39 @@ void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, flo
     }
     case EL_AM_MARK_PERSON: {
         const float k = r * 0.8f;
+        const float rim = std::max(1.5f, k * 0.22f);
+        // a ring round the disc: a story line (light blue), a story item to give (gold, a cheat)
+        const bool giver = giver_shown(m, all), story = story_shown(m, all);
+        if (giver || story) {
+            const float rr = k + rim + std::max(2.0f, k * 0.3f);
+            dl->AddCircle(p, rr, fade(COL_MARK_OUTLINE, alpha), 20, std::max(2.5f, k * 0.32f) + 2.0f);
+            dl->AddCircle(p, rr, fade(giver ? COL_GIVER : COL_STORY, alpha), 20, std::max(2.5f, k * 0.32f));
+        }
         dl->AddCircleFilled(p, k, fade(COL_PERSON, alpha), 16);
-        dl->AddCircle(p, k, fade(IM_COL32(255, 255, 255, 255), alpha), 16, std::max(1.5f, k * 0.22f));
-        dl->AddCircle(p, k + std::max(1.5f, k * 0.22f) * 0.5f + 0.5f, fade(COL_MARK_OUTLINE, alpha), 16, 1.0f);
+        dl->AddCircle(p, k, fade(IM_COL32(255, 255, 255, 255), alpha), 16, rim);
+        dl->AddCircle(p, k + rim * 0.5f + 0.5f, fade(COL_MARK_OUTLINE, alpha), 16, 1.0f);
+        if (giver) { // a key on the disc
+            const float q = k * 0.5f;
+            dl->AddCircle(ImVec2(p.x - q * 0.5f, p.y), q * 0.45f, fade(COL_GIVER, alpha), 10, std::max(1.5f, q * 0.3f));
+            dl->AddLine(ImVec2(p.x - q * 0.05f, p.y), ImVec2(p.x + q * 1.1f, p.y), fade(COL_GIVER, alpha), std::max(1.5f, q * 0.3f));
+            dl->AddLine(ImVec2(p.x + q * 0.8f, p.y), ImVec2(p.x + q * 0.8f, p.y + q * 0.5f), fade(COL_GIVER, alpha), std::max(1.5f, q * 0.3f));
+        }
+        if (m.service && service_shown(all)) // the service's badge at the upper right
+            draw_service_icon(dl, ImVec2(p.x + k * 1.05f, p.y - k * 1.05f), std::max(5.0f, k * 0.8f), m.service, alpha);
+        break;
+    }
+    case EL_AM_MARK_SIGN: {
+        // a signpost: a board on a post
+        const float k = r * 0.8f;
+        const ImVec2 a(p.x - k * 0.85f, p.y - k * 0.75f), b(p.x + k * 0.85f, p.y + k * 0.05f);
+        dl->AddLine(ImVec2(p.x, p.y), ImVec2(p.x, p.y + k * 0.9f), fade(COL_MARK_OUTLINE, alpha), std::max(2.0f, k * 0.3f) + 2.0f);
+        dl->AddLine(ImVec2(p.x, p.y), ImVec2(p.x, p.y + k * 0.9f), fade(COL_SIGN, alpha), std::max(2.0f, k * 0.3f));
+        dl->AddRectFilled(a, b, fade(COL_SIGN, alpha), k * 0.12f);
+        dl->AddRect(a, b, fade(COL_MARK_OUTLINE, alpha), k * 0.12f, 0, 1.0f);
+        dl->AddLine(ImVec2(a.x + k * 0.3f, p.y - k * 0.45f), ImVec2(b.x - k * 0.3f, p.y - k * 0.45f),
+                    fade(IM_COL32(90, 60, 30, 255), alpha), std::max(1.0f, k * 0.12f));
+        dl->AddLine(ImVec2(a.x + k * 0.3f, p.y - k * 0.22f), ImVec2(b.x - k * 0.5f, p.y - k * 0.22f),
+                    fade(IM_COL32(90, 60, 30, 255), alpha), std::max(1.0f, k * 0.12f));
         break;
     }
     case EL_AM_MARK_CHEST: {
@@ -649,16 +902,36 @@ void draw_mark(ImDrawList *dl, const Xform &x, const ElAmMarker &m, float r, flo
 // Every mark shown: the ways out first, then doors, chests and spirits, people and the boss on top
 void draw_marks(ImDrawList *dl, const Xform &x, const std::vector<ElAmMarker> &marks, float r, float alpha, bool all,
                 const float *clip) {
-    static const uint16_t order[] = { EL_AM_MARK_EXIT, EL_AM_MARK_DOOR, EL_AM_MARK_CHEST, EL_AM_MARK_SPIRIT, EL_AM_MARK_PERSON,
-                                      EL_AM_MARK_BOSS };
+    static const uint16_t order[] = { EL_AM_MARK_EXIT, EL_AM_MARK_DOOR, EL_AM_MARK_SIGN, EL_AM_MARK_CHEST, EL_AM_MARK_SPIRIT,
+                                      EL_AM_MARK_PERSON, EL_AM_MARK_BOSS };
     for (uint16_t kind : order)
         for (const ElAmMarker &m : marks) {
             if (m.kind != kind || !mark_shown(m, all)) continue;
             const ImVec2 p = x.at(m.x, m.z);
             const float pad = r * 3.0f + std::max({ m.half_w, m.half_d, m.radius }) * x.s;
             if (clip && (p.x < clip[0] - pad || p.y < clip[1] - pad || p.x > clip[2] + pad || p.y > clip[3] + pad)) continue;
-            draw_mark(dl, x, m, r, alpha);
+            draw_mark(dl, x, m, r, alpha, all);
         }
+}
+
+// The battle zones (a cheat, while its button or key is held): translucent red over the cells where a battle can
+// start, a red outline round them
+void draw_zones(ImDrawList *dl, const Xform &x, float alpha, float line_w) {
+    const ImU32 fill = fade(COL_ZONE, alpha * 0.30f), edge = fade(COL_ZONE, alpha * 0.9f);
+    for (const Edge &r : plan.zone_runs) {
+        const ImVec2 a = x.at(r.x0, r.z0), b = x.at(r.x1, r.z1);
+        dl->AddRectFilled(ImVec2(std::min(a.x, b.x), std::min(a.y, b.y)), ImVec2(std::max(a.x, b.x), std::max(a.y, b.y)), fill);
+    }
+    for (const Edge &e : plan.zone_edges) dl->AddLine(x.at(e.x0, e.z0), x.at(e.x1, e.z1), edge, line_w);
+}
+
+// "Battle zone 2 of 4: ...", for a zone id (region + 1)
+std::string zone_label(int id) {
+    if (id <= 0 || size_t(id) > plan.zones.size()) return std::string();
+    char head[48];
+    std::snprintf(head, sizeof head, "Battle zone %d of %zu", id, plan.zones.size());
+    const char *what = plan.zones[size_t(id - 1)].label;
+    return std::string(head) + (what[0] ? std::string(":\n") + what : std::string());
 }
 
 // The mark under the mouse (screen point q): the nearest within `reach` pixels, or a door's bar or an exit's box
@@ -707,6 +980,7 @@ const bool shots = std::getenv("ELTALE_AUTOMAP_SHOTS") != nullptr;
 uint32_t shot_latched; // flagged shots not made yet
 int shot_map_id, shot_sub_id;
 uint32_t shot_kind;    // the picture being made (EL_AM_PLAYER_SHOT_*), until the renderer wrote it
+Sample shot_over_sample, shot_map_sample; // the ticks that asked for them (drawn as they were, however late)
 char shot_name[64];
 
 // The reachable floor, once the player is known to be in the plan (the test pictures: from the exits alone, the tour
@@ -761,8 +1035,8 @@ uint32_t hovered_id;
 const uint16_t hover_test_kind = [] {
     const char *e = std::getenv("ELTALE_AUTOMAP_HOVER");
     if (!e) return uint16_t(0);
-    const char *names[] = { "", "door", "exit", "person", "chest", "spirit", "boss" };
-    for (uint16_t k = 1; k < 7; k++)
+    const char *names[] = { "", "door", "exit", "person", "chest", "spirit", "boss", "sign" };
+    for (uint16_t k = 1; k < 8; k++)
         if (!std::strcmp(e, names[k])) return k;
     return uint16_t(0);
 }();
@@ -805,7 +1079,7 @@ void draw_full(ImDrawList *dl, const float *g) {
 
     const float bg = shots ? 1.0f : settings.map.background / 100.0f;
     dl->AddRectFilled(ImVec2(g[0], g[1]), ImVec2(g[2], g[3]), rgba(6, 5, 4, 255 * bg));
-    const Sample p = player_now(!shots && !dump_test);
+    const Sample p = shots && (shot_kind & EL_AM_PLAYER_SHOT_MAP) ? shot_map_sample : player_now(!shots && !dump_test);
     if (dump_test && view_changes != view_dumped) {
         view_dumped = view_changes;
         char name[32];
@@ -820,7 +1094,23 @@ void draw_full(ImDrawList *dl, const float *g) {
     draw_wet(dl, x, 1.0f);
     const float wall_w = std::clamp(x.s * 3.0f, 1.0f, gh / 220.0f), edge_w = std::clamp(x.s * 1.5f, 1.0f, gh / 400.0f);
     draw_lines(dl, x, wall_w, edge_w, 1.0f);
-    const std::vector<ElAmMarker> marks = marks_now(!shots && !dump_test);
+    const bool zones = zones_on();
+    { // (held or let go: a test's picture and line)
+        static bool was;
+        const bool now = zones_held();
+        if (now != was) {
+            was = now;
+            view_changes++;
+            if (dump_test) {
+                std::printf("P1_AUTOMAP_ZONES held=%d by=%s zones=%zu runs=%zu button=%.0f,%.0f,%.0f,%.0f\n", int(now),
+                            !now ? "none" : zones_mouse ? "button" : "key", plan.zones.size(), plan.zone_runs.size(), zb_rect[0], zb_rect[1], zb_rect[2],
+                            zb_rect[3]);
+                std::fflush(stdout);
+            }
+        }
+    }
+    if (zones) draw_zones(dl, x, 1.0f, std::max(1.5f, gh / 400.0f));
+    const std::vector<ElAmMarker> marks = shots && (shot_kind & EL_AM_PLAYER_SHOT_MAP) ? shot_map_sample.marks : marks_now(!shots && !dump_test);
     const float mr = std::clamp(x.s * 5.0f, gh / 110.0f, gh / 55.0f);
     draw_marks(dl, x, marks, mr, 1.0f, false, area);
     if (p.area == plan.serial)
@@ -837,10 +1127,34 @@ void draw_full(ImDrawList *dl, const float *g) {
         const int h = over ? pick_mark(x, marks, q, std::max(mr * 1.6f, 10.0f), false) : -1;
         if (h >= 0) {
             hovered_id = marks[size_t(h)].id;
-            draw_hover_label(dl, q, marks[size_t(h)].label, area, ts);
+            draw_hover_label(dl, q, hover_text(marks[size_t(h)], false).c_str(), area, ts);
         } else {
             hovered_id = 0;
+            // over a battle zone (shown): its name and monsters
+            const bool zone_test = std::getenv("ELTALE_AUTOMAP_HOVER") && !std::strcmp(std::getenv("ELTALE_AUTOMAP_HOVER"), "zone");
+            if (zones && zone_test && !plan.zone_runs.empty()) {
+                const Edge &r = plan.zone_runs[plan.zone_runs.size() / 2];
+                q = x.at((r.x0 + r.x1) * 0.5f, (r.z0 + r.z1) * 0.5f);
+                over = true;
+            }
+            const int z = zones && over ? plan.zone_at(x.wx(q.x), x.wz(q.y)) : 0;
+            if (z) draw_hover_label(dl, q, zone_label(z).c_str(), area, ts);
         }
+    }
+    // the battle zones' button (the cheat on, the area has zones): held, the zones are shown
+    zb_shown = false;
+    if (settings.map.cheat_zones && !plan.zone_runs.empty()) {
+        const char *bl = "Battle zones (hold)";
+        const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ts, FLT_MAX, 0.0f, bl);
+        const float bw = ext.x + ts * 1.6f, bh = ts * 1.7f;
+        const float bx = (area[0] + area[2]) * 0.5f - bw * 0.5f, by = area[3] - bh - gh * 0.012f;
+        zb_rect[0] = bx; zb_rect[1] = by; zb_rect[2] = bx + bw; zb_rect[3] = by + bh;
+        zb_shown = true;
+        const bool hot = zones_held() || zones_test;
+        dl->AddRectFilled(ImVec2(bx, by), ImVec2(bx + bw, by + bh), hot ? IM_COL32(150, 35, 30, 240) : IM_COL32(40, 30, 26, 225), bh * 0.25f);
+        dl->AddRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh), hot ? IM_COL32(255, 120, 100, 255) : IM_COL32(200, 120, 100, 230), bh * 0.25f,
+                    0, 1.5f);
+        draw_text(dl, ts, ImVec2(bx + ts * 0.8f, by + (bh - ext.y) * 0.5f), IM_COL32(245, 225, 210, 255), bl);
     }
     dl->PopClipRect();
 
@@ -881,7 +1195,7 @@ void draw_full(ImDrawList *dl, const float *g) {
         const Xform lxf{ lx + sw * 0.5f, ly + ts * 0.55f, 0.0f, 0.0f, 1.0f };
         m.half_w = sw * 0.45f;
         m.half_d = ts * 0.3f;
-        draw_mark(dl, lxf, m, ts * 0.45f, 1.0f);
+        draw_mark(dl, lxf, m, ts * 0.45f, 1.0f, true);
         draw_text(dl, ts, ImVec2(lx + sw * 1.4f, ly), COL_HELP, label);
         ly += ts * 1.5f;
     };
@@ -892,6 +1206,29 @@ void draw_full(ImDrawList *dl, const float *g) {
     if (has(EL_AM_MARK_EXIT, 0, EL_AM_MARK_AWAY | EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_EXIT, 0, 0.0f, "Way through");
     if (has(EL_AM_MARK_EXIT, EL_AM_MARK_AWAY, EL_AM_MARK_LOCKED)) icon(EL_AM_MARK_EXIT, EL_AM_MARK_AWAY, 0.0f, "Way to another area");
     if (has(EL_AM_MARK_PERSON, 0, 0)) icon(EL_AM_MARK_PERSON, 0, 0.0f, "Person");
+    {
+        bool story = false, giver = false;
+        unsigned svc = 0;
+        for (const ElAmMarker &m : marks) {
+            if (!mark_shown(m, false)) continue;
+            if (m.kind == EL_AM_MARK_PERSON) {
+                story |= story_shown(m, false);
+                giver |= giver_shown(m, false);
+                if (m.service && service_shown(false)) svc |= EL_AM_SVC_BIT(m.service);
+            }
+            svc |= door_services(m, false);
+        }
+        if (story) icon(EL_AM_MARK_PERSON, EL_AM_MARK_STORY, 0.0f, "Has a story line");
+        if (giver) icon(EL_AM_MARK_PERSON, EL_AM_MARK_KEY_GIVER, 0.0f, "Gives a story item");
+        for (int k = 1; k < EL_AM_SVC_COUNT; k++)
+            if (svc & EL_AM_SVC_BIT(k)) {
+                draw_service_icon(dl, ImVec2(lx + sw * 0.5f, ly + ts * 0.55f), ts * 0.5f, k, 1.0f);
+                draw_text(dl, ts, ImVec2(lx + sw * 1.4f, ly), COL_HELP, SVC_NAME[k]);
+                ly += ts * 1.5f;
+            }
+    }
+    if (has(EL_AM_MARK_SIGN, 0, 0)) icon(EL_AM_MARK_SIGN, 0, 0.0f, "Sign");
+    if (zones) swatch(fade(COL_ZONE, 0.55f), "Battle zone");
     if (has(EL_AM_MARK_CHEST, 0, EL_AM_MARK_DONE)) icon(EL_AM_MARK_CHEST, 0, 0.0f, "Chest");
     if (has(EL_AM_MARK_CHEST, EL_AM_MARK_DONE, 0)) icon(EL_AM_MARK_CHEST, EL_AM_MARK_DONE, 0.0f, "Chest (opened)");
     if (has(EL_AM_MARK_SPIRIT, 0, EL_AM_MARK_DONE)) icon(EL_AM_MARK_SPIRIT, 0, 0.0f, "Spirit");
@@ -903,7 +1240,13 @@ void draw_full(ImDrawList *dl, const float *g) {
     std::string key = "M";
     for (int s = 0; s < BIND_SLOTS - 1; s++)
         if (settings.controls.bind[ACT_MAP][s]) { key = binding_label(settings.controls.bind[ACT_MAP][s]); break; }
-    const std::string help = "Wheel: zoom\nDrag: move\nRight click: fit\nPoint at a mark: what it is\n" + key + " or Esc: close";
+    std::string help = "Wheel: zoom\nDrag: move\nRight click: fit\nPoint at a mark: what it is\n" + key + " or Esc: close";
+    if (zb_shown) {
+        std::string zk;
+        for (int s = 0; s < BIND_SLOTS; s++)
+            if (settings.controls.bind[ACT_MAP_ZONES][s]) { zk = binding_label(settings.controls.bind[ACT_MAP_ZONES][s]); break; }
+        if (!zk.empty()) help += "\nHold " + zk + ": battle zones";
+    }
     draw_text(dl, ts * 0.85f, ImVec2(lx, ly), COL_HELP, help.c_str());
     // north
     draw_text(dl, ts * 1.2f, ImVec2(area[2] - ts * 1.6f, area[1]), COL_NORTH, "N");
@@ -975,6 +1318,7 @@ void draw_minimap(ImDrawList *dl, const float *g) {
     draw_floor(dl, x, p.y, a);
     draw_wet(dl, x, a);
     draw_lines(dl, x, std::clamp(x.s * 3.0f, 1.0f, side / 90.0f), std::clamp(x.s * 1.5f, 1.0f, side / 160.0f), a);
+    if (zones_on()) draw_zones(dl, x, a, 1.5f);
     draw_marks(dl, x, marks_now(!dump_test), std::clamp(x.s * 5.0f, side / 42.0f, side / 20.0f), a, false, clip);
     draw_arrow(dl, x.at(p.x, p.z), p.rot, std::max(5.0f, side * 0.045f), a);
     dl->PopClipRect();
@@ -992,6 +1336,100 @@ void draw_minimap(ImDrawList *dl, const float *g) {
     dl->AddRect(p0, p1, rgba(200, 180, 130, 255 * 0.8f * a), round, 0, 1.5f);
     const float ns = std::max(12.0f, side * 0.08f);
     draw_text(dl, ns, ImVec2(x0 + side * 0.5f - ns * 0.3f, y0 + 2), (COL_NORTH & 0x00FFFFFFu) | (ImU32(255 * a) << 24), "N");
+}
+
+std::string json_text(const std::string &s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '\n') { out += "\\n"; continue; }
+        if (c == '"' || c == '\\') out += '\\';
+        if ((unsigned char)c >= 0x20) out += c;
+    }
+    return out;
+}
+
+// ---- the danger meter (a cheat): the chance the next 50 units walked start a random battle --------------------
+//
+// Battle_TryStartRandomEncounter: every 50 units walked (battle_travel_accumulator) the limit grows by 50
+// (battle_encounter_roll_limit) and a battle starts when Math_Rand(2000) < limit, so the next roll's chance is
+// (limit + 50) / 2000, capped at 100%; it starts only where the player is in a region with an encounter point 50..90
+// units away (EL_AM_DANGER_ZONE), elsewhere the roll is made and lost (the limit keeps growing). Read-only.
+//
+// It sits against the minimap (above it in a bottom corner, below it in a top one), the width of the minimap: the
+// eye is already there while walking, and the full map hides the game anyway. With the minimap off it keeps the
+// minimap's corner.
+
+float danger_shown = -1.0f; // the chance drawn (eased toward the game's at any frame rate)
+
+void draw_danger(ImDrawList *dl, const float *g) {
+    const float gh = g[3] - g[1];
+    const MapSettings &m = settings.map;
+    const float side = gh * m.size / 100.0f, margin = gh * 0.025f;
+    const bool right = m.corner == 0 || m.corner == 1, bottom = m.corner == 1 || m.corner == 3;
+    const float mx0 = right ? g[2] - margin - side : g[0] + margin;
+    const float my0 = bottom ? g[3] - margin - side : g[1] + gh * (right ? 0.27f : 0.24f);
+    const float h = std::max(16.0f, gh * 0.034f), gap = gh * 0.008f;
+    float y0;
+    if (m.minimap) y0 = bottom ? my0 - gap - h : my0 + side + gap;
+    else y0 = bottom ? g[3] - margin - h : my0;
+    const float x0 = mx0, x1 = mx0 + side, y1 = y0 + h;
+    const float a = std::max(0.6f, m.opacity / 100.0f);
+
+    // the samples the picture is between: the walk toward the next roll slides with the picture (a roll wraps it)
+    float travel = newest.travel;
+    uint16_t limit = newest.roll_limit, danger = newest.danger;
+    uint32_t flags = newest.flags;
+    const render::NativeDraw::Shown &sh = render::native_draw().shown_frames();
+    if (!dump_test && sh.valid) {
+        const Sample *sa = find_sample(sh.a), *sb = find_sample(sh.b);
+        if (sa && sb && sa != sb && sa->area == sb->area && sh.t > 0) {
+            float tb = sb->travel;
+            if (tb < sa->travel) tb += 50.0f;
+            travel = sa->travel + (tb - sa->travel) * sh.t;
+            if (travel >= 50.0f) travel -= 50.0f;
+            limit = sb->roll_limit; danger = sb->danger; flags = sb->flags;
+        } else if (sa) {
+            travel = sa->travel; limit = sa->roll_limit; danger = sa->danger; flags = sa->flags;
+        }
+    }
+    const float chance = std::min(1.0f, float(limit + 50) / 2000.0f);
+    const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.25f);
+    if (danger_shown < 0 || dump_test) danger_shown = chance;
+    else danger_shown += (chance - danger_shown) * (1.0f - std::exp(-dt / 0.12f));
+    const bool battle = (flags & EL_AM_PLAYER_BATTLE) != 0, here = (danger & EL_AM_DANGER_ZONE) != 0;
+
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), rgba(10, 9, 8, 215 * a), h * 0.25f);
+    // the colour of the chance: green, amber, red
+    const float c = danger_shown;
+    const ImU32 col = here ? rgba(90 + 165 * std::min(1.0f, c * 4.0f), 200 - 150 * std::max(0.0f, c * 2.0f - 0.2f), 60, 255 * a)
+                           : rgba(120, 125, 120, 200 * a);
+    // the chance as a bar, the walk to the next roll as a thin strip under it
+    const float pad = h * 0.14f, bx0 = x0 + pad, bx1 = x1 - pad;
+    const float strip = std::max(2.0f, h * 0.14f);
+    if (!battle) {
+        dl->AddRectFilled(ImVec2(bx0, y0 + pad), ImVec2(bx0 + (bx1 - bx0) * std::clamp(c, 0.0f, 1.0f), y1 - pad - strip - 1),
+                          fade(col, here ? 0.85f : 0.45f), h * 0.12f);
+        dl->AddRectFilled(ImVec2(bx0, y1 - pad - strip), ImVec2(bx0 + (bx1 - bx0) * std::clamp(travel / 50.0f, 0.0f, 1.0f), y1 - pad),
+                          rgba(235, 215, 160, (here ? 230 : 120) * a));
+    }
+    char text[64];
+    if (battle) std::snprintf(text, sizeof text, "In battle");
+    else if (here) std::snprintf(text, sizeof text, "Battle %d%% next step", int(std::lround(c * 100.0f)));
+    else if (danger & EL_AM_DANGER_ROLLS) std::snprintf(text, sizeof text, "Safe here (%d%% in a zone)", int(std::lround(c * 100.0f)));
+    else std::snprintf(text, sizeof text, "Safe here");
+    const float ts = std::max(11.0f, h * 0.62f);
+    const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ts, FLT_MAX, 0.0f, text);
+    const ImVec2 at(x0 + (side - ext.x) * 0.5f, y0 + (h - strip - ext.y) * 0.5f);
+    dl->AddText(ImGui::GetFont(), ts, ImVec2(at.x + 1, at.y + 1), rgba(0, 0, 0, 220 * a), text);
+    dl->AddText(ImGui::GetFont(), ts, at, rgba(245, 235, 215, 255 * a), text);
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), rgba(200, 180, 130, 200 * a), h * 0.25f, 0, 1.0f);
+    static int dumped;
+    if (dump_test && !dumped && samples_on_plan >= 120) {
+        dumped = 1;
+        std::printf("P1_AUTOMAP_DANGER rect=%.0f,%.0f,%.0f,%.0f travel=%.2f limit=%u danger=%u text=%s\n", x0, y0, x1, y1, travel, limit,
+                    danger, text);
+        std::fflush(stdout);
+    }
 }
 
 // The plan beside the test pictures (tools/automap_path.py): am_MM_SS_plan.json in ELTALE_PRESENT_DUMP's folder
@@ -1015,17 +1453,21 @@ void write_plan_json(const float *g) {
     }
     // the marks of the over picture's tick (tools/automap_sheet.py's close-ups)
     std::fprintf(f, "],\n \"marks\": [");
-    for (size_t i = 0; i < newest.marks.size(); i++) {
-        const ElAmMarker &m = newest.marks[i];
-        std::string label;
-        for (const char *c = m.label; *c; c++) {
-            if (*c == '"' || *c == '\\') label += '\\';
-            if ((unsigned char)*c >= 0x20) label += *c;
-        }
+    for (size_t i = 0; i < shot_over_sample.marks.size(); i++) {
+        const ElAmMarker &m = shot_over_sample.marks[i];
         std::fprintf(f, "%s\n  {\"id\": %u, \"kind\": %u, \"flags\": %u, \"x\": %.2f, \"y\": %.2f, \"z\": %.2f, \"angle\": %.4f, "
-                     "\"half_w\": %.2f, \"half_d\": %.2f, \"radius\": %.2f, \"item\": %u, \"to\": [%d, %d], \"label\": \"%s\"}",
+                     "\"half_w\": %.2f, \"half_d\": %.2f, \"radius\": %.2f, \"item\": %u, \"to\": [%d, %d], \"service\": %u, "
+                     "\"services\": %u, \"label\": \"%s\"}",
                      i ? "," : "", m.id, m.kind, m.flags, m.x, m.y, m.z, m.angle, m.half_w, m.half_d, m.radius, m.item, m.to_map,
-                     m.to_sub, label.c_str());
+                     m.to_sub, m.service, m.services, json_text(hover_text(m, true)).c_str());
+    }
+    std::fprintf(f, "],\n \"zones\": [");
+    for (size_t i = 0; i < plan.zones.size(); i++) {
+        const ElAmZone &z = plan.zones[i];
+        size_t cells = 0;
+        for (uint8_t c : plan.zone_cell) cells += c == i + 1;
+        std::fprintf(f, "%s\n  {\"box\": [%.1f, %.1f, %.1f, %.1f], \"cells\": %zu, \"label\": \"%s\"}", i ? "," : "", z.x0, z.z0, z.x1,
+                     z.z1, cells, json_text(z.label).c_str());
     }
     std::fprintf(f, "]}\n");
     std::fclose(f);
@@ -1039,19 +1481,37 @@ void draw_over(ImDrawList *dl, const float *g) {
     half = std::max(half, 100.0f);
     const Xform x{ (g[0] + g[2]) * 0.5f, (g[1] + g[3]) * 0.5f, cx, cz, gh * 0.5f / half };
     // (bright, to stand out on the picture: walls magenta, floor edges yellow)
+    draw_zones(dl, x, 1.0f, std::max(1.5f, gh / 500.0f));
     draw_lines(dl, x, std::max(1.5f, gh / 400.0f), std::max(1.0f, gh / 700.0f), 1.0f, IM_COL32(255, 40, 255, 255),
                IM_COL32(255, 230, 0, 255));
-    const Sample p = newest;
+    const Sample p = shot_over_sample;
     // every mark (cheats too), named, over the real models
     const float r = std::max(7.0f, gh / 110.0f);
     draw_marks(dl, x, p.marks, r, 0.9f, true, nullptr);
     const float ts = std::max(11.0f, gh / 88.0f);
     for (const ElAmMarker &m : p.marks) {
         const ImVec2 q = x.at(m.x, m.z);
-        const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ts, FLT_MAX, 0.0f, m.label);
+        const std::string t = hover_text(m, true);
+        const ImVec2 ext = ImGui::GetFont()->CalcTextSizeA(ts, FLT_MAX, 0.0f, t.c_str());
         const ImVec2 at(q.x + r * 1.2f, q.y - ext.y * 0.5f);
         dl->AddRectFilled(ImVec2(at.x - 2, at.y), ImVec2(at.x + ext.x + 2, at.y + ext.y), IM_COL32(0, 0, 0, 150), 2.0f);
-        draw_text(dl, ts, at, IM_COL32(255, 255, 200, 255), m.label);
+        draw_text(dl, ts, at, IM_COL32(255, 255, 200, 255), t.c_str());
+    }
+    // each zone named at its middle run
+    for (size_t i = 0; i < plan.zones.size(); i++) {
+        const Edge *mid = nullptr;
+        size_t n = 0;
+        for (const Edge &e : plan.zone_runs)
+            if (plan.zone_at((e.x0 + e.x1) * 0.5f, (e.z0 + e.z1) * 0.5f) == int(i + 1)) n++;
+        size_t k = 0;
+        for (const Edge &e : plan.zone_runs)
+            if (plan.zone_at((e.x0 + e.x1) * 0.5f, (e.z0 + e.z1) * 0.5f) == int(i + 1) && k++ == n / 2) { mid = &e; break; }
+        if (!mid) continue;
+        const ImVec2 q = x.at((mid->x0 + mid->x1) * 0.5f, (mid->z0 + mid->z1) * 0.5f);
+        char t[24];
+        std::snprintf(t, sizeof t, "zone %zu", i + 1);
+        dl->AddRectFilled(ImVec2(q.x - 2, q.y), ImVec2(q.x + ts * 3.2f, q.y + ts), IM_COL32(60, 0, 0, 170), 2.0f);
+        draw_text(dl, ts, q, IM_COL32(255, 200, 190, 255), t);
     }
     draw_arrow(dl, x.at(p.x, p.z), p.rot, std::max(9.0f, gh / 45.0f), 0.8f);
 }
@@ -1077,6 +1537,14 @@ void receive_area(const ElAmArea *a) {
     plan.walls.assign(a->walls, a->walls + a->wall_count);
     plan.exits.assign(a->exits, a->exits + a->exit_count);
     plan.water.assign(a->water, a->water + a->water_count);
+    plan.zones.assign(a->zones, a->zones + a->zone_count);
+    plan.points.clear();
+    for (uint32_t i = 0; i < a->point_count; i++) plan.points.push_back({ a->points[i * 2], a->points[i * 2 + 1] });
+    plan.walk.clear();
+    plan.zone_cell.clear();
+    plan.zone_runs.clear();
+    plan.zone_edges.clear();
+    plan.gnx = plan.gnz = 0;
     prepare(plan);
     fitted = false; // (a new area: the open map fits it)
 }
@@ -1089,11 +1557,34 @@ void receive_player(const ElAmPlayer *p) {
     s.flags = p->flags;
     s.x = p->x; s.y = p->y; s.z = p->z; s.rot = p->rot;
     if (p->markers && p->marker_count) s.marks.assign(p->markers, p->markers + p->marker_count);
+    s.travel = p->travel;
+    s.roll_limit = p->roll_limit;
+    s.danger = p->danger;
+    s.zone = p->zone;
+    // ELTALE_AUTOMAP_BATTLES=1 (a test): a random battle started; where the roll found the player (the last tick's
+    // place, before the battle moved anyone), against the shaded zones and the rule at that exact point
+    static const bool battles = std::getenv("ELTALE_AUTOMAP_BATTLES") != nullptr;
+    if (battles && (p->flags & EL_AM_PLAYER_RANDOM_BATTLE) && have_sample && !(newest.flags & EL_AM_PLAYER_BATTLE) &&
+        newest.area == plan.serial && plan.valid()) {
+        if (!plan.reach_done) ensure_reach();
+        const int shaded = plan.zone_at(newest.x, newest.z), rule = zone_rule(plan, newest.x, newest.z);
+        int near = 0; // a shaded cell within one cell (the cells' centres stand for the cell)
+        for (int dz = -1; dz <= 1 && !near; dz++)
+            for (int dx = -1; dx <= 1 && !near; dx++) near = plan.zone_at(newest.x + float(dx) * plan.gcs, newest.z + float(dz) * plan.gcs);
+        std::printf("P1_AUTOMAP_BATTLE_CHECK map=%d sub=%d x=%.3f z=%.3f shaded=%d near=%d rule=%d reach=%d %s\n", plan.map, plan.sub,
+                    newest.x, newest.z, shaded, near, rule, [&] {
+                        int ix, iz;
+                        return plan.cell_of(newest.x, newest.z, &ix, &iz) && !plan.walk.empty() ? int(plan.walk[size_t(iz) * size_t(plan.gnx) + size_t(ix)]) : -1;
+                    }(), shaded ? "INSIDE" : near ? "EDGE" : "OUTSIDE");
+        std::fflush(stdout);
+    }
     samples[sample_next] = s;
     sample_next = (sample_next + 1) % SAMPLES;
     newest = s;
     if (p->flags & (EL_AM_PLAYER_SHOT_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP)) {
         shot_latched |= p->flags & (EL_AM_PLAYER_SHOT_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP);
+        if (p->flags & EL_AM_PLAYER_SHOT_OVER) shot_over_sample = s;
+        if (p->flags & EL_AM_PLAYER_SHOT_MAP) shot_map_sample = s;
         shot_map_id = plan.map; // (named for the area it was asked in)
         shot_sub_id = plan.sub;
     }
@@ -1105,7 +1596,7 @@ void receive_player(const ElAmPlayer *p) {
 
 void toggle() {
     view_changes++;
-    if (full) { full = false; dragging = false; return; }
+    if (full) { full = false; dragging = false; zones_mouse = false; return; }
     if (!in_play()) return;
     full = true;
     fitted = false;
@@ -1122,7 +1613,7 @@ void minimap_zoom(int steps) {
     MapSettings &m = settings.map;
     const MinimapView v = minimap_view();
     int &reach = v.indoor ? m.reach_in : m.reach;
-    const int lo = v.indoor ? 25 : 100, hi = v.indoor ? 1500 : 3000;
+    const int lo = v.indoor ? 20 : 30, hi = v.indoor ? 1500 : 3000;
     const float k = std::pow(1.25f, float(-std::clamp(steps, -4, 4)));
     const float from = steps > 0 ? std::min(float(reach), v.reach) : std::max(float(reach), v.reach);
     reach = std::clamp(int(std::lround(from * k)), lo, hi);
@@ -1149,6 +1640,9 @@ bool event(const SDL_Event &e) {
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
         if (dragging) view_changes++;
         dragging = false;
+        if (zones_mouse) {
+            zones_mouse = false;
+        }
     }
     // the wheel over the minimap zooms it (not while the mouse turns the camera: the cursor is not shown then)
     if (!full_open() && e.type == SDL_EVENT_MOUSE_WHEEL && mm_shown && settings.map.minimap && in_play() &&
@@ -1166,7 +1660,14 @@ bool event(const SDL_Event &e) {
     if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         mouse_x = e.button.x;
         mouse_y = e.button.y;
-        if (e.button.button == SDL_BUTTON_LEFT) dragging = true;
+        if (e.button.button == SDL_BUTTON_LEFT) {
+            // the battle zones' button: held, not a drag
+            if (zb_shown && e.button.x >= zb_rect[0] && e.button.x < zb_rect[2] && e.button.y >= zb_rect[1] && e.button.y < zb_rect[3]) {
+                zones_mouse = true;
+                return true;
+            }
+            dragging = true;
+        }
         if (e.button.button == SDL_BUTTON_RIGHT) right_click = true, view_changes++;
         return true;
     }
@@ -1184,7 +1685,7 @@ bool wants_overlay() {
         return true;
     if (!in_play()) return false;
     if (shots && (newest.flags & EL_AM_PLAYER_TRUTH)) return false;
-    return full || settings.map.minimap;
+    return full || settings.map.minimap || settings.map.cheat_danger;
 }
 
 void draw() {
@@ -1228,6 +1729,7 @@ void draw() {
     if (shots && (newest.flags & (EL_AM_PLAYER_TRUTH | EL_AM_PLAYER_SHOT_OVER | EL_AM_PLAYER_SHOT_MAP))) return;
     if (full) draw_full(dl, g);
     else if (settings.map.minimap) draw_minimap(dl, g);
+    if (!full && settings.map.cheat_danger) draw_danger(dl, g);
     // (a test's pictures: the minimap as the player sees it, 84 ticks into the area: am_MM_SS_mini.png, and where it
     // is in the picture, am_MM_SS_mini.json, for tools/automap_sheet.py)
     static uint32_t mini_done;
@@ -1270,13 +1772,21 @@ void settings_page() {
                           "(a white box: stairs, a passage, a road). A white arrow: it leads to another area (a field, a dungeon, another town).");
     changed |= ImGui::Checkbox("People", &m.people);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Everyone you can talk to, where they are now (pink).");
+    changed |= ImGui::Checkbox("Inns, Wings and food", &m.services);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("The innkeepers (rest and save), the people who give Traveler's Wings and bread when you have none,\n"
+                          "and the doors to their houses: a coloured halo and the icon (moon: inn, wings, loaf: food).");
+    changed |= ImGui::Checkbox("Story people", &m.story);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A light blue ring round people with something to say about the story.");
+    changed |= ImGui::Checkbox("Signs", &m.signs);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Signs and other things to read; point at one for its first line.");
     ImGui::Separator();
     changed |= ImGui::Checkbox("Minimap", &m.minimap);
     const char *corners[] = { "Top right", "Bottom right", "Top left", "Bottom left" };
     changed |= ImGui::Combo("Corner", &m.corner, corners, 4);
     changed |= ImGui::SliderInt("Size", &m.size, 10, 45, "%d%% of the height");
-    changed |= ImGui::SliderInt("Reach outdoors", &m.reach, 100, 3000, "%d units", ImGuiSliderFlags_Logarithmic);
-    changed |= ImGui::SliderInt("Reach indoors", &m.reach_in, 25, 1500, "%d units", ImGuiSliderFlags_Logarithmic);
+    changed |= ImGui::SliderInt("Reach outdoors", &m.reach, 30, 3000, "%d units", ImGuiSliderFlags_Logarithmic);
+    changed |= ImGui::SliderInt("Reach indoors", &m.reach_in, 20, 1500, "%d units", ImGuiSliderFlags_Logarithmic);
     changed |= ImGui::Checkbox("Fit small rooms", &m.fit_rooms);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("A room smaller than the reach fills the minimap and stays put while you walk in it.");
@@ -1293,6 +1803,16 @@ void settings_page() {
         ImGui::SetTooltip("The hidden spirits that raise an element of your choice (violet sparkle; taken: an outline).");
     changed |= ImGui::Checkbox("Show bosses", &m.cheat_bosses);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("A boss waiting in the area, and how near you can go before it fights (red).");
+    changed |= ImGui::Checkbox("Show story item givers", &m.cheat_givers);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("People who give you a story item, and what (a gold ring and key).");
+    changed |= ImGui::Checkbox("Battle zones button", &m.cheat_zones);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("A \"Battle zones\" button on the full map: hold it (or the key, %s) to shade where random battles\n"
+                          "can start, and point at a zone for its monsters.", key_of(ACT_MAP_ZONES, "none").c_str());
+    changed |= ImGui::Checkbox("Danger meter", &m.cheat_danger);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("By the minimap: the chance the next 50 units you walk start a battle, and how far you are toward\n"
+                          "them (the thin strip). \"Safe here\" where no battle can start.");
     if (changed) save_settings();
 }
 

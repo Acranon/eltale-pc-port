@@ -62,6 +62,8 @@ const uint8_t *Port_HudSpellLocked(void);
 const char *Port_TextMonster(const uint8_t *jp);
 /* The English of a Japanese string as plain text (whatever the text language), or NULL: the area map's labels. */
 const char *Port_TextPlain(const uint8_t *jp);
+/* A monster's English name (HUD kana codes) whatever the text language, or NULL: the area map's battle zones. */
+const char *Port_TextMonsterPlain(const uint8_t *jp);
 const uint8_t *Port_HudMonsterName(const uint8_t *jp);
 
 /* The width in pixels of one line of game text (Japanese: 10 a glyph; English: its font's). */
