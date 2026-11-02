@@ -65,12 +65,14 @@ LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm -ldl
 
 # The memory-safety build (docs/MEMORY_SAFETY.md): AddressSanitizer with UBSan's bound and pointer checks,
 # clang on Linux. `make asan ROM=...` -> out/asan/eltale-p1 (or tools/asan_run.sh). Reports go on; none stops
-# the game. Instrumented mem* calls go through port/p0/asan_rdram.c, which knows RDRAM.
+# the game. Instrumented mem* calls go through port/p0/asan_rdram.c, which knows RDRAM. SAN_EXTRA adds flags (e.g.
+# -fstrict-flex-arrays=2: a struct's last array is bounds-checked too).
 SANITIZE ?= 0
 SAN_CFLAGS :=
 ifeq ($(SANITIZE),1)
 SAN_FLAGS := -fsanitize=address,array-bounds,pointer-overflow,object-size,vla-bound,shift-exponent,float-cast-overflow,builtin,return,unreachable,bool,enum,nonnull-attribute,returns-nonnull-attribute
-SAN_CFLAGS := $(SAN_FLAGS) -fsanitize-recover=all -fno-omit-frame-pointer   -mllvm -asan-memory-access-callback-prefix=eltale_asan_ -mllvm -asan-instrumentation-with-call-threshold=1000000000
+SAN_CFLAGS := $(SAN_FLAGS) $(SAN_EXTRA) -fsanitize-recover=all -fno-omit-frame-pointer \
+  -mllvm -asan-memory-access-callback-prefix=eltale_asan_ -mllvm -asan-instrumentation-with-call-threshold=1000000000
 CFLAGS += $(SAN_CFLAGS)
 LDFLAGS += $(SAN_FLAGS)
 endif

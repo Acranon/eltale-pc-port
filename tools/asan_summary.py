@@ -36,6 +36,12 @@ KNOWN = {
     "work/src/libultra/audio/env.c:540": "A1 audio (port/audio is being replaced): float to s16 out of range, as the N64",
     # ELTALE_ASAN_RDRAM=loaded only: the port's own write, not a load the DMA hook sees
     "Port_ImagesUpdate port/text/en_images.c": "R1 port: the English pictures written into RDRAM's common block at boot",
+    # SAN_EXTRA=-fstrict-flex-arrays=2 only: libultra audio's variable-length [1] arrays (ALBank.instArray,
+    # ALInstrument.soundArray, ALSeqFile.seqArray, ...), indexed past 1 by design
+    "port/audio/bank.c": "A2 audio: libultra's [1] variable-length arrays (strict flex arrays only)",
+    "work/src/game/audio/audio.c": "A2 audio: libultra's [1] variable-length arrays (strict flex arrays only)",
+    "work/src/libultra/audio/csplayer.c": "A2 audio: libultra's [1] variable-length arrays (strict flex arrays only)",
+    "work/src/libultra/audio/seqplayer.c": "A2 audio: libultra's [1] variable-length arrays (strict flex arrays only)",
 }
 
 
