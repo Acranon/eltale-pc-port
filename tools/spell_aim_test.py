@@ -810,8 +810,8 @@ def main():
         shots = work / "pictures"
         shots.mkdir(exist_ok=True)
         for aspect, wide in (("43", False), ("169", True)):
-            on = run(c, args, "on-" + aspect, work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"])
-            off = run(c, args, "off-" + aspect, work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"],
+            on = run(c, args, aspect + "-on", work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"])
+            off = run(c, args, aspect + "-off", work, saves, substitute(c["rows"], wide, pt), c["frames"], c["frames_shot"],
                       env={"ELTALE_SPELL_AIM_TUBES": "0"})
             if aim_lines(on) != aim_lines(off):
                 problems.append(f"{aspect}: the aim lines differ with the 3D paths on and off")
@@ -821,8 +821,8 @@ def main():
                 problems.append(f"{aspect}: the 3D path logged {'not ' if 'P1_AIM_TUBE ' not in on else ''}with them on, "
                                 f"{'' if 'P1_AIM_TUBE ' in off else 'not '}with them off")
             for n, f in enumerate(c["frames_shot"]):
-                pa = work / f"tubes_off-on-{aspect}" / "pictures" / f"frame_{f}.png"
-                pb = work / f"tubes_off-off-{aspect}" / "pictures" / f"frame_{f}.png"
+                pa = work / f"tubes_off-{aspect}-on" / "pictures" / f"frame_{f}.png"
+                pb = work / f"tubes_off-{aspect}-off" / "pictures" / f"frame_{f}.png"
                 if pa.is_file() and pb.is_file():
                     shutil.copyfile(pa, shots / f"tubes_off-{aspect}-{n}-on.png")
                     shutil.copyfile(pb, shots / f"tubes_off-{aspect}-{n}-off.png")
