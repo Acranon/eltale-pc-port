@@ -382,7 +382,9 @@ static void mutate(uint32_t *w0, uint32_t *w1) {
         if (((*w0 >> 16) & A_LOOP) && loop_addr) fuzz_fill(loop_addr, 32);
         break;
     case 3: /* ENVMIXER: INIT/AUX, a random state */
-        if (r & 1) *w0 ^= (uint32_t)A_INIT << 16;
+        /* not INIT while SETLOOP's address stands in the left target and rate: the two sides hold
+         * it as different 24-bit addresses (the reference's windows) */
+        if ((r & 1) && !loop_addr) *w0 ^= (uint32_t)A_INIT << 16;
         if (r & 2) *w0 ^= (uint32_t)A_AUX << 16;
         if (!((*w0 >> 16) & A_INIT)) {
             fuzz_fill(*w1, 0x50);
