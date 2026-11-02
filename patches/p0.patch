@@ -1781,7 +1781,7 @@ index 71bd19a..b0fd96f 100644
              if (dust->life == 0) {
                  effect_active_sprite_count -= 1;
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..975387d 100644
+index cc5330a..27bc658 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
@@ -1839,7 +1839,7 @@ index cc5330a..975387d 100644
      return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 0, offset, nbytes, buf);
  }
  
-@@ -243,6 +263,15 @@ s32 Pak_WriteFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
+@@ -243,6 +263,19 @@ s32 Pak_WriteFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
      if (ret != 0) {
          return ret;
      }
@@ -1847,7 +1847,11 @@ index cc5330a..975387d 100644
 +    if (offset == 0 && nbytes >= 0x68) {
 +        u8 big[0x80];
 +        if (nbytes > (s32)sizeof big) Port_HostFatal("save header write too long");
-+        memcpy(big, buf, nbytes);
++        /* (docs/MEMORY_SAFETY.md M5) the retail write is 0x80 bytes from a 0x68-byte SaveHeader: the rest came from
++         * the next slot's header (past save_menu_save_headers' end for the last slot). Nothing reads those bytes
++         * back (save_menu.c M3 puts them in D_80090358): zeros. */
++        memset(big, 0, sizeof big);
++        memcpy(big, buf, nbytes < 0x68 ? nbytes : 0x68);
 +        port_swap_save_header(big);
 +        return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, big);
 +    }
@@ -1855,7 +1859,7 @@ index cc5330a..975387d 100644
      return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, buf);
  }
  
-@@ -298,6 +327,14 @@ s32 Pak_ClassifyError(s32 arg0) {
+@@ -298,6 +331,14 @@ s32 Pak_ClassifyError(s32 arg0) {
  }
  
  s32 Pak_CompareNameBytes(u8 *a, u8 *b, s32 n) {
@@ -1870,7 +1874,7 @@ index cc5330a..975387d 100644
      do {
          if (*a++ != *b++) {
              break;
-@@ -321,3 +358,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
+@@ -321,3 +362,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
  void Pak_InitGbPak(void) {
      func_8003D6B0();
  }
@@ -2773,10 +2777,31 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..016226a 100644
+index 89b373a..c135393 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
-@@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
+@@ -39,10 +39,20 @@ u8 text_speaker_name[0x20];
+  * D_8007AA28, player.h): retail addresses them as their own symbols. */
+ 
+ /* Message text that Npc_StartTalk hands to the text box. */
++#ifdef ELTALE_P1_OS
++/* (port, docs/MEMORY_SAFETY.md M2) Text_OpenWindow copies 24 bytes from each choice row (a window's row is 24): the
++ * inn's rows are 8, so it read past them (on the N64 into the next row and what follows). Room for the whole copy,
++ * zeros after; each row ends (0xFF) inside its 8 bytes, so nothing shown changes. */
++u8 npc_rest_choice_row0[24] = {
++#include "assets/npc_rest_choice_row0.inc.c"
++};
++u8 npc_rest_choice_row1[24] = {
++#else
+ u8 npc_rest_choice_row0[8] = {
+ #include "assets/npc_rest_choice_row0.inc.c"
+ };
+ u8 npc_rest_choice_row1[8] = {
++#endif
+ #include "assets/npc_rest_choice_row1.inc.c"
+ };
+ 
+@@ -91,7 +101,7 @@ void Npc_UpdateAll(void) {
                      if (--npc->timer == 0) {
                          if (npc_walking_count < 3) {
                              npc->state = 1;
@@ -2785,7 +2810,7 @@ index 89b373a..016226a 100644
                              Anim_SetCurrentAndNext(obj, 1, 1, 1, 1, 1);
                              dx = npc->homeX - obj->x;
                              dz = npc->homeZ - obj->z;
-@@ -102,7 +102,7 @@ void Npc_UpdateAll(void) {
+@@ -102,7 +112,7 @@ void Npc_UpdateAll(void) {
                              }
                              npc_walking_count++;
                          } else {
@@ -2794,7 +2819,7 @@ index 89b373a..016226a 100644
                          }
                      }
                  }
-@@ -114,7 +114,7 @@ void Npc_UpdateAll(void) {
+@@ -114,7 +124,7 @@ void Npc_UpdateAll(void) {
                  Npc_Move(npc_walk_step.x, npc_walk_step.y, obj);
                  if (--npc->timer == 0) {
                      npc->state = 0;
@@ -2803,7 +2828,7 @@ index 89b373a..016226a 100644
                      Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
                      npc_walking_count--;
                  }
-@@ -133,7 +133,7 @@ void Npc_UpdateAll(void) {
+@@ -133,7 +143,7 @@ void Npc_UpdateAll(void) {
                  obj->rot -= npc->turn_delta / 15.0f;
                  if (npc->timer == 0) {
                      npc->state = 0;
@@ -2812,7 +2837,7 @@ index 89b373a..016226a 100644
                      obj->rot = npc->homeAngle;
                      Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
                  }
-@@ -154,6 +154,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -154,6 +164,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
      AnimSet *anims;
  
      npc_drawn_count = 0;
@@ -2822,7 +2847,7 @@ index 89b373a..016226a 100644
      i = npc_count;
      npc = npc_slots;
      list = npc_drawn_list;
-@@ -162,9 +165,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -162,9 +175,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
          obj = &npc->actor;
          dz = npc->actor.z - player_state.actor.z;
          dist = dx * dx + dz * dz;
@@ -2839,7 +2864,7 @@ index 89b373a..016226a 100644
              anims = npc->def->anim_sets;
              Anim_DrawModel(0, obj, &anims[obj->animIndex], arg0);
              Anim_AdvanceFrame(obj->animStep, obj, &anims[obj->animIndex]);
-@@ -180,7 +190,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+@@ -180,7 +200,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
@@ -2852,7 +2877,7 @@ index 89b373a..016226a 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
-@@ -392,7 +407,7 @@ void Npc_EndTalk(s32 idx) {
+@@ -392,7 +417,7 @@ void Npc_EndTalk(s32 idx) {
          npc->timer = Math_Rand(30) + 30;
      } else if (npc->def->flags & 2) {
          npc->state = 0;
@@ -2862,7 +2887,7 @@ index 89b373a..016226a 100644
          npc->state = 3;
          npc->timer = 15;
 diff --git a/src/game/npc/npc.h b/src/game/npc/npc.h
-index e16ca6a..cb2771f 100644
+index e16ca6a..c7b3fa7 100644
 --- a/src/game/npc/npc.h
 +++ b/src/game/npc/npc.h
 @@ -19,8 +19,14 @@ typedef struct NpcDef {
@@ -2880,6 +2905,20 @@ index e16ca6a..cb2771f 100644
          } b;
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
+@@ -70,8 +76,13 @@ extern u8 text_message_buf[0x4B0];
+ extern u8 text_speaker_name[0x20];
+ 
+ /* .data */
++#ifdef ELTALE_P1_OS
++extern u8 npc_rest_choice_row0[24]; /* (port) room for Text_OpenWindow's 24-byte copy: npc.c */
++extern u8 npc_rest_choice_row1[24];
++#else
+ extern u8 npc_rest_choice_row0[8];
+ extern u8 npc_rest_choice_row1[8];
++#endif
+ 
+ void Npc_InitArea(void);
+ void Npc_UpdateAll(void);
 diff --git a/src/game/player/player.c b/src/game/player/player.c
 index c8c3fd5..0775e92 100644
 --- a/src/game/player/player.c
@@ -3058,10 +3097,18 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..dd0f0cd 100644
+index f2ae77c..b411ea1 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
-@@ -13,6 +13,53 @@
+@@ -1,4 +1,7 @@
+ #include "game/save/save_menu.h"
++#ifdef ELTALE_P1_OS
++#include <string.h>
++#endif
+ #include "game/audio/sound.h"
+ #include "game/core/main.h"
+ #include "game/enemy/boss.h"
+@@ -13,6 +16,53 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "game/ui/menu.h"
@@ -3115,7 +3162,7 @@ index f2ae77c..dd0f0cd 100644
  
  
  /*
-@@ -112,10 +159,18 @@ void SaveMenu_Update(void) {
+@@ -112,10 +162,18 @@ void SaveMenu_Update(void) {
  void SaveMenu_DrawOperationPanel(void) {
      u8 unused[4];
      s16 *r = save_menu_operation_panel_rects[save_menu_operation_panel_index];
@@ -3134,7 +3181,7 @@ index f2ae77c..dd0f0cd 100644
  
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
-@@ -128,7 +183,11 @@ void SaveMenu_DrawOperationPanel(void) {
+@@ -128,7 +186,11 @@ void SaveMenu_DrawOperationPanel(void) {
      Menu_DrawSprite(0x38, x + 1, y + 2, 1, h - 4);
      Menu_DrawSprite(0x39, x + 1, y + h - 2, w - 2, 1);
      Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
@@ -3146,7 +3193,7 @@ index f2ae77c..dd0f0cd 100644
      SaveMenu_SetTextDrawState();
  }
  
-@@ -246,6 +305,9 @@ void SaveMenu_UpdateDialog(void) {
+@@ -246,6 +308,9 @@ void SaveMenu_UpdateDialog(void) {
      } else {
          msg = save_menu_dialog_messages_load_delete[save_menu_dialog_index];
      }
@@ -3156,7 +3203,7 @@ index f2ae77c..dd0f0cd 100644
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
      Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -259,6 +321,13 @@ void SaveMenu_UpdateDialog(void) {
+@@ -259,6 +324,13 @@ void SaveMenu_UpdateDialog(void) {
      Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
      Text_DrawEncodedString(x + 6, y + 6, msg);
      SaveMenu_SetTextDrawState();
@@ -3170,7 +3217,7 @@ index f2ae77c..dd0f0cd 100644
      if (save_menu_delay_frames >= 0) {
          save_menu_delay_frames--;
      }
-@@ -362,6 +431,13 @@ void SaveMenu_UpdateDialog(void) {
+@@ -362,6 +434,13 @@ void SaveMenu_UpdateDialog(void) {
              w = save_menu_dialog_rects[2][2];
              h = save_menu_dialog_rects[2][3];
          }
@@ -3184,7 +3231,7 @@ index f2ae77c..dd0f0cd 100644
          Menu_DrawSprite(0, x, y, w, h);
          Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
          Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -394,6 +470,11 @@ void SaveMenu_UpdateDialog(void) {
+@@ -394,6 +473,11 @@ void SaveMenu_UpdateDialog(void) {
                  save_menu_flags &= ~8;
              }
              SaveMenu_SetTextDrawState();
@@ -3196,7 +3243,7 @@ index f2ae77c..dd0f0cd 100644
              if (save_menu_flags & 0x10) {
                  Menu_DrawSprite(4, save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][0], save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][1], 12, 12);
              } else {
-@@ -515,6 +596,39 @@ void SaveMenu_UpdateDialog(void) {
+@@ -515,6 +599,39 @@ void SaveMenu_UpdateDialog(void) {
      }
  }
  
@@ -3236,7 +3283,7 @@ index f2ae77c..dd0f0cd 100644
  /* .data 80061650..80061660: SaveMenu_UpdateSlotList's local message (an initialized u8[14]
   * that IDO copies to the stack); becomes its initializer when the function is C. */
  #ifdef NON_MATCHING
-@@ -770,6 +884,12 @@ void SaveMenu_UpdateSlotList(s32 arg0) {
+@@ -770,6 +887,12 @@ void SaveMenu_UpdateSlotList(s32 arg0) {
      } else {
          Menu_DrawSprite(1, flag + 0x42, 0x37, 0x10, 0xD);
      }
@@ -3249,7 +3296,7 @@ index f2ae77c..dd0f0cd 100644
      if (arg0 != 1) {
          n = 0;
          if (input_stick_y < -20) {
-@@ -974,7 +1094,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -974,7 +1097,7 @@ void SaveMenu_SaveSelectedFile(void) {
          SaveMenu_CaptureGameState(idx);
      }
      id = save_menu_selected_slot;
@@ -3258,45 +3305,83 @@ index f2ae77c..dd0f0cd 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -996,7 +1116,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -996,7 +1119,18 @@ void SaveMenu_SaveSelectedFile(void) {
          save_menu_flags &= ~0x2000;
          return;
      }
 -    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, &save_menu_game_state_block);
++#ifdef ELTALE_P1_OS
++    /* (port, docs/MEMORY_SAFETY.md M4) the retail write is 0xE0 bytes from the 0xC8-byte block: the last 0x18 came
++     * from whatever lies behind it (the N64: the header scratch). Loading reads the 0xE0 and keeps 0xC8, so those
++     * bytes are never used: written as zeros here, from a whole buffer. */
++    {
++        u8 whole[0xE0] = { 0 };
++        memcpy(whole, &save_menu_game_state_block, sizeof save_menu_game_state_block);
++        err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, whole);
++    }
++#else
 +    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, (u8 *)&save_menu_game_state_block);
++#endif
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -1146,6 +1266,11 @@ void SaveMenu_DrawBackground(void) {
+@@ -1095,7 +1229,23 @@ void SaveMenu_RefreshFileList(void) {
+     for (i = 0; i < 16; i++) {
+         if (save_menu_file_entries[i].file_no >= 0) {
+             e = &save_menu_save_headers[i];
++#ifdef ELTALE_P1_OS
++            /* (port, docs/MEMORY_SAFETY.md M3) the retail read is 0x80 bytes into the 0x68-byte header, on into
++             * D_80090358 (0x18, unreferenced) behind it on the N64. The port's linker keeps no such order: on Windows
++             * the 0x18 bytes landed on save_menu_operation_panel_index, save_menu_pak_error, save_menu_repair_count
++             * and the first 12 bytes of save_menu_save_headers[0] (its stats' hp, max_hp, mp, max_mp), so with two
++             * saves on the Pak, loading the first one gave max HP 0 and the HUD divided by it (a crash). Read into a
++             * whole buffer, then the two parts where they belong. */
++            {
++                u8 whole[0x80];
++                _Static_assert(sizeof save_menu_header_read_scratch + sizeof D_80090358 == sizeof whole, "0x80 bytes");
++                ret = Pak_ReadFile(input_primary_port, save_menu_file_entries[i].file_no, 0, 0x80, whole);
++                memcpy(&save_menu_header_read_scratch, whole, sizeof save_menu_header_read_scratch);
++                memcpy(D_80090358, whole + sizeof save_menu_header_read_scratch, sizeof D_80090358);
++            }
++#else
+             ret = Pak_ReadFile(input_primary_port, save_menu_file_entries[i].file_no, 0, 0x80, (u8 *)&save_menu_header_read_scratch);
++#endif
+             *e = save_menu_header_read_scratch;
+             if (ret != 0) {
+                 save_menu_pak_error = err;
+@@ -1146,6 +1296,12 @@ void SaveMenu_DrawBackground(void) {
      Menu_DrawSprite(0x47, 0xA2, 0xA6, 0x18, 0xE);
  }
  
 +#ifdef ELTALE_P1_OS
 +void Port_AutomapSaveEvent(int kind, s32 slot); /* game/native_draw/nd_automap.c */
 +void Port_SpellUiSaveEvent(int kind, s32 slot); /* port/spell_ui.h: the spell UI's quick bar, per save */
++void Port_PauseMenuSaveEvent(int kind, s32 slot); /* port/pause_menu.h: the pause menu's marker, per save */
 +#endif
 +
  void SaveMenu_CaptureGameState(s32 arg0) {
      SaveHeader *e = &save_menu_save_headers[arg0];
      u8 *d;
-@@ -1189,6 +1314,10 @@ void SaveMenu_CaptureGameState(s32 arg0) {
+@@ -1189,6 +1345,11 @@ void SaveMenu_CaptureGameState(s32 arg0) {
      for (s = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
 +#ifdef ELTALE_P1_OS
 +    Port_AutomapSaveEvent(0, arg0); /* the area map's fog of war: what was explored, kept with this save */
 +    Port_SpellUiSaveEvent(0, arg0); /* port: the spell UI's quick bar, kept with this save */
++    Port_PauseMenuSaveEvent(0, arg0); /* port: the pause menu's marker, kept with this save */
 +#endif
  }
  
  void SaveMenu_RestoreGameState(s32 arg0) {
-@@ -1231,4 +1360,8 @@ void SaveMenu_RestoreGameState(s32 arg0) {
+@@ -1231,4 +1392,9 @@ void SaveMenu_RestoreGameState(s32 arg0) {
      for (d = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
 +#ifdef ELTALE_P1_OS
 +    Port_AutomapSaveEvent(1, arg0); /* the area map's fog of war: what was explored with this save, back */
 +    Port_SpellUiSaveEvent(1, arg0); /* port: the spell UI's quick bar of this save, back */
++    Port_PauseMenuSaveEvent(1, arg0); /* port: the pause menu's marker of this save, back */
 +#endif
  }
 diff --git a/src/game/text/text.c b/src/game/text/text.c
@@ -3592,21 +3677,22 @@ index 4f9f215..8b492fe 100644
  }
  #else
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..0f1ada1 100644
+index e6f79b4..afc2631 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
-@@ -1,3 +1,10 @@
+@@ -1,3 +1,11 @@
 +#ifdef ELTALE_P1_OS
 +#include "port/data.h"
 +#include "port/text.h"
 +#include "port/mouse_menu.h"
 +#include "port/spell_ui.h"
 +#include "port/spell_aim.h"
++#include "port/pause_menu.h"
 +#endif
  #include "game/ui/hud.h"
  #include "game/camera/camera.h"
  #include "game/gfx/effect.h"
-@@ -13,6 +20,7 @@
+@@ -13,6 +21,7 @@
  #include "game/player/player.h"
  #include "game/ui/menu.h"
  #include "game/core/main.h"
@@ -3614,7 +3700,7 @@ index e6f79b4..0f1ada1 100644
  
  /*
   * In-game HUD: meters, compass, spell input, status indicators, and text primitives.
-@@ -82,6 +90,15 @@ extern HudTextureDesc D_803A8748;
+@@ -82,6 +91,15 @@ extern HudTextureDesc D_803A8748;
  extern MagicVisualDef D_803AA690[];
  extern EnemyEffectDef D_803AA6C4[];
  
@@ -3630,7 +3716,7 @@ index e6f79b4..0f1ada1 100644
  
  void Hud_ResetState(void) {
      D_8008C168 = 0;
-@@ -128,7 +145,7 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -128,7 +146,7 @@ void Hud_Draw(GfxFrameData* buf) {
      }
      if (!(core_flags & 0xC00)) {
          Hud_DrawPlayerMeters((Actor*)&player_state.actor);
@@ -3639,7 +3725,7 @@ index e6f79b4..0f1ada1 100644
          if (hud_panel_transition_state == 1) {
              if (++hud_panel_transition_frame >= 13) {
                  hud_panel_transition_frame = 12;
-@@ -177,7 +194,13 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -177,7 +195,13 @@ void Hud_Draw(GfxFrameData* buf) {
          }
      }
      if (core_flags & 4) {
@@ -3653,7 +3739,7 @@ index e6f79b4..0f1ada1 100644
      } else if (core_flags & 8) {
          Hud_UpdateElementAllocation(buf, (Player*)&player_state);
      }
-@@ -185,6 +208,10 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -185,6 +209,10 @@ void Hud_Draw(GfxFrameData* buf) {
          Hud_DrawSpellName(&player_state);
          hud_spell_name_timer--;
      }
@@ -3664,7 +3750,7 @@ index e6f79b4..0f1ada1 100644
  }
  
  
-@@ -192,6 +219,9 @@ void Hud_Draw(GfxFrameData* buf) {
+@@ -192,6 +220,9 @@ void Hud_Draw(GfxFrameData* buf) {
  extern HudTextureDesc D_803A86F8;
  
  void Hud_DrawPlayerMeters(Actor* arg0) {
@@ -3674,7 +3760,7 @@ index e6f79b4..0f1ada1 100644
      ActorStats* st;
      s32 w;
      s32 d;
-@@ -237,7 +267,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
+@@ -237,7 +268,10 @@ void Hud_DrawPlayerMeters(Actor* arg0) {
  extern Gfx D_803AA3C8[];
  extern Gfx D_803AA2F8[];
  
@@ -3686,7 +3772,7 @@ index e6f79b4..0f1ada1 100644
      s32 x;
      f32 fx;
      f32 fy;
-@@ -287,6 +320,23 @@ void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
+@@ -287,6 +321,23 @@ void Hud_DrawElementLevels(GfxFrameData* buf, s32 arg1) {
          gSPDisplayList(gfx_dl_head++, D_803AA2F8);
          hud_element_gain_flash_timer--;
      }
@@ -3710,7 +3796,7 @@ index e6f79b4..0f1ada1 100644
  }
  
  
-@@ -295,6 +345,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -295,6 +346,9 @@ extern HudTextureDesc D_803A86F8;
  f32 sqrtf(f32);
  
  void Hud_DrawCompass(GfxFrameData* buf) {
@@ -3720,7 +3806,28 @@ index e6f79b4..0f1ada1 100644
      f32 dx;
      f32 dz;
      f32 dist;
-@@ -340,6 +393,11 @@ extern HudTextureDesc D_803A8718;
+@@ -326,9 +380,20 @@ void Hud_DrawCompass(GfxFrameData* buf) {
+             hud_temp_vec.y = 18.0f;
+             /* hud_temp_vec is a Vec3f elsewhere; here its x,y pair is the compass offset. */
+             Math_RotateVec2(ang, (Vec2f *)&hud_temp_vec); /* its x/y pair is the compass offset */
++#ifdef ELTALE_P1_OS
++            /* port: with the unified pause menu the map page's marker is not the player's: its dot is drawn (the frame's
++             * list as always) but not shown (port/pause_menu.h) */
++            if (Port_PauseMenuCompassMute()) nd_2d_mute(1);
++#endif
+             Hud_DrawTextureTile(&D_803A86F8, hud_temp_vec.x + 14.0f, hud_temp_vec.y + 13.0f, 8, 8, 0, 0x32, 0x400, 0x400);
++#ifdef ELTALE_P1_OS
++            nd_2d_mute(0);
++#endif
+         }
+     }
++#ifdef ELTALE_P1_OS
++    Port_PauseMenuCompass(); /* port: the cyan dot toward the player's marker (port/pause_menu.h) */
++#endif
+ }
+ 
+ extern u8 D_8039EC90[];
+@@ -340,6 +405,11 @@ extern HudTextureDesc D_803A8718;
  extern Gfx D_803AA2F8[];
  
  void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
@@ -3732,7 +3839,7 @@ index e6f79b4..0f1ada1 100644
      s32 i;
      s32 x1;
      u8* col;
-@@ -383,6 +441,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -383,6 +453,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          gDPSetRenderMode(gfx_dl_head++, 0x504240, 0);
          /* Keep this block on one line for IDO scheduling. */
          { Gfx* _g = gfx_dl_head++; if (i) {} _g->words.w0 = 0xFCFF9BFF; _g->words.w1 = 0xFF34FE7F; }
@@ -3742,7 +3849,7 @@ index e6f79b4..0f1ada1 100644
          gDPSetEnvColor(gfx_dl_head++, 0, 0, 0, 255 - i * 255 / 64);
      }
      if (arg1->spell_input_count < 3) {
-@@ -401,6 +462,31 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -401,6 +474,31 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          Hud_DrawSpellLabel(x2, y2 + 3, str, i + 1, arg1->stats->mp);
          str[i] = 3;
          Hud_DrawSpellLabel(x3, y3 + 3, str, i + 1, arg1->stats->mp);
@@ -3774,7 +3881,7 @@ index e6f79b4..0f1ada1 100644
      }
      hud_draw_origin_x = 0x69;
      hud_draw_origin_y = 0x32;
-@@ -421,6 +507,21 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -421,6 +519,21 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          x0 += 0xC;
      }
      Hud_DrawSpellLabel(0, yoff + 3, arg1->spell_input_dirs, arg1->spell_input_count, arg1->stats->mp);
@@ -3796,7 +3903,7 @@ index e6f79b4..0f1ada1 100644
      hud_draw_origin_x = 0x22;
      hud_draw_origin_y = 0x8C;
      if (arg1->spell_input_count != 3) {
-@@ -441,6 +542,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -441,6 +554,9 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
          gDPSetEnvColor(gfx_dl_head++, col[0], col[1], col[2], hud_spell_input_anim_timer * 255 / 8);
          gSPDisplayList(gfx_dl_head++, D_803AA2F8);
      }
@@ -3806,7 +3913,7 @@ index e6f79b4..0f1ada1 100644
      if (hud_spell_input_anim_timer) {
          hud_spell_input_anim_timer--;
      }
-@@ -448,12 +552,49 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
+@@ -448,12 +564,49 @@ void Hud_DrawSpellInput(GfxFrameData* buf, Player* arg1) {
  
  
  
@@ -3856,7 +3963,7 @@ index e6f79b4..0f1ada1 100644
      s32 tmp;
      volatile s32 id;
      s32 t;
-@@ -465,7 +606,17 @@ void Hud_DrawSpellName(void* arg0) {
+@@ -465,7 +618,17 @@ void Hud_DrawSpellName(void* arg0) {
      hud_draw_origin_y = 0x32;
      w = ((Player *)arg0)->spell_id;
      id = (u8)w;
@@ -3874,7 +3981,7 @@ index e6f79b4..0f1ada1 100644
      gDPPipeSync(gfx_dl_head++);
      gDPSetTextureFilter(gfx_dl_head++, G_TF_POINT);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039EC90);
-@@ -496,6 +647,9 @@ extern u8 D_8039ADB0[];
+@@ -496,6 +659,9 @@ extern u8 D_8039ADB0[];
  extern Gfx D_803AA2F8[];
  
  void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
@@ -3884,7 +3991,7 @@ index e6f79b4..0f1ada1 100644
      u16 alpha;
      s32 yoff;
      s32 t;
-@@ -531,6 +685,14 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+@@ -531,6 +697,14 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
      Hud_DrawNumber(5, 0xA, yoff + 0x34, player_stats.element_levels[1]);
      Hud_DrawNumber(5, 0x1C, yoff + 0x43, player_stats.element_levels[2]);
      Hud_DrawNumber(5, 0x2E, yoff + 0x34, player_stats.element_levels[3]);
@@ -3899,7 +4006,7 @@ index e6f79b4..0f1ada1 100644
      if (hud_element_input_timer && (hud_element_allocation_flags & 1)) {
          col = hud_element_colors[hud_selected_element_index];
          pos = (f32*)hud_element_icon_positions + hud_selected_element_index * 2;
-@@ -580,6 +742,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
+@@ -580,6 +754,9 @@ void Hud_UpdateElementAllocation(GfxFrameData* buf, Player* pl) {
  
  
  void Hud_DrawNpcTalkMarker(void) {
@@ -3909,7 +4016,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 bob;
      Actor* p;
-@@ -600,6 +765,9 @@ void Hud_DrawNpcTalkMarker(void) {
+@@ -600,6 +777,9 @@ void Hud_DrawNpcTalkMarker(void) {
  }
  
  void Hud_DrawSpiritMarker(void) {
@@ -3919,7 +4026,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -617,6 +785,9 @@ void Hud_DrawSpiritMarker(void) {
+@@ -617,6 +797,9 @@ void Hud_DrawSpiritMarker(void) {
  }
  
  void Hud_DrawChestMarker(void) {
@@ -3929,7 +4036,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -634,6 +805,9 @@ void Hud_DrawChestMarker(void) {
+@@ -634,6 +817,9 @@ void Hud_DrawChestMarker(void) {
  }
  
  void Hud_DrawTextSpotMarker(void) {
@@ -3939,7 +4046,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -654,6 +828,9 @@ void Hud_DrawTextSpotMarker(void) {
+@@ -654,6 +840,9 @@ void Hud_DrawTextSpotMarker(void) {
  extern Gfx D_803AA5B0[];
  
  void Hud_DrawMeleeTargetMarker(u16 arg0) {
@@ -3949,7 +4056,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 sy;
      s32 bob;
-@@ -681,6 +858,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
+@@ -681,6 +870,9 @@ void Hud_DrawMeleeTargetMarker(u16 arg0) {
  }
  
  void Hud_DrawOutOfRangeIcon(void) {
@@ -3959,7 +4066,7 @@ index e6f79b4..0f1ada1 100644
      s32 sx;
      s32 sy;
      f32 y;
-@@ -745,6 +925,9 @@ typedef struct {
+@@ -745,6 +937,9 @@ typedef struct {
  extern Struct_803AA628 D_803AA628[];
  
  void Hud_UpdateAndDrawActorStatusIndicators(Actor* arg0) {
@@ -3969,7 +4076,7 @@ index e6f79b4..0f1ada1 100644
      ActorBattle* s = arg0->battle;
      f32 y;
      s32 vis;
-@@ -874,6 +1057,9 @@ extern HudTextureDesc D_803A86F8;
+@@ -874,6 +1069,9 @@ extern HudTextureDesc D_803A86F8;
  extern HudTextureDesc D_803A8718;
  
  void Hud_DrawEnemyInfoPanel(void) {
@@ -3979,7 +4086,7 @@ index e6f79b4..0f1ada1 100644
      s32 d;
  
      hud_draw_origin_x = 0xB5;
-@@ -895,7 +1081,18 @@ void Hud_DrawEnemyInfoPanel(void) {
+@@ -895,7 +1093,18 @@ void Hud_DrawEnemyInfoPanel(void) {
          Hud_DrawTextureTile(&D_803A8718, 0, 0x10, 0x6E, 0xA, 0x64, 0x2C, 0x400, 0x400);
          Hud_DrawTextureTile(&D_803A8718, 0, 0x1A, 0x6E, 2, 0x64, 0x4E, 0x400, 0x400);
      }
@@ -3999,7 +4106,7 @@ index e6f79b4..0f1ada1 100644
      Hud_LoadTextureTile(&D_803A86F8, 0x20, 0x1D, 0x80, 0xA);
      gDPLoadTLUT_pal256(gfx_dl_head++, D_8039ADB0);
      if (enemy_turn_current->battle.status_bits & 0x80) {
-@@ -946,6 +1143,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
+@@ -946,6 +1155,9 @@ void Hud_ShowActorPopup(Actor* arg0) {
  }
  
  void Hud_DrawPopups(void) {
@@ -4009,7 +4116,7 @@ index e6f79b4..0f1ada1 100644
      s32 i;
      HudPopup* p;
      f32 x;
-@@ -984,14 +1184,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
+@@ -984,14 +1196,27 @@ void Hud_DrawSpellLabel(s32 arg0, s32 arg1, u8* arg2, s32 arg3, u16 arg4) {
      u8* str;
      u32 tmp;
  
@@ -4038,7 +4145,7 @@ index e6f79b4..0f1ada1 100644
      w = Hud_MeasureGlyphString(str);
      arg0 = arg0 - w / 2 + 0x37;
      Hud_DrawGlyphString(arg0, arg1, hud_spell_label_palettes[flags], str);
-@@ -1001,9 +1214,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1001,9 +1226,16 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
      s32 cur = 8;
      s32 col;
      s32 row;
@@ -4055,7 +4162,7 @@ index e6f79b4..0f1ada1 100644
      while (*str != 0xFF) {
          if (*str == 0x80) {
              Hud_DrawClippedTextureRect(x - 2, y - 1, 8, 9, 0x78, row, 0x400, 0x400);
-@@ -1013,6 +1233,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1013,6 +1245,10 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              x += 1;
          } else if (*str == 0x82) {
              x += 4;
@@ -4066,7 +4173,7 @@ index e6f79b4..0f1ada1 100644
          } else {
              col = (*str & 0xF) * 8;
              row = (*str & 0x70) >> 4;
-@@ -1022,7 +1246,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1022,7 +1258,11 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
              }
              row *= 9;
              Hud_DrawClippedTextureRect(x, y, 8, 9, col, row, 0x400, 0x400);
@@ -4078,7 +4185,7 @@ index e6f79b4..0f1ada1 100644
          }
          str++;
      }
-@@ -1030,10 +1258,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
+@@ -1030,10 +1270,21 @@ void Hud_DrawGlyphString(s32 x, s32 y, s32 pal, u8* str) {
  
  s32 Hud_MeasureGlyphString(u8* str) {
      s32 w = 0;
@@ -4100,7 +4207,7 @@ index e6f79b4..0f1ada1 100644
          } else if (*str == 0x80 || *str == 0x81) {
              w += 1;
          } else if (*str == 0x82) {
-@@ -1065,6 +1304,15 @@ void func_80024A4C(void) {
+@@ -1065,6 +1316,15 @@ void func_80024A4C(void) {
  }
  
  void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
@@ -4116,7 +4223,7 @@ index e6f79b4..0f1ada1 100644
      if (tex->is4b == 0) {
          gDPLoadTextureTile(gfx_dl_head++, tex->img, G_IM_FMT_CI, G_IM_SIZ_8b, tex->width, 0, x, y, x + w, y + h, 0,
                             G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
-@@ -1077,6 +1325,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
+@@ -1077,6 +1337,13 @@ void Hud_LoadTextureTile(HudTextureDesc* tex, s32 x, s32 y, s32 w, s32 h) {
  }
  
  void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32 dsdx, s32 dtdy) {
@@ -4130,7 +4237,7 @@ index e6f79b4..0f1ada1 100644
      x += hud_draw_origin_x;
      x2 += x;
      y += hud_draw_origin_y;
-@@ -1108,6 +1363,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
+@@ -1108,6 +1375,10 @@ void Hud_DrawClippedTextureRect(s32 x, s32 y, s32 x2, s32 y2, s32 s, s32 t, s32
          y = hud_clip_top;
      }
      gSPTextureRectangle(gfx_dl_head++, x << 2, y << 2, x2 << 2, y2 << 2, 0, s << 5, t << 5, dsdx, dtdy);
@@ -4155,21 +4262,22 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..0c6b3e3 100644
+index c955abf..5c2b7a2 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
-@@ -9,6 +9,10 @@
+@@ -9,6 +9,11 @@
  #include "game/save/save_menu.h"
  #include "game/text/text.h"
  #include "game/text/text_window.h"
 +#include "game/native_draw/nd_2d_gbi.h" /* port: the native 2D core sees what is queued */
 +#ifdef ELTALE_P1_OS
 +#include "port/mouse_menu.h"
++#include "port/pause_menu.h"
 +#endif
  
  /*
   * Start-button menu (game state 2): four pages (stats, map, element levels, options) with
-@@ -36,6 +40,70 @@ f32 menu_map_cursor_saved_x; /* only Menu_UpdateMapPage (asm) uses these two */
+@@ -36,6 +41,70 @@ f32 menu_map_cursor_saved_x; /* only Menu_UpdateMapPage (asm) uses these two */
  f32 menu_map_cursor_saved_y;
  
  
@@ -4240,20 +4348,58 @@ index c955abf..0c6b3e3 100644
  void Menu_Init(void) {
      menu_flags = 0x8000;
      save_menu_flags = 0;
-@@ -76,6 +144,12 @@ void Menu_Update(struct GfxFrameData *arg0) {
+@@ -51,8 +120,20 @@ void Menu_ResetKeepPage(void) {
+ 
+ 
+ void Menu_Update(struct GfxFrameData *arg0) {
++#ifdef ELTALE_P1_OS
++    s32 pause_frame = 0;
++#endif
+     gSPDisplayList(gfx_dl_head++, text_glyph_setup_dl);
+     gDPSetTextureLUT(gfx_dl_head++, G_TT_RGBA16);
++#ifdef ELTALE_P1_OS
++    /* port: the unified pause menu (port/pause_menu.h) in place of the four pages: its own input and drawing (native
++     * 2D); the game's closing below is as always. The save menu is the game's. */
++    if (!(menu_flags & 0x4000) && Port_PauseMenuFrame()) {
++        pause_frame = 1;
++        menu_frame_counter++;
++    } else
++#endif
++    {
+     Menu_DrawBackground();
+     menu_frame_counter++;
+     if (menu_flags & 0x4000) {
+@@ -75,7 +156,14 @@ void Menu_Update(struct GfxFrameData *arg0) {
+                 break;
          }
      }
++    }
      menu_flags &= ~0x10;
 +#ifdef ELTALE_P1_OS
 +    /* port: the mouse (port/mouse_menu.h): the page arrows turn the page (Z, R held), a right click closes (B) */
-+    if (!(menu_flags & 0x6000)) {
++    if (!(menu_flags & 0x6000) && !pause_frame) {
 +        Menu_MousePage();
 +    }
 +#endif
      gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
      gDPSetBlendColor(gfx_dl_head++, 0, 0, 0, 1);
      if ((input_pressed_buttons & 0x5000) && !(menu_flags & 0x6020)) {
-@@ -1432,19 +1506,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
+@@ -1343,7 +1431,14 @@ MenuRomRange npc_area_set_rom_ranges[7] = {
+     { (u8 *)0x00871D10, (u8 *)0x008D1960 }, { (u8 *)0x008D1960, (u8 *)0x00926C00 }, { (u8 *)0x00926C00, (u8 *)0x0095D4E0 }, { (u8 *)0x0095D4E0, (u8 *)0x00988580 },
+     { (u8 *)0x00988580, (u8 *)0x009E16C0 }, { (u8 *)0x009E16C0, (u8 *)0x00A14190 }, { (u8 *)0x00A14190, (u8 *)0x00A70350 },
+ };
++#ifdef ELTALE_P1_OS
++/* (port, docs/MEMORY_SAFETY.md M1) Npc_InitArea hands this to Npc_SetMessage, which copies 0x4B0 bytes: 0x1B8 past
++ * the retail 0x2F8 (on the N64 the start of map_area_defs; in the port whatever the linker put next). Room for the
++ * whole copy, zeros after the message. The message ends (0xFF) inside the first 0x2F8, so nothing shown changes. */
++u8 npc_area_entry_message[0x4B0] = {
++#else
+ u8 npc_area_entry_message[0x2F8] = {
++#endif
+ #include "assets/npc_area_entry_message.inc.c"
+ };
+ MapAreaDef map_area_defs[36] = {
+@@ -1432,19 +1527,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
  u32 mapobjanim_type23_keys[0x8F] = {
  #include "assets/mapobjanim_type23_keys.inc.c"
  };
@@ -4277,7 +4423,7 @@ index c955abf..0c6b3e3 100644
  u32 mapobj_loop_anim0_keys[0x27] = {
  #include "assets/mapobj_loop_anim0_keys.inc.c"
  };
-@@ -1458,10 +1532,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
+@@ -1458,10 +1553,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
  #include "assets/mapobj_loop_anim3_keys.inc.c"
  };
  AnimNode mapobj_loop_anims[4] = {
@@ -4292,7 +4438,7 @@ index c955abf..0c6b3e3 100644
  };
  u16 mapobj_kind11_tlut[0x200] = {
  #include "assets/mapobj_kind11_tlut.inc.c"
-@@ -1536,7 +1610,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
+@@ -1536,7 +1631,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4301,7 +4447,7 @@ index c955abf..0c6b3e3 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1552,7 +1626,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1552,7 +1647,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4310,7 +4456,7 @@ index c955abf..0c6b3e3 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1561,12 +1635,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1561,12 +1656,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx mapobj_kind11_quad_dl[3] = {
@@ -4325,7 +4471,7 @@ index c955abf..0c6b3e3 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1605,13 +1679,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
+@@ -1605,13 +1700,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4341,7 +4487,7 @@ index c955abf..0c6b3e3 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1632,11 +1706,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
+@@ -1632,11 +1727,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4356,10 +4502,10 @@ index c955abf..0c6b3e3 100644
      { 0x00D86970, 0x01001300 }, { 0x00D8B170, 0x01001300 }, { 0x00D8F970, 0x01002410 }, { 0x00D92D70, 0x01003630 },
      { 0x00D96570, 0x01003630 }, { 0x00D99D70, 0x01003630 }, { 0x00D9D570, 0x01003630 }, { 0x00DA0D70, 0x01003630 },
 diff --git a/src/game/ui/menu.h b/src/game/ui/menu.h
-index a56b278..4f08d5e 100644
+index a56b278..9545a39 100644
 --- a/src/game/ui/menu.h
 +++ b/src/game/ui/menu.h
-@@ -96,6 +96,11 @@ extern EnemyEffectDef enemy_effect_defs[22];
+@@ -96,9 +96,18 @@ extern EnemyEffectDef enemy_effect_defs[22];
   * reads them as their own symbols in retail. */
  extern u16 D_8005685A;
  extern u16 D_8005685C;
@@ -4370,7 +4516,14 @@ index a56b278..4f08d5e 100644
 +#endif
  extern s32 D_80056878[2];
  extern MenuRomRange npc_area_set_rom_ranges[7];
++#ifdef ELTALE_P1_OS
++extern u8 npc_area_entry_message[0x4B0]; /* (port) room for Npc_SetMessage's whole copy: menu.c */
++#else
  extern u8 npc_area_entry_message[0x2F8];
++#endif
+ extern MapAreaDef map_area_defs[36];
+ extern MapRomRange map_extra_rom_ranges[6];
+ extern CellOffset mapobj_cell_single[2];
 diff --git a/src/libultra/audio/bnkf.c b/src/libultra/audio/bnkf.c
 index a0cdcde..2e70135 100644
 --- a/src/libultra/audio/bnkf.c

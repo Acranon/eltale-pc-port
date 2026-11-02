@@ -10,7 +10,8 @@ Eltale Monsters (J) ROM in big-endian `.z64` order.
 The game plays in a window on Windows, in English or Japanese, with sound, keyboard, mouse and
 controller, an F1 menu and F2/F4 quick saves. It is drawn by our own renderer (Vulkan, through
 Granite) from the game's own data, at any resolution, widescreen, with MSAA and up to 240 pictures a
-second; three presets (Classic, Classic + visuals, Everything on) set the switches. Linux builds and
+second; three presets (Classic, Classic + visuals, Everything on) set the switches. Sound is native as
+well: the game's synthesizer and its audio microcode both run as C, bit for bit ([docs/AUDIO.md](docs/AUDIO.md)). Linux builds and
 gives the same headless results; its window is not yet tried. See the [OS status](docs/P1_OS_STATUS.md)
 and the [renderer plan](docs/renderer/PLAN.md).
 
@@ -56,6 +57,10 @@ from source) beside it. The data folder is `$XDG_DATA_HOME/eltale` (or `~/.local
   must stay as [the OS status](docs/P1_OS_STATUS.md) records it.
 - `tests/host_checks.sh exe rom` runs it in a hidden window: New Game, the menu and reset, quick saves,
   Alt+Enter, resets and full buffers.
+- `tests/audio_checks.sh exe rom [saves]` checks the sound, which is native (`port/audio/aspmain.c`),
+  task by task against the game's own audio microcode run on an RSP interpreter. It covers New Game, the
+  intro, the ending, the tours, battles, menus and a load, and fuzzes them too. Every task must match;
+  see [docs/AUDIO.md](docs/AUDIO.md).
 - The renderer's pixel reference (paraLLEl-RDP, `python tools/build_rdpref.py`, needs the
   `third_party/parallel-rdp` submodule) and the compare tools: [docs/renderer/REFERENCE.md](docs/renderer/REFERENCE.md).
 - The P0 boot probe (`python tools/build_windows.py --full-compile --rom ...`, or `make p0-test

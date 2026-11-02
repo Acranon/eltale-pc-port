@@ -51,18 +51,18 @@
 
 /* ---- the switch ------------------------------------------------------------------------------------------------ */
 
-static int host_on = -1; /* the host's bits (2 aim, 4 camera), -1: none (headless) */
+static int host_on = -1; /* the host's bits (4 aim, 8 camera), -1: none (headless) */
 
 int Port_SpellAimEnabled(void) {
     static int env = -2;
-    if (host_on >= 0) return (host_on & 2) != 0;
+    if (host_on >= 0) return (host_on & 4) != 0;
     if (env == -2) env = getenv("ELTALE_SPELL_AIM") ? atoi(getenv("ELTALE_SPELL_AIM")) != 0 : 0;
     return env;
 }
 
 static int camera_enabled(void) {
     static int env = -2;
-    if (host_on >= 0) return (host_on & 4) != 0;
+    if (host_on >= 0) return (host_on & 8) != 0;
     if (env == -2) env = getenv("ELTALE_SPELL_AIM_CAMERA") ? atoi(getenv("ELTALE_SPELL_AIM_CAMERA")) != 0 : 1;
     return env;
 }

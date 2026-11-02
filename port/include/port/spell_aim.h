@@ -23,7 +23,7 @@ struct Actor;
  * while aiming" (controls.spell_aim_camera); headless ELTALE_SPELL_AIM=1 (default off there) and
  * ELTALE_SPELL_AIM_CAMERA=0|1 (default 1). */
 int Port_SpellAimEnabled(void);
-/* port/os/controller.c (through Port_SpellUiKeys), each read: the host's switches (2 aim, 4 camera), -1 none */
+/* port/os/controller.c (through Port_SpellUiKeys), each read: the host's switches (4 aim, 8 camera), -1 none */
 void Port_SpellAimSwitch(int on);
 
 /* port/os/controller.c, each read, after Port_MouseMenuRead: hover (the preview) and a click (the aim, and A) */

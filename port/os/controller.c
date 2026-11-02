@@ -5,6 +5,7 @@
 #include "port/os.h"
 #include "port/spell_aim.h"
 #include "port/spell_ui.h"
+#include "port/pause_menu.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -196,6 +197,7 @@ static void update_camera(void) {
         Port_SpellUiKeys(keys, -1);
     }
     wheel = Port_SpellUiWheel(wheel);
+    wheel = Port_PauseMenuWheel(wheel); /* (the open pause menu's map zooms) */
     Port_CameraInputSet(dx, dy, wheel, flags);
 }
 
@@ -253,6 +255,7 @@ void osContGetReadData(OSContPad *pads) {
     /* the spell UI's panel, bar and keys (port/spell_ui.h), then the menus' pointer: hover, and a click pressed for
      * this read (port/mouse_menu.h) */
     Port_SpellUiRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
+    Port_PauseMenuRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     Port_MouseMenuRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
     /* click to aim spells: the pointer over the battlefield with a spell ready (port/spell_aim.h) */
     Port_SpellAimRead(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);

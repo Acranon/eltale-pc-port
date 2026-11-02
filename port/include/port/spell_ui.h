@@ -30,7 +30,8 @@ enum {
  * off there, so the headless checks and picture baselines are the original game's). */
 int Port_SpellUiEnabled(void);
 
-/* port/os/controller.c, each read: the keys pressed since the last read and whether the UI is on (the host's) */
+/* port/os/controller.c, each read: the keys pressed since the last read and the host's switches (bit 0 this UI, bit 1
+ * the pause menu: port/pause_menu.h, which gets the keys too; -1 an input script's read) */
 void Port_SpellUiKeys(u32 keys, int on);
 /* port/os/controller.c, each read, before the camera takes the wheel: a wheel over the quick bar pages it (the
  * steps it used are taken: what is left goes to the camera) */

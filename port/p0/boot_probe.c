@@ -318,6 +318,18 @@ static void hash_ai_buffer(void *buffer, u32 bytes, u32 rate) {
     }
     ai_buffers++;
 }
+#ifdef ELTALE_P1_AUDIO
+/* ELTALE_AUDIO_TIME=1: the CPU time the native audio takes per task */
+uint64_t Port_HostNowNs(void);
+static uint64_t audio_time_ns;
+static unsigned audio_time_tasks;
+static void timed_audio_task(OSTask *task) {
+    uint64_t t0 = Port_HostNowNs();
+    Port_RunAudioTask(task);
+    audio_time_ns += Port_HostNowNs() - t0;
+    audio_time_tasks++;
+}
+#endif
 static void put_le(FILE *f, u32 v, int n) { for (int i = 0; i < n; i++) fputc((int)(v >> (8 * i)) & 0xFF, f); }
 static void ai_wav_close(void) {
     if (!ai_wav) return;
@@ -434,11 +446,14 @@ int main(int argc, char **argv) {
         Port_LivePad = getenv("ELTALE_LOAD_TEST") ? load_pad : tour_pad;
     }
 #ifdef ELTALE_P1_AUDIO
+    /* sound is native (port/audio/aspmain.c); tests may time it, or check it against the game's
+     * own microcode on the RSP interpreter (port/audio/rsp_lle.c) on every task */
     Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTask;
-    /* the reference microcode: play with it, or check the HLE against it on every task */
-    if (getenv("ELTALE_AUDIO_LLE")) Port_AudioTaskHook = (void (*)(OSTask *))Port_RunAudioTaskLle;
-    if (getenv("ELTALE_AUDIO_CHECK")) Port_AudioTaskHook = (void (*)(OSTask *))Port_CheckAudioTask;
-    Port_PiDmaHook = Port_LleNotePiDma;
+    if (getenv("ELTALE_AUDIO_TIME")) Port_AudioTaskHook = timed_audio_task;
+    if (Port_AudioRefInit()) {
+        Port_AudioTaskHook = (void (*)(OSTask *))Port_CheckAudioTask;
+        Port_PiDmaHook = Port_LleNotePiDma;
+    }
     if (!Port_AiBufferHook) Port_AiBufferHook = hash_ai_buffer; /* a window plays it instead */
     if (getenv("ELTALE_AUDIO_WAV") && (ai_wav = fopen(getenv("ELTALE_AUDIO_WAV"), "wb")))
         fseek(ai_wav, 44, SEEK_SET);
@@ -465,6 +480,9 @@ int main(int argc, char **argv) {
 #ifdef ELTALE_P1_AUDIO
     ai_wav_close();
     Port_CheckAudioReport();
+    if (audio_time_tasks)
+        fprintf(stderr, "P1_AUDIO_TIME native tasks=%u us_per_task=%.2f\n", audio_time_tasks,
+                audio_time_ns / 1e3 / audio_time_tasks);
     printf("P1_AUDIO buffers=%u nonzero_bytes=%u hash=%016llx\n", ai_buffers, ai_nonzero, (unsigned long long)ai_hash);
 #endif
     printf("P1_OS_OK frames=%u gfx_tasks=%u threads_run=%u dma_chunks=%u mode=%u last_hash=%016llx\n",

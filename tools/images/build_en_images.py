@@ -71,6 +71,9 @@ TARGETS = {
     "intro_pak_error_screen": (0xE1B990, "CI4", 208, 112, 208, 208, 0xE1E718, "D_802617B0_ovl_intro"),
 }
 HEADINGS = ("menu_sprite_26", "menu_sprite_33", "menu_sprite_43", "menu_sprite_45")
+# the Options page's four 26x9 choices: drawn in a pixel font in the original's style (small_label), as an 8x shrink
+# of the art left the letters' top and bottom rows half covered (dropped, or muddied into the outline): they looked cut off
+SMALL_LABELS = {"menu_sprite_86": "Slow", "menu_sprite_87": "Fast", "menu_sprite_42": "Soft", "menu_sprite_41": "Loud"}
 # the title menu strip: CI4 176x12 at ROM 0xDB0240, palette 0xDB0220
 TITLE_TLUT = 0xDB0220
 TITLE_W, TITLE_H = 208, 12  # the English strip (even width for 4-bit rows)
@@ -146,6 +149,70 @@ def heading(path, orig, pal):
     out.alpha_composite(word, (x0 + 12, (H - 10) // 2))  # one top for all: baselines line up
     out.alpha_composite(rb, (min(W - 11, x0 + 12 + word.width + 1), 0))
     return out
+
+
+def small_label(font, word, orig, pal):
+    """A word of a few letters at the original's size in its style (the Options page's choices): solid letters in the
+    original's golds, brightest at the top, and its grey shadow one pixel right and down, every row of the letters
+    and their shadow inside the picture, the letters' bottom on the original's lowest gold row."""
+    W, H = orig.size
+    op = orig.load()
+    gold = lambda c: c[3] and c[0] > c[2] + 60 and c[0] > 120
+    golds = Counter(op[x, y] for y in range(H) for x in range(W) if gold(op[x, y]))
+    shades = sorted((c for c, _ in golds.most_common(5)), key=lambda c: -sum(c[:3]))  # brightest first
+    greys = Counter(op[x, y] for y in range(H) for x in range(W)
+                    if op[x, y][3] and not gold(op[x, y]) and 300 <= sum(op[x, y][:3]) <= 420)
+    shadow = min((c for c, _ in greys.most_common(2)), key=lambda c: sum(c[:3]))  # the darker of its two greys
+    # the word's letters (the font's ink; its shadow is made again below), a column with no letter in it taken out
+    # (the widest gap first) while the letters and their shadow are wider than the picture
+    width = sum(font.glyph(c)[1] for c in word)
+    ink = [[False] * width for _ in range(font.height)]
+    x = 0
+    for c in word:
+        g, adv = font.glyph(c)
+        for yy, row in enumerate(g):
+            for xx, v in enumerate(row):
+                if v == 3 and x + xx < width:
+                    ink[yy][x + xx] = True
+        x += adv
+    used = lambda: [x for x in range(width) if any(ink[y][x] for y in range(font.height))]
+    while used()[-1] - used()[0] + 2 > W:
+        cols = used()
+        runs = []  # the gaps between letters, as runs of empty columns
+        for x in range(cols[0] + 1, cols[-1]):
+            if x not in cols:
+                if runs and runs[-1][1] == x - 1:
+                    runs[-1][1] = x
+                else:
+                    runs.append([x, x])
+        if not runs:
+            raise SystemExit("small_label: %r does not fit %d columns" % (word, W))
+        a, b = max(runs, key=lambda r: r[1] - r[0])
+        for row in ink:
+            del row[(a + b) // 2]
+        width -= 1
+    cols = used()
+    ys = [y for y in range(font.height) if any(ink[y])]
+    top, bottom = ys[0], ys[-1]
+    if bottom - top + 2 > H:
+        raise SystemExit("small_label: %r is %d rows with its shadow, the picture %d" % (word, bottom - top + 2, H))
+    # the letters' bottom on the original's lowest gold row (the shadow below it), all of them in the picture
+    base = max(y for y in range(H) for x in range(W) if gold(op[x, y]))
+    dy = max(-top, min(base, H - 2) - bottom)
+    dx = (W - (cols[-1] - cols[0] + 2)) // 2 - cols[0]
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    p = out.load()
+    for y in ys:
+        for x in cols:
+            if ink[y][x]:
+                if not (y + 1 < font.height and x + 1 < width and ink[y + 1][x + 1]):
+                    p[x + 1 + dx, y + 1 + dy] = shadow
+    for y in ys:
+        for x in cols:
+            if ink[y][x]:
+                k = (y - top) * len(shades) // (bottom - top + 1)  # bright at the top, darker below
+                p[x + dx, y + dy] = shades[k]
+    return quantise(out, pal)
 
 
 def bands(img, bg):
@@ -468,6 +535,7 @@ def main():
     game = GameFont(rom)
     # the prologue's pages are small: in the game's font if every one fits, else all in a smaller one
     small = PixelFont("QuestSquare.ttf")
+    label_font = PixelFont("RetroSans.ttf")
     prologue_font = game
     for name, t in TARGETS.items():
         if pages.get(name, {}).get("style") == "prologue" and name.startswith("prologue"):
@@ -487,6 +555,8 @@ def main():
             img, overflow = page(font, orig, pal, pages[name])
             if overflow:
                 print("%s: the text runs past the bottom" % name)
+        elif name in SMALL_LABELS:
+            img = small_label(label_font, SMALL_LABELS[name], orig, pal)
         elif name in HEADINGS:
             img = heading(os.path.join(art, name + ".png"), orig, pal)
         else:

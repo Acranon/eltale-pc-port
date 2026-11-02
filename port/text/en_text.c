@@ -63,6 +63,7 @@ static char pending[MAX_TEXT];
 static int has_pending;
 static int forced_lang = -1, forced_font = -1; /* ELTALE_LANG, ELTALE_FONT */
 static char *spell_text[16][16], *spell_locked; /* rows 0x2000000 + element * 16 + index, 0x20000FF */
+static char *region_text[16]; /* rows 0x4000000 + region: the world map's region names (the pause menu) */
 /* monster names in the battle HUD's kana codes (rows 0x3000000 + the name's ROM offset): a short list */
 enum { MAX_MONSTERS = 128 };
 static struct { uint64_t hash; char *text; } monsters[MAX_MONSTERS];
@@ -254,6 +255,10 @@ void Port_TextInit(void) {
         }
         if (at >= 0x2000000 && at < 0x2000100) {
             spell_text[(at >> 4) & 15][at & 15] = strdup(text);
+            continue;
+        }
+        if (at >= 0x4000000 && at < 0x4000010) {
+            region_text[at & 15] = strdup(text);
             continue;
         }
         if (at >= 0x3000000 && at < 0x4000000) {
@@ -487,6 +492,11 @@ const char *Port_TextSpell(int element, int index) {
     if (!Port_TextEnglish()) return NULL;
     if (element < 0) return spell_locked;
     return element < 16 && index >= 0 && index < 16 ? spell_text[element][index] : NULL;
+}
+
+const char *Port_TextRegion(int region) {
+    if (!Port_TextEnglish()) return NULL;
+    return region >= 0 && region < 16 ? region_text[region] : NULL;
 }
 
 /* The English of a Japanese string as plain text (the area map's labels: a person's or an item's name), whatever
