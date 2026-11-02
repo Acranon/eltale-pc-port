@@ -410,3 +410,7 @@ The undo case has four: folded, open after the undo, the pointer on the panel, f
 - The preview does not know about kills by an earlier bolt of the same spell (above). Wind Cutter Lv2 and Lv3 at
   battle-stuck's monsters show it: the first cutter kills the near monster, so the later cutters' real paths leave
   their tunnels (in the tests the monsters hit were still the ones predicted, by other cutters).
+- 3D spell paths (tried and removed, 2026-11-02): the hit volumes drawn in the air as see-through tubes and domes
+  (render.h v11 rim vertices, a "3D spell paths" Controls setting). In play the hit volumes looked far too big in 3D
+  and covered the battle, so the owner chose the ground drawing alone; the branch history (57e8a1e, reverted) keeps
+  the code.
