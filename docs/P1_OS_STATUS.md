@@ -10,9 +10,13 @@ regression target while the P1 OS replaces its synchronous host stand-in.
 - The native renderer (port/render, Granite/Vulkan, in eltale_host.dll) is the only renderer: it draws
   the game from its own data (docs/renderer/NATIVE_DRAW.md). RT64 is gone since the renderer's R8.
   The frame image and paraLLEl-RDP (docs/renderer/REFERENCE.md) are kept for tests only.
+- Sound is native too (docs/AUDIO.md): the game's synthesizer is C, and the aspMain microcode it writes for
+  is C (port/audio/aspmain.c), bit for bit. The microcode on the RSP interpreter stays for tests only
+  (`ELTALE_AUDIO_CHECK`, `tests/audio_checks.sh`).
 - Windows is the main platform. Linux builds (`tools/build_linux.sh`, docs/renderer/HOST_LAYER.md,
   "Build") and gives the same headless results; its window is not yet tried.
-- Checks: `tests/p1_checks.sh` (headless) and `tests/host_checks.sh exe rom` (a hidden window).
+- Checks: `tests/p1_checks.sh` (headless), `tests/host_checks.sh exe rom` (a hidden window) and
+  `tests/audio_checks.sh exe rom` (the sound against the microcode).
 
 ## OS1 foundation
 
@@ -380,7 +384,8 @@ own aspMain, text and data from the user's ROM in RDRAM.
   offsets) and every DRAM byte the microcode writes, then reports each command
   that differs and a count per command type. The microcode's DRAM writes are
   undone, so the game always hears the HLE.
-- `ELTALE_AUDIO_LLE=1` plays the microcode instead of the HLE.
+- `ELTALE_AUDIO_LLE=1` played the microcode instead of the HLE (removed 2026-11-02: sound is native only;
+  see "Sound native only" below).
 
 DMA type rules: the microcode sees big-endian memory and the native game keeps
 host order. So the DMA converts by what the memory holds: bytes the PI copied
@@ -826,3 +831,36 @@ outdoor wall stops; billboards not culled by direction under it). See docs/CONTR
 `ELTALE_MOUSE_LOG=1` prints `P1_MOUSE_CAMERA`. With no mouse input every check is unchanged (New Game
 74b8baf63f9c1889, map tour 46b61f5a7d79c61c / audio a2d2e81245d538d4, quick save and load as before).
 
+
+## Sound native only, checked task by task (2026-11-02)
+
+Sound was already made by port/audio/aspmain.c, but `ELTALE_AUDIO_LLE=1` could still play the game's own
+aspMain on the RSP interpreter. That switch is gone. The microcode now runs only under the test switches
+(`ELTALE_AUDIO_CHECK`, `ELTALE_AUDIO_FUZZ`), and the ROM DMA hook it needs is installed only then. Full
+write-up: docs/AUDIO.md.
+- `ELTALE_AUDIO_CHECK=task` runs each whole task on both sides independently, with the microcode's DMEM
+  carried on its own from task to task. It compares every DRAM byte either side wrote and the buffers.
+  A differing task is rerun a command at a time to name the command and sample. `=cmd` (or `1`) is the
+  old per-command check.
+- `ELTALE_AUDIO_FUZZ=k` first runs every k-th task as a mutated copy (random volumes, rates, pitches,
+  gains, states, flags, lengths and noise), with everything undone afterwards.
+- `ELTALE_AUDIO_TIME=1` times the native path.
+- `tests/audio_checks.sh` runs all of it on New Game, the intro, the ending, the camera and map tours,
+  battles, menus and a load. Each case runs plain and checked, and the two hashes must match.
+
+The whole-task check and the fuzzer found what the per-command check could not see, all now matched:
+- The RSP's boot loads 0x800 bytes of microcode data over DMEM each task. The parameter block (0x360),
+  the ADPCM book (0x4C0) and the first 0x240 bytes of the buffers restart from it every task. In New Game,
+  7 tasks saved 3-16 bytes of an unfilled buffer, which differed in DRAM. They are inaudible: the hash was
+  the same.
+- SETBUFF, SETVOL and SETLOOP share the microcode's parameter block, and ENVMIXER's count is signed.
+- RESAMPLE, MIXER and INTERLEAVE keep the microcode's order of block loads and stores when the output runs
+  into the input.
+- DMA rounds addresses and lengths to 8 bytes.
+- ADPCM predictors 8-15 read their book from the buffers.
+
+Result: 122,176 tasks and 39.2 million commands with 0 differences, and 23,792 mutated tasks with 0
+differences. Every hash is unchanged: New Game be0b67b7b718648e / 74b8baf63f9c1889, ending
+6b50454cc76480b3, camera tour 02b00a69b6c72d1a, map tour a2d2e81245d538d4 / 46b61f5a7d79c61c, Pak
+43842e6ff23bd261, host_checks 6472f32d00cadc74. CPU per audio task: native about 23 µs, the microcode on
+the interpreter about 495 µs.
