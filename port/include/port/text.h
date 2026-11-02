@@ -54,6 +54,9 @@ int Port_TitleStrip(uint8_t **texels, int *width, int *height, int pieces[3][2])
 
 /* The English name of spell `index` of `element` (-1, -1: the "can't use" label), or NULL. */
 const char *Port_TextSpell(int element, int index);
+/* The English name of world map region `region` (menu_map_region 0..9: the names painted into the map pictures), or
+ * NULL while the text is Japanese: the pause menu's header (port/pause_menu.h). */
+const char *Port_TextRegion(int region);
 /* The same in the battle HUD's font (en_images.c), or NULL while the text is Japanese. */
 const uint8_t *Port_HudSpellName(int element, int index);
 const uint8_t *Port_HudSpellLocked(void);

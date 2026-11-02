@@ -100,7 +100,7 @@ def main() -> None:
     if args.p1_os:
         sources += ["port/os/fiber.c", "port/os/kernel.c", "port/os/controller.c", "port/os/pak.c"]
         sources += ["port/os/math_glue.c", "port/data/map_area.c", "port/data/anim.c", "port/gfx/frame_image.c", "port/data/common.c", "port/data/enemy.c", "port/data/magic.c",
-                    "port/gfx/vi.c", "port/gfx/host_bridge.c", "port/p0/quicksave.c", "port/p0/mouse_camera.c", "port/p0/mouse_menu.c", "port/p0/spell_ui.c", "port/text/en_text.c", "port/text/en_images.c", "decomp/src/libultra/io/vitbl.c"]
+                    "port/gfx/vi.c", "port/gfx/host_bridge.c", "port/p0/quicksave.c", "port/p0/mouse_camera.c", "port/p0/mouse_menu.c", "port/p0/spell_ui.c", "port/p0/pause_menu.c", "port/text/en_text.c", "port/text/en_images.c", "decomp/src/libultra/io/vitbl.c"]
         # libultra's sinf/cosf keep their double constants as big-endian word pairs: the host libm's instead
         # the native renderer's game side: one file per kind of draw (docs/renderer/NATIVE_DRAW.md)
         sources += [p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "game/native_draw").glob("*.c"))]

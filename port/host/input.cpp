@@ -73,7 +73,8 @@ const ActionInfo actions[ACT_COUNT] = {
     { "slot_6", "Quick bar: slot 6", 0 },
     { "page_prev", "Quick bar: page before", 0 },
     { "page_next", "Quick bar: page after", 0 },
-    { "spell_clear", "Spell UI: take the elements back", 0 },
+    { "spell_clear", "Spell UI: take the elements back; pause menu: open / close", 0 },
+    { "menu_options", "Pause menu: Options", 0 },
 };
 
 // The camera keys' turn per tick, in mouse counts (port/p0/mouse_camera.c: 0.006 rad a count across, 0.004 up
@@ -171,8 +172,9 @@ void show_cursor(bool on) {
 
 // a press of `code`: the actions it is bound to that act on the press (the camera's edges)
 void pressed(int code) {
-    // the spell UI's keys: their bit in PORT_SPELLKEY_* order (crystals 0-3, slots 4-9, pages 10-11, clear 12)
-    for (int a = ACT_SPELL_FIRE; a <= ACT_SPELL_CLEAR; a++)
+    // the spell UI's keys: their bit in PORT_SPELLKEY_* order (crystals 0-3, slots 4-9, pages 10-11, clear 12), then
+    // the pause menu's (port/pause_menu.h PORT_PAUSEKEY_OPTIONS, 13)
+    for (int a = ACT_SPELL_FIRE; a <= ACT_MENU_OPTIONS; a++)
         for (int s = 0; s < BIND_SLOTS; s++)
             if (settings.controls.bind[a][s] == code && !menu::is_open() && !automap::full_open())
                 spell_keys |= 1u << (a - ACT_SPELL_FIRE);
@@ -515,6 +517,7 @@ Controls::Controls() {
     set(ACT_PAGE_PREV, key(SDL_SCANCODE_COMMA), 0, 0);
     set(ACT_PAGE_NEXT, key(SDL_SCANCODE_PERIOD), 0, 0);
     set(ACT_SPELL_CLEAR, key(SDL_SCANCODE_ESCAPE), 0, 0);
+    set(ACT_MENU_OPTIONS, key(SDL_SCANCODE_O), 0, BIND_PAD_BUTTON | SDL_GAMEPAD_BUTTON_NORTH);
 }
 
 const char *action_label(int a) { return a >= 0 && a < ACT_COUNT ? actions[a].label : ""; }
@@ -794,7 +797,7 @@ void input_pointer(float *x, float *y, int *width, int *flags) {
 void input_spell_keys(unsigned *keys, int *on) {
     *keys = menu::is_open() ? 0 : spell_keys;
     spell_keys = 0;
-    *on = settings.controls.spell_ui ? 1 : 0;
+    *on = (settings.controls.spell_ui ? 1 : 0) | (settings.controls.pause_menu ? 2 : 0);
 }
 
 void input_shutdown() {

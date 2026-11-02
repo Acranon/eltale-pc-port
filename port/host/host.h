@@ -54,6 +54,9 @@ enum Action {
     ACT_SPELL_FIRE, ACT_SPELL_EARTH, ACT_SPELL_WATER, ACT_SPELL_WIND,
     ACT_SLOT_1, ACT_SLOT_2, ACT_SLOT_3, ACT_SLOT_4, ACT_SLOT_5, ACT_SLOT_6,
     ACT_PAGE_PREV, ACT_PAGE_NEXT, ACT_SPELL_CLEAR,
+    // the pause menu (port/pause_menu.h, docs/PAUSE_MENU.md): its Options dialog (Esc, the spell UI's clear key, also
+    // opens and closes the menu)
+    ACT_MENU_OPTIONS,
     ACT_COUNT
 };
 enum { BIND_SLOTS = 3, BIND_PAD_SLOT = 2 };
@@ -70,6 +73,7 @@ struct Controls {
     bool invert_y = false;       // mouse and camera keys: up looks down
     bool mouse_menus = true;     // the mouse points and clicks in the game's menus (port/mouse_menu.h)
     bool spell_ui = true;        // the spell UI: panel and quick bar (port/spell_ui.h); off: the game's own
+    bool pause_menu = true;      // the unified pause menu (port/pause_menu.h); off: the Start menu's four pages
     Controls();                  // the defaults
 };
 
