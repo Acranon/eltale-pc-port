@@ -24,7 +24,8 @@ Headless runs have aiming off unless `ELTALE_SPELL_AIM=1`. `ELTALE_SPELL_AIM_CAM
      R-click to undo*. The battlefield is clear.
    - **The camera rises** over the battlefield (below).
    - The preview follows the pointer:
-     - the spell's area on the ground;
+     - the spell's area on the ground: for a spell that moves, its tunnel, the ground where it can touch a monster
+       (below);
      - a white chevron at your feet for the facing the click would give;
      - a gold ring under each monster it would hit, one more ring for each extra bolt or arrow that hits the same
        monster.
@@ -59,12 +60,83 @@ The kind comes from the spell's own record (`SpellDef`). `ELTALE_SPELL_AIM_LOG=2
 | random round you | Rock Combo | casts; no facing is set | the band 20..39 from you where the rocks fall. Where they fall is random (`Math_Rand`), so no monster is ringed |
 | a point ahead | Water Pillar Lv1/2/3, Fire Pillar | faces the point | the circle where it stands, at its fixed distance |
 | on a monster | Compression, Extinction, Weakness Lv1/Lv2, Magnet Rock, Soul Search Lv1, Ice Knife, Drain Magic, Restriction Lv1, Silence Lv1, Slow Enemy | faces the point; the game picks the monster nearest that bearing | its ring |
-| a line | Walking Water, Cyclone, Large Cutter, Magma Ball (three, at 0 and 45 degrees each side), Rolling Rock Lv1/Lv2 (across the front) | faces the point | a band along its path, as wide as it hits |
-| a lob | Fire Bomb, Rock Lv1/2/3 | faces the point | a faint line out and the landing circle |
-| a fan of bolts | Fire Ball Lv1/2/3 | faces the point | each bolt's heading (0, then 45 to the right, then 45 to the left) to its real reach, faintly; their targets ringed |
-| homing | Homing Arrow Lv1/Lv2, Wind Cutter Lv1/2/3 | faces the point | the targets' rings (no paths) |
+| a line | Walking Water, Cyclone, Large Cutter, Magma Ball (three, at 0 and 45 degrees each side), Rolling Rock Lv1/Lv2 (across the front) | faces the point | each one's tunnel |
+| a lob | Fire Bomb, Rock Lv1/2/3 | faces the point | a thin arc for its flight, and its tunnel where it can touch a monster: Rock's lower flight and where it lands, Fire Bomb's blast only |
+| a fan of bolts | Fire Ball Lv1/2/3 | faces the point | the bolts' cone (how far they can reach, turning), each bolt's tunnel inside it |
+| homing | Homing Arrow Lv1/Lv2, Wind Cutter Lv1/2/3 | faces the point | each arrow's or cutter's tunnel |
 
-An area that would hit nothing is grey; one that would hit is light blue.
+An area or tunnel that would hit nothing is grey; one that would hit is light blue (each cast's tunnel on its own).
+
+### Tunnels
+
+A moving spell's hit test (`Magic_FindTargetInRange`) runs once a tick, where the effect is then. The tunnel is the
+ground it can touch: round each place where the test runs, a disc whose radius `w` is how far past that place a
+monster's edge can be and still be touched,
+
+```
+w = sqrt((extent + r)^2 - dy^2) - r     dy = (the monster's middle - the effect's height) / 2
+```
+
+for a monster of the battle standing on the ground there (its radius r, its middle's height above its feet; with
+several kinds of monster, the widest). So **a monster whose edge reaches the tunnel is hit, and one outside it is
+not**:
+
+- **Width.** On the ground (the lines, Fire Ball at chest height) `w` is about the spell's extent. High up it narrows,
+  and above `extent + r` from the monster's middle (twice that in height, as dy is halved) it is nothing: there only a
+  thin arc is drawn, at the effect's height.
+- **Ticks.** The test runs at each tick's place only, so a fast, thin effect (a Homing Arrow, 12 a tick, extent 2) is
+  a string of beads: a monster between two of them is missed. The band's sides follow that exactly: along the path its
+  half-width is where a monster beside it is touched (the discs of radius `w + r` round the places, less r); past its
+  ends it is the end's own disc.
+- **When.** Only where the test runs: not during a spell's start delay (Rock's wait over the caster's head), for Fire
+  Bomb (`Magic_FindTargetInRangeIfLanded`) only after it lands, and a spell that is not piercing ends at its first hit
+  (the path ends there).
+- **Each cast** has its tunnel (Magma Ball's three, Wind Cutter's six), blue when that cast hits.
+
+**Rock's flight does hit monsters on the ground**, once it is low enough. It waits over the caster's head untested,
+then falls for about 15 ticks, testing every tick, and stays 8 more where it lands:
+
+| Spell | Extent | Where its flight can touch a monster on the ground (r 5.6, middle 5.6 up) |
+| --- | --- | --- |
+| Rock Lv1 | 5 | from about 24 above the ground down: the last 9 of its 15 flying ticks, about the last 30 of its 50 |
+| Rock Lv2 | 10 | its whole flight (from 32 up), 2 wide at first, 10 as it lands |
+| Rock Lv3 | 15 | its whole flight (from 37 up), 7.4 wide at first, 15 as it lands |
+
+In play, Rock Lv3 aimed between the two monsters hit the one it was not aimed at in the air, 20 above the ground
+(`rock3_flight`), and Rock Lv1 the same way passed over it (`rock1_flight`), each as its tunnel showed. **Fire Bomb
+hits nothing in flight**: its tunnel is only its blast, 18 round where it lands (49 ahead), for 9 ticks.
+
+### Cones
+
+Fire Ball's bolts home (strength 2, acceleration 1, the top speed 10): a bolt flies at the monster nearest its own
+heading (no range limit). Its cone is the ground it can reach and touch whatever monster that is: each bolt, from
+its real launch, run toward a monster of the battle's kind put at every place round the caster (every 5 degrees,
+every 5 units out to 30 past its straight reach), and every tunnel disc of every run put together. It is kept as
+the nearest and furthest covered distance along 240 bearings from the bolt's first place.
+
+The bolts start slow (2.2 a tick) and turn fast, so they can turn right round within their 9-11 ticks: **the cone is
+a lopsided disc, not a narrow wedge**. Measured from where a bolt starts (9.5 ahead of the caster) to the edge of a
+monster it can touch:
+
+| | ahead | 45 degrees off | 90 off | behind |
+| --- | --- | --- | --- | --- |
+| Lv1 (9 ticks) | 51 | 47 | 39 | 27 |
+| Lv3 (11 ticks) | 66 | 61 | 51 | 38 |
+
+The bolts of Lv2 and Lv3 start at the same place and their cones nearly coincide: they are drawn as one area (their union), faintly, and each bolt's predicted tunnel
+inside it, stronger.
+
+- A monster outside the cone is never hit by the bolt. One inside it is hit when it is the bolt's monster (nearest
+  its heading) or in the way of the bolt's path, except within about a unit of the far edge (the cone is every
+  tunnel of every run; a monster just inside may need a path to some other place to be touched).
+- So with one monster left, Fire Ball within its cone hits it whichever way it is pointed.
+- Building a cone is about 1400 runs of a bolt (8 ms for Lv3's three): it is kept for each cast and turned with the
+  facing about the caster, and built again only when the spell, the caster's place or the monsters' kinds change
+  (one bolt a read, the others follow at the next reads). The kept cone turned differs from one built for that facing
+  by the ground's slope under it only (0.55 at most on battle-stuck's field). The cast's logged cone is always built.
+
+Wind Cutter and Homing Arrows home far harder (strength 10) for 25-30 ticks and reach 90 to 160 (SPELL_TARGETING.md):
+their cones would cover most of the arena round the caster and say nothing. They show each cutter's and arrow's tunnel only.
 
 ## How it works
 
@@ -80,8 +152,13 @@ It runs after the menus' pointer (`port/os/controller.c`: the spell UI, then `Po
 - **The pointer.** It must be over the picture and not over the game's targets (`Port_MouseOverTarget`, new in
   mouse_menu.c) or the spell UI (`Port_SpellUiPointerOver`: its pieces, and the open panel's area).
 - **What it points at.**
-  - **A monster:** each live monster's body, from its feet to its top, as wide as its radius plus 3 units, projected
-    with the view the last picture was drawn with. That view is kept by `Port_SpellAimViewDrawn` at the end of the frame
+  - **A monster:** the pointer is on a live monster's body on the picture (`body_on_screen`): a column from its feet to
+    its top, 0.6 of its radius wide each side (its model is slimmer than the radius the hit test adds), its feet end
+    taken down to the near edge of its footprint (where its legs are drawn). It is picked within 1 unit of that box
+    (about 4 pixels at 1080p) and, once picked, stays picked to 3 (no flicker at the edge). Just off its body, or above
+    its head, is the ground: pointing past a monster aims at the ground there freely. (The pick used to take the
+    radius and 3 more round the whole column: 12 units each side for a Were-Rabbit, where now 6.4 picks and 8.4
+    keeps.) The bodies are projected with the view the last picture was drawn with. That view is kept by `Port_SpellAimViewDrawn` at the end of the frame
     build, before the mouse camera puts the game's eye back, so it includes the turned and raised eye and the
     widescreen perspective (`camera_view_mtx` x `camera_proj_mtx`, `ND_ASPECT`). The pointer is in CENTRE units, which
     are the same at every aspect.
@@ -149,8 +226,9 @@ The preview is world-space triangles, drawn through the native renderer's new ov
 - **One material.** The game's ZB_XLU_SURF blending (depth-tested, not written) with the shade as the colour. It uses
   the program and pipeline state the game's own translucent effects use: no new shader. `warm_test --check` checks the
   pipeline list.
-- **Shapes follow the ground.** Circles, bands and lines are cut into small pieces whose corners sit 0.45 above the
-  floor under them (the same floor query).
+- **Shapes follow the ground.** Circles, tunnels, cones and lines are cut into small pieces whose corners sit 0.45 above
+  the floor under them: the same floor query, kept on a 2-unit grid while a spell is being aimed (a corner's height is
+  between its four nearest), so the drawing costs about 0.1 ms a tick.
 
 Monsters glow with a gold ring at their feet, a pulsing fill inside it, and one more ring for each extra hit.
 
@@ -265,6 +343,11 @@ They could take the same hook later, in `Player_StartUseItem`. Not done.
 | 1 | `P1_AIM_CAST` | the copy run again for the cast's facing |
 | 1 | `P1_AIM_ENEMIES` | positions |
 | 1 | `P1_AIM_HITS` | `predicted=` against `actual=` (from the effects' slots and the monsters' `magic_hit_slot_bits`): match, DIFFER, or random (Rock Combo) |
+| 1 | `P1_AIM_TUNNEL` | at the cast, each cast's tunnel as drawn: `land=` (the place it landed) and each live place `k:x,y,z,w;` |
+| 1 | `P1_AIM_CONE` | at the cast, each cone: its start and each covered bearing `bin:nearest:furthest;` (240 bins) |
+| 1 | `P1_AIM_HITAT` | each hit as the game made it: the effect's slot and place, the monster and where it stood |
+| 1 | `P1_AIM_COMPASS` | with `P1_AIM_SCREEN`: the ground 40 from the player every 5 degrees (`b<deg>=x,y`) and each monster's body as the pick takes it (`body<i>=feet x,y,top x,y,half-width`) |
+| 2 | `P1_AIM_COST` | at the cast, what a preview costs: built (with its cones), turned (a kept cone), the drawing, and the kept cone's difference from one built |
 | 2 | `P1_AIM_SPELLDEF` | the table |
 | 2 | `P1_AIM_FX` | the game's live effects each tick |
 | 3 | `P1_AIM_SIMPATH` | the copy's paths at the cast |
@@ -293,7 +376,28 @@ The save is battle-stuck's quick save with spirit levels 48 and MP 60 (a copy). 
 | lift | the same Fire Ball with the camera raised and not: the same game |
 | idle | aim on with no pointer against aim off: the same frame list and sound |
 
-`--verify [SPELL ...]` runs the check against the game described above, for every aiming spell.
+`--verify [SPELL ...]` runs the check against the game described above, for every aiming spell, and for every moving
+one the tunnel check below.
+
+The tunnels and cones (`t_*`, `cone_*`, `*_flight`; all at 4:3 and 16:9): each moving spell cast at a monster and at a
+bearing that passes one by (`b:DEG`: the pointer on the ground 40 from the player at that bearing, from
+`P1_AIM_COMPASS`). The checks use the shapes the cast's copy logs (`P1_AIM_TUNNEL`, `P1_AIM_CONE`), the monsters at
+the cast and the game's own hits (`P1_AIM_HITS`, `P1_AIM_HITAT`):
+
+| Check | What |
+| --- | --- |
+| tunnel | every monster is hit exactly when its edge is inside the tunnel (`e0=-4.21 hit`: 4.21 inside), and each hit came from a live place of the tunnel, with the monster inside that place's disc. After a kill (Wind Cutter Lv2/Lv3, below) the hits up to it |
+| cone | every monster hit is inside the cone |
+| outside / off_line | the monster is outside the cone; or well off its bolt's straight line (by more than the bolt's reach and 2) |
+| flight | the monster was hit while the rock was in the air exactly when the tunnel before the landing reaches it |
+
+| Case | What |
+| --- | --- |
+| t_rock1, t_rock1_side, t_rock2, t_rock3_side, t_bomb, t_water, t_cyclone, t_cyclone_side, t_cutter, t_magma, t_roll1, t_roll2, t_fire1/2/3, t_wind1/2/3, t_arrow1/2 | every moving spell: tunnel (and cone for Fire Ball) |
+| cone_in1, cone_in3 | Fire Ball Lv1 facing 75, Lv3 facing 90: the near monster, 18 and 33 degrees off a bolt's heading, is that bolt's: it turns and hits it, 19 and 34 off its straight line, inside the cone |
+| cone_out1, cone_out3 | Fire Ball Lv1 facing 327 (its monster 68 degrees off, 70 from its start) and Lv3 facing 215 (both monsters behind, about 72): outside the cones, missed |
+| rock3_flight, rock1_flight | Rock Lv3 and Lv1 facing 46, between the monsters (the far one its target): Lv3 hits the near one in the air, Lv1 passes over it |
+| pick | Water Pillar Lv2 aimed with the pointer on the far monster's body (picked), 2 units off its side (kept), 4 off (the ground), 2 off again (still the ground), 2.5 above its head (the ground), on it again (picked) |
 
 The pictures are in `OUT/pictures/<case>-<43|169>-<n>.png`: n 0 is the preview just before the click, n 1 the cast.
 The undo case has four: folded, open after the undo, the pointer on the panel, folded again.
@@ -301,6 +405,8 @@ The undo case has four: folded, open after the undo, the pointer on the panel, f
 ## Not done
 
 - Item spells (above).
-- A preview of the paths of homing spells (rings only, as decided).
+- Cones for Wind Cutter and Homing Arrows (they would cover most of the arena; their tunnels are drawn).
 - Rock Combo's monsters are not ringed: where its rocks fall is random.
-- The preview does not know about kills by an earlier bolt of the same spell (above).
+- The preview does not know about kills by an earlier bolt of the same spell (above). Wind Cutter Lv2 and Lv3 at
+  battle-stuck's monsters show it: the first cutter kills the near monster, so the later cutters' real paths leave
+  their tunnels (in the tests the monsters hit were still the ones predicted, by other cutters).

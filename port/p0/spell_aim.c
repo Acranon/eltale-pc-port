@@ -10,7 +10,8 @@
  *   on the caster before the cast animation; nothing else. Every rule of the spell (Magic_CreateCastEffect 18 ticks
  *   later: placement, launch, target choice, repeats) then reads that facing, as if the player had turned.
  * - Port_SpellAimDraw, in Hud_Draw: the preview as world-space overlays (the native renderer's overlay triangles,
- *   render.h v10): areas on the ground, lines, a fan, landing circles, a ring under each monster that would be hit.
+ *   render.h v10): areas on the ground; for every moving spell the tunnel where its hit test can touch a monster, a
+ *   thin arc where it flies out of reach, and a homing bolt's cone; a ring under each monster that would be hit.
  *
  * The copy of the spell code (simulate): Magic_CreateCastEffect, the place, select, move and find handlers and the
  * repeats of Magic_UpdateEffects, with the same expressions (the same float and double steps) on a local copy of the
@@ -40,6 +41,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define PI_F 3.14159265f
 #define MAX_ENEMIES 6
@@ -86,10 +88,10 @@ enum {
     K_RANDOM,   /* random places round the caster (place 7): their ring */
     K_POINT,    /* a static area ahead (place 3/4/8/9): its circle, swung by the facing */
     K_TARGET,   /* on the enemy nearest the facing (place 6, or find 1): that enemy's ring */
-    K_LINE,     /* a straight mover (homing 0, no landing): a band along its path */
-    K_LOB,      /* a mover that lands (floor 1): its landing circle */
-    K_FAN,      /* short homing bolts from ahead (place 3, homing): a fan to their reach */
-    K_HOMING,   /* homing movers: the rings of their targets */
+    K_LINE,     /* a straight mover (homing 0, no landing): its tunnel */
+    K_LOB,      /* a mover that lands (floor 1): its arc and its tunnel (where it is low enough, and after it lands) */
+    K_FAN,      /* short homing bolts from ahead (place 3, homing): their cone and each one's tunnel */
+    K_HOMING,   /* homing movers: each one's tunnel */
 };
 static const char *const kind_names[] = { "none", "self", "arena", "around", "random", "point", "target", "line",
                                           "lob", "fan", "homing" };
@@ -179,11 +181,27 @@ typedef struct Cast {
     int target;              /* the enemy it chose (-1: none, or the caster) */
     int path_n;
     float path[MAX_PATH][3]; /* where it was each tick (its place first) */
-    int landed;
+    /* The tunnel: at each place after a tick, whether the hit test ran there (live) and how far past that place, on
+     * the ground, a monster's edge can be and still be touched (w: the hit test's reach, extent + radius, less the
+     * halved height difference, less the radius; the most over the battle's monsters, battle_models). A monster
+     * whose centre is nearer than w + its radius to a live place is hit there. */
+    u8 live[MAX_PATH];
+    float w[MAX_PATH];
+    int landed, land_k;      /* (land_k: the place where it landed) */
     float land[3];
     float reach;             /* the length of its path */
     u16 hits;
 } Cast;
+
+/* A homing bolt's cone: the ground its tunnel can cover whatever monster it homes on (each tunnel of the bolt toward a
+ * monster put at every place round the caster, every 5 degrees and 5 units), as the nearest and furthest covered
+ * distance from the bolt's first place along each bearing (CONE_BINS, world bearings, sin/cos as Math_Atan2) */
+#define CONE_BINS 240
+typedef struct Cone {
+    int ok;
+    float sx, sz;
+    float rmin[CONE_BINS], rmax[CONE_BINS];
+} Cone;
 
 typedef struct Preview {
     int valid;
@@ -196,6 +214,8 @@ typedef struct Preview {
     u8 hit_count[MAX_ENEMIES]; /* effects that touch each enemy */
     u16 hits;                /* enemies touched */
     float margin[MAX_ENEMIES]; /* the nearest each came to the hit test's reach (its distance less extent + radius) */
+    Cone cone[MAX_CASTS];    /* (homing bolts: cone_wanted) */
+    float body_r;            /* the battle's smallest monster radius (the tunnel's sides: tunnel_run) */
 } Preview;
 
 static void sim_select(SimFx *p) {
@@ -446,7 +466,297 @@ static int sim_find_eligible(SimFx *p) {
     return ret;
 }
 
-static void simulate(u32 id, float yaw, Preview *out) {
+/* ---- the tunnel's width: the battle's monsters as the hit test sees them ------------------------------------------- */
+
+/* A monster as Magic_FindTargetInRange and Magic_MoveHomingEffect see it, wherever it stands: its radius, its middle's
+ * height above the ground under it (the hit test's dy and the homing's aim), and whether dy is 0 (kind 2) */
+typedef struct Model {
+    float r, off;
+    int flat;
+} Model;
+#define MAX_MODELS MAX_ENEMIES
+
+/* the ground under (x, z) near the height ref (the floor query from 40 above it), else ref */
+static float ground_y(float x, float z, float ref) {
+    float fy;
+    if (!floor_y(x, ref + 40.0f, z, FLOOR_FLAGS, &fy) || fy < ref - 60.0f) fy = ref;
+    return fy;
+}
+
+/* the live monsters' kinds of body (alike ones once); none: a Were-Rabbit's (r 5.6, its middle 5.6 up) */
+static int battle_models(Model *m) {
+    int n = 0;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (!alive(i)) continue;
+        const Actor *a = enemy(i);
+        Model x;
+        x.r = radius_of(a);
+        x.flat = a->stats->unk0 == 2;
+        if (a->stats->unk0 == 1) x.off = a->battle->unk94 - ground_y(a->x, a->z, a->battle->unk94 - x.r);
+        else x.off = (float)(a->stats->body_height * a->scale * 0.5);
+        int same = 0;
+        for (int k = 0; k < n; k++)
+            if (fabsf(m[k].r - x.r) < 0.01f && fabsf(m[k].off - x.off) < 0.01f && m[k].flat == x.flat) same = 1;
+        if (!same && n < MAX_MODELS) m[n++] = x;
+    }
+    if (!n) m[n++] = (Model){ 5.6f, 5.6f, 0 };
+    return n;
+}
+
+/* How far past an effect at height y (the ground gy under it), on the ground, a monster's edge can be and be touched:
+ * for each kind of monster standing there, sqrt((extent + r)^2 - dy^2) - r, dy half the height from the effect to its
+ * middle; the most of them. Out of reach of all: -1e9. (Between -r and 0: only a monster right under it.) */
+static float bead_w(float y, float gy, float extent, const Model *m, int nm) {
+    float best = -1e9f;
+    for (int k = 0; k < nm; k++) {
+        const float reach = extent + m[k].r;
+        float w;
+        if (m[k].flat) {
+            w = extent;
+        } else {
+            const float dy = (gy + m[k].off - y) * 0.5f, r2 = reach * reach - dy * dy;
+            if (r2 <= 0.0f) continue;
+            w = sqrtf(r2) - m[k].r;
+        }
+        if (w > best) best = w;
+    }
+    return best;
+}
+
+/* the ground near the height ref for the cones' many places and the drawing's corners: on a GSTEP grid, kept while
+ * the map and ref stay (and dropped when the spell input closes) */
+#define GCACHE 65536
+#define GSTEP 2.0f
+static struct { int x, z, ok; float y; } gcache[GCACHE];
+static float gcache_ref;
+static const void *gcache_map;
+static void gcache_use(float ref) {
+    if (gcache_map == (const void *)map_subarea_grid && fabsf(gcache_ref - ref) < 0.5f) return;
+    for (int i = 0; i < GCACHE; i++) gcache[i].ok = 0;
+    gcache_ref = ref;
+    gcache_map = map_subarea_grid;
+}
+static float ground_cached(float x, float z) {
+    const int ix = (int)floorf(x / GSTEP + 0.5f), iz = (int)floorf(z / GSTEP + 0.5f);
+    const unsigned h = ((unsigned)ix * 73856093u ^ (unsigned)iz * 19349663u) & (GCACHE - 1);
+    if (!gcache[h].ok || gcache[h].x != ix || gcache[h].z != iz) {
+        gcache[h].ok = 1, gcache[h].x = ix, gcache[h].z = iz;
+        gcache[h].y = ground_y(ix * GSTEP, iz * GSTEP, gcache_ref);
+    }
+    return gcache[h].y;
+}
+
+/* ---- the cones of homing bolts ------------------------------------------------------------------------------------ */
+
+/* (a preview is worked out at every read while aiming: a cone, many runs of the bolt, is kept per cast and, while only
+ * the facing changes, turned with it about the caster; cone_get) */
+
+/* which casts get a cone: Fire Ball's bolts (the fan) */
+static int cone_wanted(int kind) { return kind == K_FAN; }
+
+/* Magic_MoveHomingEffect toward a monster whose middle is at (tx, tmid, tz): the same steps as sim_move_homing */
+static int hypo_move(SimFx *p, float tx, float tmid, float tz) {
+    const MagicSpeedTable speeds = magic_homing_strengths, turns = magic_homing_accels;
+    f32 dx, dy, dz, vx, vy, vz, d;
+    if (p->flags & 1) return 0;
+    if (p->flags & 2) {
+        dz = 0.0f;
+        dy = 0.0f;
+        dx = 0.0f;
+    } else {
+        dx = tx - p->x;
+        dy = tmid - p->y;
+        dz = tz - p->z;
+        d = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (d == 0.0f) d = 1e-6f;
+        dx = speeds.v[p->cfg->homing_strength_index] * dx / d;
+        dy = speeds.v[p->cfg->homing_strength_index] * dy / d;
+        dz = speeds.v[p->cfg->homing_strength_index] * dz / d;
+    }
+    vx = p->vx;
+    vy = p->vy;
+    vz = p->vz;
+    d = sqrtf(vx * vx + vy * vy + vz * vz);
+    if (d != 0.0f) {
+        vx /= (f64)d;
+        vy /= (f64)d;
+        vz /= (f64)d;
+        dx += vx;
+        dy += vy;
+        dz += vz;
+    }
+    d = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (d == 0.0f) d = 1e-6f;
+    dx = turns.v[p->cfg->homing_accel_index] * dx / d;
+    dy = turns.v[p->cfg->homing_accel_index] * dy / d;
+    dz = turns.v[p->cfg->homing_accel_index] * dz / d;
+    p->vx = p->vx * 0.9 + dx;
+    p->vy = p->vy * 0.9 + dy;
+    p->vz = p->vz * 0.9 + dz;
+    if (p->cfg->launch_flags & 1) p->vy -= 0.3;
+    p->x += p->vx;
+    p->y += p->vy;
+    p->z += p->vz;
+    if (p->cfg->floor_collision_mode != 0) {
+        const f32 fy = ground_cached(p->x, p->z);
+        if (p->cfg->floor_collision_mode == 1) {
+            if (p->y < fy) {
+                p->flags |= 1;
+                p->frames_left = 8;
+                p->vz = 0.0f;
+                p->vy = 0.0f;
+                p->vx = 0.0f;
+                return 1;
+            }
+        } else if (p->cfg->floor_collision_mode == 2) {
+            p->y = fy;
+        }
+    }
+    return 0;
+}
+
+/* the bins' bearings (sin, cos) */
+static float bin_dir[CONE_BINS][2];
+static void bins_init(void) {
+    if (bin_dir[0][1] == 1.0f) return;
+    for (int i = 0; i < CONE_BINS; i++) bin_dir[i][0] = sinf(i * 2.0f * PI_F / CONE_BINS), bin_dir[i][1] = cosf(i * 2.0f * PI_F / CONE_BINS);
+}
+
+/* a live place of a tunnel into the cone: the bearings it covers from (sx, sz), nearest and furthest */
+static void cone_add(Cone *c, float bx, float bz, float w) {
+    if (w <= 0.0f) return;
+    const float ox = bx - c->sx, oz = bz - c->sz, d = sqrtf(ox * ox + oz * oz);
+    int b0 = 0, b1 = CONE_BINS - 1;
+    const float step = 2.0f * PI_F / CONE_BINS;
+    if (d > w) {
+        const float beta = atan2f(ox, oz), alpha = asinf(w / d);
+        b0 = (int)floorf((beta - alpha) / step);
+        b1 = (int)ceilf((beta + alpha) / step);
+    }
+    for (int b = b0; b <= b1; b++) {
+        const int i = ((b % CONE_BINS) + CONE_BINS) % CONE_BINS;
+        const float ux = bin_dir[i][0], uz = bin_dir[i][1];
+        const float along = ox * ux + oz * uz, perp2 = d * d - along * along;
+        if (perp2 > w * w) continue;
+        const float half = sqrtf(w * w - perp2);
+        float t0 = along - half, t1 = along + half;
+        if (t1 < 0.0f) continue;
+        if (t0 < 0.0f) t0 = 0.0f;
+        if (t0 < c->rmin[i]) c->rmin[i] = t0;
+        if (t1 > c->rmax[i]) c->rmax[i] = t1;
+    }
+}
+
+/* The cone of a homing cast (its effect as placed, before its first tick): its tunnel toward a monster of each kind put
+ * at every place round the caster (every 5 degrees, every 5 units out to the bolt's reach and 30 more), each run as
+ * the game would (its delay, its life, the hit on that monster ending it or, piercing, flying on straight). */
+static void cone_build(Cone *c, const SimFx *init, const Actor *caster, const Model *m, int nm) {
+    const SpellDef *def = init->cfg;
+    bins_init();
+    c->ok = 1;
+    c->sx = init->x, c->sz = init->z;
+    for (int i = 0; i < CONE_BINS; i++) c->rmin[i] = 1e9f, c->rmax[i] = -1.0f;
+    /* how far it goes after a monster far ahead (along its launch), and 30 more: the furthest monster to try */
+    float far = 0.0f;
+    {
+        SimFx p = *init;
+        const float hl = sqrtf(p.vx * p.vx + p.vz * p.vz);
+        const float ux = hl > 1e-4f ? p.vx / hl : sinf(caster->rot), uz = hl > 1e-4f ? p.vz / hl : cosf(caster->rot);
+        int guard = 0;
+        while (p.frames_left != 0 && guard++ < 400) {
+            if (p.start_delay != 0) {
+                p.start_delay--;
+                continue;
+            }
+            p.frames_left--;
+            hypo_move(&p, init->x + ux * 1000.0f, init->y, init->z + uz * 1000.0f);
+            const float dx = p.x - caster->x, dz = p.z - caster->z, d = sqrtf(dx * dx + dz * dz);
+            if (d > far) far = d;
+        }
+        far += 30.0f;
+    }
+    for (int k = 0; k < nm; k++)
+        for (int a = 0; a < 72; a++) {
+            const float th = a * (2.0f * PI_F / 72.0f), ux = sinf(th), uz = cosf(th);
+            for (float dist = 5.0f; dist <= far; dist += 5.0f) {
+                const float tx = caster->x + ux * dist, tz = caster->z + uz * dist;
+                const float tmid = ground_cached(tx, tz) + m[k].off;
+                SimFx p = *init;
+                int guard = 0;
+                while (p.frames_left != 0 && guard++ < 400) {
+                    if (p.start_delay != 0) {
+                        p.start_delay--;
+                        continue;
+                    }
+                    p.frames_left--;
+                    hypo_move(&p, tx, tmid, tz);
+                    const int live = def->find_target_handler_index == 0 || (def->find_target_handler_index == 2 && (p.flags & 1));
+                    if (!live) continue;
+                    cone_add(c, p.x, p.z, bead_w(p.y, ground_cached(p.x, p.z), def->effect_extent, m, nm));
+                    if (p.flags & 2) continue; /* (piercing, after its hit: on straight, no other hit on it) */
+                    const float ddx = tx - p.x, ddz = tz - p.z, ddy = m[k].flat ? 0.0f : (tmid - p.y) * 0.5f;
+                    if (sqrtf(ddx * ddx + ddy * ddy + ddz * ddz) < def->effect_extent + m[k].r) {
+                        if (!(def->flags & 4)) p.frames_left = 0;
+                        else p.flags |= 2;
+                    }
+                }
+            }
+        }
+}
+
+/* The cone of cast n, from the kept one when only the facing changed since (turned by the change: the cones are the
+ * same round the caster whichever way it faces, but for the ground's slope under them), else built. fresh: built. */
+static struct {
+    int ok;
+    u32 spell;
+    u16 flags;
+    float x, y, z, yaw;
+    Model m[MAX_MODELS];
+    int nm;
+    Cone cone;
+} cone_kept[MAX_CASTS];
+
+static void cone_turn(Cone *dst, const Cone *src, float d_yaw, float sx, float sz) {
+    const float step = 2.0f * PI_F / CONE_BINS, shift = d_yaw / step;
+    dst->ok = 1;
+    dst->sx = sx, dst->sz = sz;
+    for (int i = 0; i < CONE_BINS; i++) {
+        /* the bearing it came from, between two kept bins */
+        const float f = i - shift;
+        const int a = ((int)floorf(f) % CONE_BINS + CONE_BINS) % CONE_BINS, b = (a + 1) % CONE_BINS;
+        const float t = f - floorf(f);
+        if (src->rmax[a] < 0.0f || src->rmax[b] < 0.0f) {
+            const int k = t < 0.5f ? a : b;
+            dst->rmin[i] = src->rmin[k], dst->rmax[i] = src->rmax[k];
+            continue;
+        }
+        dst->rmin[i] = src->rmin[a] + (src->rmin[b] - src->rmin[a]) * t;
+        dst->rmax[i] = src->rmax[a] + (src->rmax[b] - src->rmax[a]) * t;
+    }
+}
+
+static int cone_builds; /* (cones built at this preview: one a read while aiming, the others then follow, a read each) */
+static void cone_get(Cone *c, int n, int fresh, u32 spell, u16 flags, const SimFx *init, const Actor *caster, const Model *m, int nm) {
+    typeof(cone_kept[0]) *k = &cone_kept[n];
+    int same = k->ok && k->spell == spell && k->flags == flags && k->x == caster->x && k->y == caster->y &&
+                     k->z == caster->z && k->nm == nm;
+    for (int i = 0; same && i < nm; i++) /* (a flying monster's height bobs: within half a unit, the same) */
+        same = k->m[i].flat == m[i].flat && fabsf(k->m[i].r - m[i].r) < 0.01f && fabsf(k->m[i].off - m[i].off) < 0.5f;
+    if (same && !fresh) {
+        float d = caster->rot - k->yaw;
+        cone_turn(c, &k->cone, d, init->x, init->z);
+        return;
+    }
+    if (!fresh && cone_builds++) return; /* (c->ok 0: not drawn yet) */
+    cone_build(c, init, caster, m, nm);
+    k->ok = 1, k->spell = spell, k->flags = flags;
+    k->x = caster->x, k->y = caster->y, k->z = caster->z, k->yaw = caster->rot;
+    memcpy(k->m, m, sizeof(Model) * (size_t)nm);
+    k->nm = nm;
+    k->cone = *c;
+}
+
+static void simulate(u32 id, float yaw, Preview *out, int fresh) {
     const SpellDef *def = spell_def(id);
     const MagicSpeedTable sizes = magic_launch_speeds;
     Actor caster = player_state.actor; /* (a copy: its facing is the aim's) */
@@ -464,6 +774,14 @@ static void simulate(u32 id, float yaw, Preview *out) {
     out->casts = casts;
     for (int i = 0; i < MAX_ENEMIES; i++) out->margin[i] = 9999.0f;
     if (out->kind == K_SELF || out->kind == K_RANDOM) return;
+    Model models[MAX_MODELS];
+    const int nm = battle_models(models);
+    out->body_r = models[0].r;
+    for (int k = 1; k < nm; k++)
+        if (models[k].r < out->body_r) out->body_r = models[k].r;
+    const int cones = cone_wanted(out->kind);
+    if (cones) gcache_use(caster.y);
+    cone_builds = 0;
     for (int n = 0; n < casts; n++) {
         Cast *c = &out->cast[n];
         SimFx p;
@@ -494,6 +812,7 @@ static void simulate(u32 id, float yaw, Preview *out) {
         c->made = 1;
         c->path[0][0] = p.x, c->path[0][1] = p.y, c->path[0][2] = p.z;
         c->path_n = 1;
+        const SimFx init = p;
         int guard = 0;
         while (p.frames_left != 0 && guard++ < 400) {
             if (p.start_delay != 0) {
@@ -505,11 +824,15 @@ static void simulate(u32 id, float yaw, Preview *out) {
             int landed = def->move_handler_index == 0 ? sim_move_homing(&p) : sim_move_vertical(&p);
             if (landed && !c->landed) {
                 c->landed = 1;
+                c->land_k = c->path_n;
                 c->land[0] = p.x, c->land[1] = p.y, c->land[2] = p.z;
             }
             c->reach += sqrtf((p.x - ox) * (p.x - ox) + (p.z - oz) * (p.z - oz));
             if (c->path_n < MAX_PATH) {
+                const int live = def->find_target_handler_index == 0 || (def->find_target_handler_index == 2 && (p.flags & 1));
                 c->path[c->path_n][0] = p.x, c->path[c->path_n][1] = p.y, c->path[c->path_n][2] = p.z;
+                c->live[c->path_n] = (u8)live;
+                c->w[c->path_n] = live ? bead_w(p.y, ground_y(p.x, p.z, caster.y), def->effect_extent, models, nm) : -1e9f;
                 c->path_n++;
             }
             if (def->find_target_handler_index == 0 || (def->find_target_handler_index == 2 && (p.flags & 1)))
@@ -532,10 +855,19 @@ static void simulate(u32 id, float yaw, Preview *out) {
         }
         c->hits = p.hit_bits;
         out->hits |= p.hit_bits;
+        if (cones && def->move_handler_index == 0 && def->homing_strength_index != 0) {
+            cone_get(&out->cone[n], n, fresh, id, cast_flags, &init, &caster, models, nm);
+            /* (and the predicted tunnel itself) */
+            for (int k = 1; k < c->path_n; k++)
+                if (c->live[k]) cone_add(&out->cone[n], c->path[k][0], c->path[k][2], c->w[k]);
+        }
         for (int i = 0; i < MAX_ENEMIES; i++)
             if (p.hit_bits & (1u << i)) out->hit_count[i]++;
     }
 }
+
+static void build(const Preview *p);
+static int nverts;
 
 /* ---- the view the last picture was drawn with (for the pointer) -------------------------------------------------- */
 
@@ -620,28 +952,56 @@ static int ground_point(float sx, float sy, float py, float *gx, float *gz) {
     return 1;
 }
 
-/* the monster under the pointer (CENTRE units): its body from its feet to its top, its radius wide, a few units round */
-static int enemy_at(float sx, float sy) {
+/* A monster's body on the picture (CENTRE units), as the pick takes it: a column from its feet (f) to its top (t),
+ * half wide each side. The width is BODY_HALF of its radius (the models are slimmer than the radius the hit test adds;
+ * a Were-Rabbit's cloak is about 0.6 of it); the feet end goes down to the near edge of its footprint (its radius round
+ * its feet on the ground), where its legs are drawn toward the camera. 0 when it is not in front of the eye. */
+#define BODY_HALF 0.6f
+static int body_on_screen(const Actor *a, float *fx, float *fy, float *tx, float *ty, float *half) {
+    const float r = radius_of(a), mid = middle_y(a);
+    const float feet = a->stats->unk0 == 1 ? mid - r : a->y;
+    const float top = a->stats->unk0 == 1 ? mid + r : a->y + a->stats->body_height * a->scale;
+    float mx, my, rx, ry;
+    if (!project(a->x, feet, a->z, fx, fy) || !project(a->x, top, a->z, tx, ty) || !project(a->x, mid, a->z, &mx, &my) ||
+        !project(a->x + view.right[0] * r, mid + view.right[1] * r, a->z + view.right[2] * r, &rx, &ry))
+        return 0;
+    *half = sqrtf((rx - mx) * (rx - mx) + (ry - my) * (ry - my)) * BODY_HALF;
+    /* the footprint's edge toward the camera and away (along the ground, square to the view's right): the lower one */
+    const float gx = -view.right[2], gz = view.right[0], gl = sqrtf(gx * gx + gz * gz);
+    if (gl > 1e-4f)
+        for (int k = -1; k <= 1; k += 2) {
+            float px, py;
+            if (project(a->x + gx / gl * r * k, feet, a->z + gz / gl * r * k, &px, &py) && py > *fy) *fy = py;
+        }
+    return 1;
+}
+
+/* The monster under the pointer (CENTRE units): on its body (body_on_screen) or PICK_IN beyond it; the one picked already
+ * stays picked to PICK_STAY beyond it (no flicker at the edge). Just off a body is the ground: pointing past a monster
+ * aims there freely. */
+#define PICK_IN 1.0f
+#define PICK_STAY 3.0f
+
+/* how far (CENTRE units) a point is outside a body (under 0: inside): past its sides or its ends */
+static float body_distance(float sx, float sy, float fx, float fy, float tx, float ty, float half) {
+    const float ex = tx - fx, ey = ty - fy, len = sqrtf(ex * ex + ey * ey);
+    if (len < 1e-4f) return sqrtf((sx - fx) * (sx - fx) + (sy - fy) * (sy - fy)) - half;
+    const float ux = ex / len, uy = ey / len;
+    const float along = (sx - fx) * ux + (sy - fy) * uy, side = fabsf((sx - fx) * uy - (sy - fy) * ux);
+    const float past = along < 0.0f ? -along : along > len ? along - len : 0.0f;
+    const float out = side - half;
+    return out > past ? out : past;
+}
+
+static int enemy_at(float sx, float sy, int current) {
     int best = -1;
     float best_d = 1e9f;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!alive(i)) continue;
-        const Actor *a = enemy(i);
-        const float r = radius_of(a), mid = middle_y(a);
-        const float feet = a->stats->unk0 == 1 ? mid - r : a->y;
-        const float top = a->stats->unk0 == 1 ? mid + r : a->y + a->stats->body_height * a->scale;
-        float fx, fy, tx, ty, mx, my, rx, ry;
-        if (!project(a->x, feet, a->z, &fx, &fy) || !project(a->x, top, a->z, &tx, &ty) ||
-            !project(a->x, mid, a->z, &mx, &my) ||
-            !project(a->x + view.right[0] * r, mid + view.right[1] * r, a->z + view.right[2] * r, &rx, &ry))
-            continue;
-        const float rpx = sqrtf((rx - mx) * (rx - mx) + (ry - my) * (ry - my)) + 3.0f;
-        /* the distance to the segment feet..top */
-        const float ex = tx - fx, ey = ty - fy, len2 = ex * ex + ey * ey;
-        float t = len2 > 1e-6f ? ((sx - fx) * ex + (sy - fy) * ey) / len2 : 0.0f;
-        t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
-        const float qx = fx + ex * t - sx, qy = fy + ey * t - sy, d = sqrtf(qx * qx + qy * qy);
-        if (d <= rpx && d - rpx < best_d) best_d = d - rpx, best = i;
+        float fx, fy, tx, ty, half;
+        if (!body_on_screen(enemy(i), &fx, &fy, &tx, &ty, &half)) continue;
+        const float d = body_distance(sx, sy, fx, fy, tx, ty, half) - (i == current ? PICK_STAY : PICK_IN);
+        if (d <= 0.0f && d < best_d) best_d = d, best = i;
     }
     return best;
 }
@@ -668,6 +1028,7 @@ static struct {
     u32 track_spell;
     u16 track_predicted, track_actual, track_slots;
     int track_ticks, track_seen;
+    u16 track_seen_pairs[16]; /* (slot, enemy) hits logged */
     unsigned tick;
 } A = { .target = -1 };
 
@@ -715,6 +1076,27 @@ static void log_preview(const char *tag, const Preview *p) {
     for (int i = 0; i < MAX_ENEMIES; i++)
         if (alive(i)) printf("e%d:%.2f,", i, p->margin[i]);
     printf("\n");
+}
+
+/* the tunnels and cones as drawn (the tests check the game's hits against them): each cast's live places with their
+ * disc (x, z, w; w <= 0 not drawn), and each cone's covered bearings (bin:nearest:furthest) */
+static void log_shapes(const Preview *p) {
+    for (int n = 0; n < p->casts; n++) {
+        const Cast *c = &p->cast[n];
+        if (!c->made) continue;
+        printf("P1_AIM_TUNNEL vi=%llu spell=%d.%d cast=%d land=%d beads=", vi(), (int)(p->spell >> 8) & 0xF, (int)p->spell & 0xFF, n,
+               c->landed ? c->land_k : -1);
+        for (int k = 1; k < c->path_n; k++)
+            if (c->live[k] && c->w[k] > -1e8f) printf("%d:%.2f,%.2f,%.2f,%.2f;", k, c->path[k][0], c->path[k][1], c->path[k][2], c->w[k]);
+        printf("\n");
+        const Cone *cn = &p->cone[n];
+        if (!cn->ok) continue;
+        printf("P1_AIM_CONE vi=%llu spell=%d.%d cast=%d start=%.2f,%.2f bins=%d r=", vi(), (int)(p->spell >> 8) & 0xF,
+               (int)p->spell & 0xFF, n, cn->sx, cn->sz, CONE_BINS);
+        for (int i = 0; i < CONE_BINS; i++)
+            if (cn->rmax[i] >= 0.0f) printf("%d:%.2f:%.2f;", i, cn->rmin[i], cn->rmax[i]);
+        printf("\n");
+    }
 }
 
 static void log_enemies(void) {
@@ -769,7 +1151,15 @@ static void watch_effects(void) {
         if (made) A.track_slots |= (u16)(1u << s), A.track_seen = 1;
         if (!(A.track_slots & (1u << s))) continue;
         for (int i = 0; i < MAX_ENEMIES; i++)
-            if (enemy_slots[i].battle.magic_hit_slot_bits & magic_slot_bits[s]) A.track_actual |= (u16)(1u << i);
+            if (enemy_slots[i].battle.magic_hit_slot_bits & magic_slot_bits[s]) {
+                if (log_level() && !(A.track_seen_pairs[s] & (1u << i))) {
+                    const Actor *a = enemy(i);
+                    printf("P1_AIM_HITAT vi=%llu slot=%d enemy=%d fx=%.2f,%.2f,%.2f left=%d flags=%x at=%.2f,%.2f,%.2f r=%.2f\n", vi(), s,
+                           i, e->x, e->y, e->z, e->frames_left, e->flags, a->x, a->y, a->z, radius_of(a));
+                }
+                A.track_seen_pairs[s] |= (u16)(1u << i);
+                A.track_actual |= (u16)(1u << i);
+            }
     }
     int repeats = 0;
     for (int r = 0; r < 4; r++)
@@ -816,6 +1206,7 @@ void Port_SpellAimRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     A.active = 0;
     if (id < 0 || kind == K_SELF) {
         A.preview.valid = 0;
+        gcache_map = NULL; /* (the kept ground: again for the next spell, the map may have changed) */
         return;
     }
 
@@ -843,8 +1234,9 @@ void Port_SpellAimRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
 
     /* the facing: toward the monster or the ground point under the pointer; else the player's own */
     float yaw = player_state.actor.rot;
+    if (!A.active) A.target = -1;
     if (A.active) {
-        A.target = enemy_at(x, y);
+        A.target = enemy_at(x, y, A.target);
         if (A.target >= 0) {
             A.gx = enemy(A.target)->x;
             A.gz = enemy(A.target)->z;
@@ -861,7 +1253,7 @@ void Port_SpellAimRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         if (directional(kind) && (A.gx != player_state.actor.x || A.gz != player_state.actor.z))
             yaw = Math_Atan2(A.gx - player_state.actor.x, A.gz - player_state.actor.z);
     }
-    simulate((u32)id, yaw, &A.preview);
+    simulate((u32)id, yaw, &A.preview, 0);
 
     if (log_level()) {
         char h[160];
@@ -888,6 +1280,20 @@ void Port_SpellAimRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         if (strcmp(sc, last_screen)) {
             strcpy(last_screen, sc);
             printf("P1_AIM_SCREEN vi=%llu%s\n", vi(), sc);
+            /* (for the tests' aims: the ground 40 from the player every 5 degrees of bearing, and each monster's body
+             * as the pick sees it: its feet and top on the picture and its half-width) */
+            const Actor *pl = &player_state.actor;
+            printf("P1_AIM_COMPASS vi=%llu", vi());
+            for (int b = 0; b < 360; b += 5) {
+                const float th = b * PI_F / 180.0f;
+                if (project(pl->x + sinf(th) * 40.0f, pl->y, pl->z + cosf(th) * 40.0f, &sx, &sy)) printf(" b%d=%.2f,%.2f", b, sx, sy);
+            }
+            for (int i = 0; i < MAX_ENEMIES; i++) {
+                float fx, fy, tx, ty, half;
+                if (alive(i) && body_on_screen(enemy(i), &fx, &fy, &tx, &ty, &half))
+                    printf(" body%d=%.2f,%.2f,%.2f,%.2f,%.2f", i, fx, fy, tx, ty, half);
+            }
+            printf("\n");
         }
     }
 
@@ -921,8 +1327,8 @@ void Port_SpellAimApply(struct Player *p, struct Actor *a) {
         if (px != a->x || pz != a->z) a->rot = Math_Atan2(px - a->x, pz - a->z);
     }
     A.session = 0;
-    Preview cast;
-    simulate(A.pending_spell, a->rot, &cast);
+    static Preview cast;
+    simulate(A.pending_spell, a->rot, &cast, 1);
     A.track = 1;
     A.track_spell = A.pending_spell;
     A.track_predicted = cast.hits;
@@ -930,10 +1336,38 @@ void Port_SpellAimApply(struct Player *p, struct Actor *a) {
     A.track_slots = 0;
     A.track_ticks = 0;
     A.track_seen = 0;
+    memset(A.track_seen_pairs, 0, sizeof A.track_seen_pairs);
     if (log_level()) {
         printf("P1_AIM_APPLY vi=%llu spell=%d.%d rot=%.3f>%.3f\n", vi(), (int)(A.pending_spell >> 8) & 0xF,
                (int)A.pending_spell & 0xFF, before, a->rot);
         log_preview("P1_AIM_CAST", &cast);
+        if (log_level() >= 2) {
+            /* what a preview costs (each read while aiming works one out) */
+            static Preview t;
+            const clock_t t0 = clock();
+            for (int k = 0; k < 20; k++) simulate(A.pending_spell, a->rot, &t, 1);
+            const clock_t t1 = clock();
+            /* and a kept cone turned by a facing 0.7 off and back, against the cone built (the slope's difference) */
+            simulate(A.pending_spell, a->rot + 0.7f, &t, 1);
+            simulate(A.pending_spell, a->rot, &t, 0);
+            float worst = 0.0f;
+            for (int n = 0; n < cast.casts; n++)
+                for (int i = 0; i < CONE_BINS; i++)
+                    if (cast.cone[n].ok && cast.cone[n].rmax[i] >= 0.0f && t.cone[n].rmax[i] >= 0.0f) {
+                        const float d = fabsf(cast.cone[n].rmax[i] - t.cone[n].rmax[i]);
+                        if (d > worst) worst = d;
+                    }
+            const clock_t t2 = clock();
+            for (int k = 0; k < 20; k++) simulate(A.pending_spell, a->rot + 0.01f * k, &t, 0);
+            const clock_t t3 = clock();
+            /* and the drawing's triangles for the preview the pointer had */
+            for (int k = 0; k < 20; k++) build(&A.preview);
+            printf("P1_AIM_COST spell=%d.%d built_us=%.0f turned_us=%.0f turned_off=%.2f draw_us=%.0f verts=%d\n",
+                   (int)(A.pending_spell >> 8) & 0xF, (int)A.pending_spell & 0xFF, (double)(t1 - t0) * 1e6 / CLOCKS_PER_SEC / 20.0,
+                   (double)(t3 - t2) * 1e6 / CLOCKS_PER_SEC / 20.0, worst, (double)(clock() - t3) * 1e6 / CLOCKS_PER_SEC / 20.0,
+                   nverts);
+        }
+        log_shapes(&cast);
         log_enemies();
         if (log_level() >= 3)
             for (int n = 0; n < cast.casts; n++)
@@ -945,9 +1379,8 @@ void Port_SpellAimApply(struct Player *p, struct Actor *a) {
 
 /* ---- drawing ------------------------------------------------------------------------------------------------------ */
 
-enum { MAX_VERTS = 12288 };
+enum { MAX_VERTS = 49152 };
 static ElRdVertex verts[MAX_VERTS];
-static int nverts;
 
 static void vert(float x, float y, float z, const u8 *c) {
     if (nverts >= MAX_VERTS) return;
@@ -966,8 +1399,18 @@ static void quad(const float *a, const float *b, const float *c, const float *d,
 
 /* a point on the ground (the floor under it, else at `y`), a little above it */
 static void ground(float x, float z, float y, float *p) {
-    float fy;
-    if (!floor_y(x, y + 40.0f, z, FLOOR_FLAGS, &fy) || fy < y - 60.0f) fy = y;
+    /* (from the kept ground near its height: a corner's height between the four nearest of its grid, GSTEP apart) */
+    if (gcache_map != (const void *)map_subarea_grid) gcache_use(y);
+    if (fabsf(y - gcache_ref) > 10.0f) {
+        float fy;
+        if (!floor_y(x, y + 40.0f, z, FLOOR_FLAGS, &fy) || fy < y - 60.0f) fy = y;
+        p[0] = x, p[1] = fy + 0.45f, p[2] = z;
+        return;
+    }
+    const float gx = x / GSTEP, gz = z / GSTEP, x0 = floorf(gx), z0 = floorf(gz), tx = gx - x0, tz = gz - z0;
+    const float a = ground_cached(x0 * GSTEP, z0 * GSTEP), b = ground_cached((x0 + 1) * GSTEP, z0 * GSTEP);
+    const float c = ground_cached(x0 * GSTEP, (z0 + 1) * GSTEP), d = ground_cached((x0 + 1) * GSTEP, (z0 + 1) * GSTEP);
+    const float fy = (a + (b - a) * tx) * (1.0f - tz) + (c + (d - c) * tx) * tz;
     p[0] = x, p[1] = fy + 0.45f, p[2] = z;
 }
 
@@ -1049,6 +1492,173 @@ static void line(float ax, float az, float bx, float bz, float y, float w, const
     }
 }
 
+/* ---- the tunnels, the arcs and the cones ------------------------------------------------------------------------- */
+
+/* A tunnel: the ground a cast's hit test can reach, the union of a disc of radius w round each live place (Cast.w),
+ * drawn as a band along the path whose half-width at each point is the widest of those discs there (so it narrows
+ * where the effect is high and breaks where it can touch nothing), with round ends. A run of places that do not move
+ * (a landed rock, Fire Bomb's blast) is its disc. */
+#define TUNNEL_STEP 1.5f
+typedef struct Sample { float x, z, nx, nz, h; } Sample;
+static Sample samples[1024];
+
+static void strip(const Sample *sm, int n, float y, const u8 *fill, const u8 *edge, float ew) {
+    for (int k = 0; k + 1 < n; k++) {
+        const Sample *a = &sm[k], *b = &sm[k + 1];
+        if (a->h <= 0.0f || b->h <= 0.0f) continue;
+        float p[8][3];
+        const float ha = a->h, hb = b->h;
+        const float oa[4] = { -ha - ew * 0.5f, -ha + ew * 0.5f, ha - ew * 0.5f, ha + ew * 0.5f };
+        const float ob[4] = { -hb - ew * 0.5f, -hb + ew * 0.5f, hb - ew * 0.5f, hb + ew * 0.5f };
+        for (int e = 0; e < 4; e++) {
+            ground(a->x + a->nx * oa[e], a->z + a->nz * oa[e], y, p[e]);
+            ground(b->x + b->nx * ob[e], b->z + b->nz * ob[e], y, p[4 + e]);
+        }
+        quad(p[0], p[4], p[5], p[1], edge, edge);
+        quad(p[1], p[5], p[6], p[2], fill, fill);
+        quad(p[2], p[6], p[7], p[3], edge, edge);
+    }
+}
+
+/* The drawn half-width at (x, z) on the path. Along the path: where a monster of radius R beside it is touched, less R
+ * (the discs of radius w + R round the live places: a monster's middle within one is hit), so a monster whose edge
+ * reaches the band's side is hit. Past the ends (R 0): the end's own disc of radius w, so one met head on is hit when
+ * its edge reaches the round end. */
+static float run_h(const Cast *c, int k0, int k1, float x, float z, float R) {
+    float h = 0.0f;
+    for (int k = k0; k <= k1; k++) {
+        const float dx = x - c->path[k][0], dz = z - c->path[k][2], w = c->w[k] + R, q = w * w - dx * dx - dz * dz;
+        if (q > (h + R) * (h + R)) h = sqrtf(q) - R;
+    }
+    return h;
+}
+
+static void tunnel_run(const Cast *c, int k0, int k1, float y, float R, const u8 *fill, const u8 *edge) {
+    /* the run's line: its places that move; none: a disc */
+    float wmax = 0.0f;
+    for (int k = k0; k <= k1; k++)
+        if (c->w[k] > wmax) wmax = c->w[k];
+    int moved = 0;
+    for (int k = k0; k < k1; k++)
+        if (fabsf(c->path[k + 1][0] - c->path[k][0]) + fabsf(c->path[k + 1][2] - c->path[k][2]) > 0.05f) moved = 1;
+    if (!moved) {
+        disc(c->path[k0][0], c->path[k0][2], y, wmax, fill, edge, 0.8f);
+        return;
+    }
+    int n = 0;
+    float px = c->path[k0][0], pz = c->path[k0][2], dx0 = 0, dz0 = 0;
+    /* (the first direction it moves: the start's cap goes back along it) */
+    for (int k = k0; k < k1; k++) {
+        const float dx = c->path[k + 1][0] - c->path[k][0], dz = c->path[k + 1][2] - c->path[k][2], l = sqrtf(dx * dx + dz * dz);
+        if (l > 0.05f) {
+            dx0 = dx / l, dz0 = dz / l;
+            break;
+        }
+    }
+    const int cap = (int)(wmax / (TUNNEL_STEP * 0.5f)) + 2;
+    for (int s = cap; s > 0 && n < 1024; s--) {
+        const float t = wmax * s / cap, x = px - dx0 * t, z = pz - dz0 * t;
+        samples[n++] = (Sample){ x, z, dz0, -dx0, run_h(c, k0, k1, x, z, 0.0f) };
+    }
+    float dx = dx0, dz = dz0;
+    for (int k = k0; k <= k1 && n < 1024; k++) {
+        if (k < k1) {
+            const float ex = c->path[k + 1][0] - c->path[k][0], ez = c->path[k + 1][2] - c->path[k][2], l = sqrtf(ex * ex + ez * ez);
+            if (l <= 0.05f) continue;
+            dx = ex / l, dz = ez / l;
+            const int parts = (int)(l / TUNNEL_STEP) + 1;
+            for (int s = 0; s < parts && n < 1024; s++) {
+                const float x = c->path[k][0] + ex * s / parts, z = c->path[k][2] + ez * s / parts;
+                samples[n++] = (Sample){ x, z, dz, -dx, run_h(c, k0, k1, x, z, R) };
+            }
+        } else {
+            px = c->path[k][0], pz = c->path[k][2];
+            samples[n++] = (Sample){ px, pz, dz, -dx, run_h(c, k0, k1, px, pz, R) };
+        }
+    }
+    for (int s = 1; s <= cap && n < 1024; s++) {
+        const float t = wmax * s / cap, x = px + dx * t, z = pz + dz * t;
+        samples[n++] = (Sample){ x, z, dz, -dx, run_h(c, k0, k1, x, z, 0.0f) };
+    }
+    /* (the normals at a turn: halfway between the two ways) */
+    for (int k = 1; k + 1 < n; k++) {
+        float nx = samples[k - 1].nx + samples[k + 1].nx, nz = samples[k - 1].nz + samples[k + 1].nz, l = sqrtf(nx * nx + nz * nz);
+        if (l > 0.1f && (samples[k].nx != samples[k + 1].nx || samples[k].nz != samples[k + 1].nz)) samples[k].nx = nx / l, samples[k].nz = nz / l;
+    }
+    strip(samples, n, y, fill, edge, 0.7f);
+}
+
+/* the drawn places (live, and their disc reaches past the place itself) */
+static int drawn(const Cast *c, int k) { return k > 0 && k < c->path_n && c->live[k] && c->w[k] > 0.0f; }
+
+static void tunnel(const Cast *c, float y, float R, const u8 *fill, const u8 *edge) {
+    for (int k = 1; k < c->path_n; k++) {
+        if (!drawn(c, k)) continue;
+        int e = k;
+        while (drawn(c, e + 1)) e++;
+        tunnel_run(c, k, e, y, R, fill, edge);
+        k = e;
+    }
+}
+
+/* a thin line in the air along the path from place k0 to k1 (as it flies: where it is too high to touch anything) */
+static void arc(const Cast *c, int k0, int k1, const u8 *col) {
+    const float w = 0.35f;
+    for (int k = k0; k < k1 && k + 1 < c->path_n; k++) {
+        const float *a = c->path[k], *b = c->path[k + 1];
+        float dx = b[0] - a[0], dz = b[2] - a[2];
+        const float l = sqrtf(dx * dx + dz * dz);
+        if (l < 0.05f) continue;
+        dx /= l, dz /= l;
+        const float nx = dz * w, nz = -dx * w;
+        const float p0[3] = { a[0] - nx, a[1], a[2] - nz }, p1[3] = { a[0] + nx, a[1], a[2] + nz };
+        const float p2[3] = { b[0] + nx, b[1], b[2] + nz }, p3[3] = { b[0] - nx, b[1], b[2] - nz };
+        quad(p0, p1, p2, p3, col, col);
+    }
+}
+
+/* the arc over each stretch the tunnel does not show (all of a lob's flight: whole) */
+static void arcs(const Cast *c, int whole, const u8 *col) {
+    for (int k = 0; k + 1 < c->path_n; k++)
+        if (whole || !drawn(c, k) || !drawn(c, k + 1)) arc(c, k, k + 1, col);
+}
+
+/* a cone: the covered ground round the bolt's first place, bearing by bearing (every other bin), and its outline */
+static void cone_draw(const Cone *cn, float y, const u8 *fill, const u8 *edge) {
+    const float step = 2.0f * PI_F / CONE_BINS;
+    const int stride = 2;
+    for (int i = 0; i < CONE_BINS; i += stride) {
+        const int j = (i + stride) % CONE_BINS;
+        if (cn->rmax[i] < 0.0f || cn->rmax[j] < 0.0f) continue;
+        const float ti = i * step, tj = j * step;
+        const float si = sinf(ti), ci = cosf(ti), sj = sinf(tj), cj = cosf(tj);
+        const float span = fmaxf(cn->rmax[i] - cn->rmin[i], cn->rmax[j] - cn->rmin[j]);
+        const int parts = (int)(span / 8.0f) + 1;
+        float a0[3], b0[3];
+        ground(cn->sx + si * cn->rmin[i], cn->sz + ci * cn->rmin[i], y, a0);
+        ground(cn->sx + sj * cn->rmin[j], cn->sz + cj * cn->rmin[j], y, b0);
+        for (int s = 1; s <= parts; s++) {
+            const float ri = cn->rmin[i] + (cn->rmax[i] - cn->rmin[i]) * s / parts;
+            const float rj = cn->rmin[j] + (cn->rmax[j] - cn->rmin[j]) * s / parts;
+            float a1[3], b1[3];
+            ground(cn->sx + si * ri, cn->sz + ci * ri, y, a1);
+            ground(cn->sx + sj * rj, cn->sz + cj * rj, y, b1);
+            quad(a0, b0, b1, a1, fill, fill);
+            memcpy(a0, a1, sizeof a0);
+            memcpy(b0, b1, sizeof b0);
+        }
+        /* the outline: the far edge, the near one when it is off the start, and the sides where it ends */
+        line(cn->sx + si * cn->rmax[i], cn->sz + ci * cn->rmax[i], cn->sx + sj * cn->rmax[j], cn->sz + cj * cn->rmax[j], y, 0.6f, edge, edge);
+        if (cn->rmin[i] > 0.5f || cn->rmin[j] > 0.5f)
+            line(cn->sx + si * cn->rmin[i], cn->sz + ci * cn->rmin[i], cn->sx + sj * cn->rmin[j], cn->sz + cj * cn->rmin[j], y, 0.6f, edge, edge);
+        const int pi = (i - stride + CONE_BINS) % CONE_BINS, nj = (j + stride) % CONE_BINS;
+        if (cn->rmax[pi] < 0.0f)
+            line(cn->sx + si * cn->rmin[i], cn->sz + ci * cn->rmin[i], cn->sx + si * cn->rmax[i], cn->sz + ci * cn->rmax[i], y, 0.6f, edge, edge);
+        if (cn->rmax[nj] < 0.0f)
+            line(cn->sx + sj * cn->rmin[j], cn->sz + cj * cn->rmin[j], cn->sx + sj * cn->rmax[j], cn->sz + cj * cn->rmax[j], y, 0.6f, edge, edge);
+    }
+}
+
 /* the facing: a chevron on the ground just past the player's ring */
 static void facing_arrow(float yaw) {
     const Actor *a = &player_state.actor;
@@ -1081,19 +1691,14 @@ static void glow(int i, int count) {
     }
 }
 
-void Port_SpellAimDraw(void) {
-    if (!Port_SpellAimEnabled() || !ND2D_TRACK()) return;
-    const s32 id = ready_spell();
-    const Preview *p = &A.preview;
-    if (id < 0 || !p->valid || p->spell != (u32)id) return;
+/* the preview's triangles (verts, nverts) */
+static void build(const Preview *p) {
     nverts = 0;
     const int any = p->hits != 0;
-    u8 fill[4], edge[4], faint[4], none[4];
+    u8 fill[4], edge[4];
     /* an area that would hit: the game's water-blue; one that would not: grey */
     if (any) rgba(fill, 120, 200, 255, 52), rgba(edge, 170, 225, 255, 210);
     else rgba(fill, 210, 210, 210, 34), rgba(edge, 230, 230, 230, 150);
-    rgba(faint, 255, 244, 214, 90);
-    rgba(none, 255, 244, 214, 0);
     switch (p->kind) {
     case K_AROUND:
         disc(p->px, p->pz, p->py, spell_def(p->spell)->effect_extent, fill, edge, 0.9f);
@@ -1113,40 +1718,62 @@ void Port_SpellAimDraw(void) {
                 disc(p->cast[n].path[0][0], p->cast[n].path[0][2], p->py, spell_def(p->spell)->effect_extent, fill, edge, 0.9f);
         break;
     case K_LINE:
-        for (int n = 0; n < p->casts; n++) {
-            const Cast *c = &p->cast[n];
-            if (c->made) band((const float (*)[3])c->path, c->path_n, p->py, spell_def(p->spell)->effect_extent, fill, edge, 0.8f);
-        }
-        break;
     case K_LOB:
-        for (int n = 0; n < p->casts; n++) {
-            const Cast *c = &p->cast[n];
-            if (!c->made) continue;
-            const float *e = c->landed ? c->land : c->path[c->path_n - 1];
-            line(p->px, p->pz, e[0], e[2], p->py, 0.8f, none, faint);
-            disc(e[0], e[2], p->py, spell_def(p->spell)->effect_extent, fill, edge, 0.9f);
-        }
-        break;
     case K_FAN:
-        /* each bolt's heading (0, then 45 to each side) to its reach: how far it flies in its life */
+    case K_HOMING: {
+        /* each cast's tunnel (blue where it touches a monster, grey where it touches none), the thin arc where it flies
+         * out of reach (a lob's whole flight), and a homing bolt's cone round it */
+        const int many = p->casts > 1;
+        /* Several bolts (Fire Ball Lv2, Lv3): they all start at one place and can each turn right round, so their cones
+         * are nearly one lopsided disc: drawn once, their union (each bolt's is in the log) */
+        static Cone all;
+        int cones = 0, cone_hits = 0;
+        for (int n = 0; n < p->casts; n++) {
+            const Cone *cn = &p->cone[n];
+            if (!cn->ok || !p->cast[n].made) continue;
+            if (!cones++) {
+                all = *cn;
+            } else {
+                for (int i = 0; i < CONE_BINS; i++) {
+                    if (cn->rmax[i] < 0.0f) continue;
+                    if (cn->rmin[i] < all.rmin[i]) all.rmin[i] = cn->rmin[i];
+                    if (cn->rmax[i] > all.rmax[i]) all.rmax[i] = cn->rmax[i];
+                }
+            }
+            cone_hits |= p->cast[n].hits != 0;
+        }
+        if (cones) {
+            u8 cf[4], ce[4];
+            if (cone_hits) rgba(cf, 120, 200, 255, 20), rgba(ce, 170, 225, 255, 110);
+            else rgba(cf, 210, 210, 210, 16), rgba(ce, 230, 230, 230, 90);
+            cone_draw(&all, p->py, cf, ce);
+        }
         for (int n = 0; n < p->casts; n++) {
             const Cast *c = &p->cast[n];
             if (!c->made) continue;
-            const Vec3f *dir = &D_800C1878[(spell_def(p->spell)->launch_direction_index + n) & 7];
-            Vec2f v = { dir->x, dir->z };
-            Math_RotateVec2(p->yaw, &v);
-            const float len = sqrtf(v.x * v.x + v.y * v.y);
-            if (len < 1e-4f) continue;
-            const float sx = c->path[0][0], sz = c->path[0][2];
-            line(sx, sz, sx + v.x / len * c->reach, sz + v.y / len * c->reach, p->py, 1.0f, faint, none);
+            u8 tf[4], te[4], arc_col[4];
+            if (c->hits) rgba(tf, 120, 200, 255, many ? 40 : 52), rgba(te, 170, 225, 255, 210);
+            else rgba(tf, 210, 210, 210, many ? 28 : 34), rgba(te, 230, 230, 230, 150);
+            rgba(arc_col, 255, 244, 214, 110);
+            tunnel(c, p->py, p->body_r, tf, te);
+            arcs(c, p->kind == K_LOB, arc_col);
         }
         break;
+    }
     default:
-        break; /* targets and homing: the rings say it */
+        break; /* targets: the rings say it */
     }
     /* the rings: every monster it would hit (all of them for the whole arena) */
     for (int i = 0; i < MAX_ENEMIES; i++)
         if (alive(i) && (p->hits & (1u << i))) glow(i, p->kind == K_HOMING || p->kind == K_FAN ? p->hit_count[i] : 1);
     if (A.active && directional(p->kind)) facing_arrow(p->yaw);
+}
+
+void Port_SpellAimDraw(void) {
+    if (!Port_SpellAimEnabled() || !ND2D_TRACK()) return;
+    const s32 id = ready_spell();
+    const Preview *p = &A.preview;
+    if (id < 0 || !p->valid || p->spell != (u32)id) return;
+    build(p);
     if (nverts) nd_2d_world_tris(verts, (uint32_t)nverts);
 }

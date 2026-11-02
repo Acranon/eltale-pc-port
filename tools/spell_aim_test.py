@@ -18,7 +18,13 @@ A case passes when what it expects is there (the monster hit, the area's place, 
 preview equals the game's hits, and 4:3 and 16:9 (pictures: OUT/<case>-43|169/pictures, 3x) print the same aim lines and
 the same game sound.
 
+The tunnels and cones (docs/SPELL_AIM.md "Tunnels", "Cones"; cases t_*, cone_*, *_flight): every monster the game hits
+is inside the tunnel the preview draws (P1_AIM_TUNNEL) and none it misses, each hit (P1_AIM_HITAT) came from a live
+place of it, a Fire Ball hit is inside its cone (P1_AIM_CONE), and a rock hits in the air where its flight's tunnel says.
+A target "b:DEG" points at the ground at that bearing from the player (P1_AIM_COMPASS).
+
 Also: `lift`: the same aim with the camera raised and not (ELTALE_SPELL_AIM_CAMERA=0): the same game (aim lines, sound);
+`pick`: the pointer on a monster's body, just off it and back (the pick and its hysteresis);
 `idle`: aim on with no pointer against aim off: the same last frame list and sound.
 
 --verify: one run per aimable spell (every kind), cast at a monster: each of the game's effects, every tick, against the
@@ -72,10 +78,25 @@ MAGMA_BALL = ([0, 1, 3], "0.12")
 ROCK_COMBO = ([1, 0, 1], "1.8")
 WIDE_WEAKNESS = ([1, 3, 3], "1.14")
 WIND_CUTTER3 = ([3, 3, 3], "3.5")
+ROCK1 = ([1], "1.0")
+ROCK2 = ([1, 1], "1.1")
+CYCLONE = ([3, 1, 3], "3.10")
+LARGE_CUTTER = ([3, 0, 3], "3.6")
+ROLLING_ROCK1 = ([1, 0], "1.3")
+FIRE_BALL1 = ([0], "0.0")
+FIRE_BALL2 = ([0, 0], "0.1")
+WIND_CUTTER1 = ([3], "3.0")
+WIND_CUTTER2 = ([3, 3], "3.1")
+HOMING_ARROW1 = ([0, 3], "0.3")
+
+# Bearings (degrees, as Math_Atan2: sin x, cos z) from the player at the battle's start (398.3, -1629.4): the far
+# monster e0 (72.6 away) at 35, the near one e1 (63.4 away) at 57.3. A target "b:DEG" points at the ground 40 away at
+# that bearing (P1_AIM_COMPASS), so the facing is DEG.
 
 
 def case(name, spell, target, first=370, pre=(), click=True, expect=(), pictures=None, env=None, extra=(), frames=None):
-    """target: "e0"/"e1" (a monster), "g:DX,DY" (the ground: the player's place on the picture plus DX, DY)"""
+    """target: "e0"/"e1" (a monster), "g:DX,DY" (the ground: the player's place on the picture plus DX, DY), "b:DEG" (the
+    ground at that bearing from the player)"""
     seq, sid = spell
     t_vi = first + 6 * len(seq) + 40       # pointing at the target (the camera has risen by then)
     c_vi = t_vi + 10
@@ -117,6 +138,43 @@ CASES = [
     case("random", ROCK_COMBO, "g:0,-30"),
     case("arena", WIDE_WEAKNESS, "g:0,-30"),
     case("cutter", WIND_CUTTER3, "e1"),
+    # The tunnels (docs/SPELL_AIM.md "Tunnels"): every monster the game hits is inside the drawn tunnel (its middle
+    # nearer than the place's disc w plus its radius to a live place) and none it misses is; each hit happened at a live
+    # place (P1_AIM_HITAT). Each spell at a monster and at a bearing that passes one by.
+    case("t_rock1", ROCK1, "e0", expect=[("tunnel", None)]),
+    case("t_rock1_side", ROCK1, "b:46", expect=[("tunnel", None)]),
+    case("t_rock2", ROCK2, "e1", expect=[("tunnel", None)]),
+    case("t_rock3_side", ROCK3, "b:46", expect=[("tunnel", None)]),
+    case("t_bomb", FIRE_BOMB, "b:40", expect=[("tunnel", None)]),
+    case("t_water", WALKING_WATER, "b:47", expect=[("tunnel", None)]),
+    case("t_cyclone", CYCLONE, "e1", expect=[("tunnel", None)]),
+    case("t_cyclone_side", CYCLONE, "b:45", expect=[("tunnel", None)]),
+    case("t_cutter", LARGE_CUTTER, "e1", expect=[("tunnel", None)]),
+    case("t_magma", MAGMA_BALL, "b:15", expect=[("tunnel", None)]),
+    case("t_roll1", ROLLING_ROCK1, "b:20", expect=[("tunnel", None)]),
+    case("t_roll2", ROLLING_ROCK2, "b:0", expect=[("tunnel", None)]),
+    case("t_fire1", FIRE_BALL1, "e1", expect=[("tunnel", None), ("cone", None)]),
+    case("t_fire2", FIRE_BALL2, "b:80", expect=[("tunnel", None), ("cone", None)]),
+    case("t_fire3", FIRE_BALL3, "b:46", expect=[("tunnel", None), ("cone", None)]),
+    case("t_wind1", WIND_CUTTER1, "e0", expect=[("tunnel", None)]),
+    case("t_wind2", WIND_CUTTER2, "b:100", expect=[("tunnel", None)]),
+    # (a cutter kills the near monster: the copy, which keeps the monsters alive, has later cutters meet it; the hits
+    # up to the kill are checked)
+    case("t_wind3", WIND_CUTTER3, "e0", expect=[("tunnel", None)]),
+    case("t_arrow1", HOMING_ARROW1, "b:46", expect=[("tunnel", None)]),
+    case("t_arrow2", HOMING_ARROW2, "e1", expect=[("tunnel", None)]),
+    # Fire Ball's cones: facing 97 the near monster (40 off) is the bolt's: it turns and hits it, well off its straight
+    # line and inside its cone; facing 327 (the bolt's monster 68 off, 70 from its start) and 215 (both behind, ~72):
+    # outside, missed
+    case("cone_in1", FIRE_BALL1, "b:75", expect=[("cone", None), ("hit", "e1"), ("off_line", "e1")]),
+    case("cone_out1", FIRE_BALL1, "b:327", expect=[("cone", None), ("miss", "e0"), ("miss", "e1"), ("outside", "e0")]),
+    case("cone_in3", FIRE_BALL3, "b:90", expect=[("cone", None), ("hit", "e1"), ("off_line", "e1")]),
+    case("cone_out3", FIRE_BALL3, "b:215", expect=[("cone", None), ("miss", "e0"), ("miss", "e1"), ("outside", "e0"),
+                                                   ("outside", "e1")]),
+    # Rock in flight: Lv3 facing between the monsters (e0 its target, 11 off; e1 11 off the other way, under its flight)
+    # and Lv1 the same: whether e1 is hit before the rock lands is what the tunnel shows
+    case("rock3_flight", ROCK3, "b:46", expect=[("tunnel", None), ("flight", "e1")]),
+    case("rock1_flight", ROCK1, "b:46", expect=[("tunnel", None), ("flight", "e1")]),
 ]
 
 
@@ -200,16 +258,101 @@ def probe(c, args, work, saves, env=None):
             screen = dict((k, tuple(float(v) for v in xy.split(","))) for k, xy in re.findall(r"(\w+)=([-\d.]+,[-\d.]+)", m.group(2)))
     if not screen:
         raise SystemExit(f"{c['name']}: the probe saw no P1_AIM_SCREEN (the spell was not ready?)")
+    c["compass"] = compass(out, c["t_vi"])
     t = c["target"]
+    if t.startswith("b:"):
+        return bearing_point(c["compass"], float(t[2:]))
     if t.startswith("g:"):
         dx, dy = (float(v) for v in t[2:].split(","))
         return screen["player"][0] + dx, screen["player"][1] + dy
     return screen[t]
 
 
+def compass(out, before):
+    """the last P1_AIM_COMPASS at or before VI `before`: {"b": {deg: (x, y)}, "body": {i: (fx, fy, tx, ty, half)}}"""
+    found = None
+    for m in re.finditer(r"P1_AIM_COMPASS vi=(\d+)(.*)", out):
+        if int(m.group(1)) <= before:
+            found = m.group(2)
+    if not found:
+        return None
+    b = {int(k): (float(x), float(y)) for k, x, y in re.findall(r" b(\d+)=([-\d.]+),([-\d.]+)", found)}
+    body = {int(k): tuple(float(v) for v in vals.split(",")) for k, vals in re.findall(r" body(\d+)=([-\d.,]+)", found)}
+    return {"b": b, "body": body}
+
+
+def bearing_point(cp, deg):
+    """the picture's point (CENTRE) over the ground 40 from the player at that bearing (between the 5-degree marks)"""
+    deg %= 360
+    k0 = int(deg // 5) * 5
+    k1 = (k0 + 5) % 360
+    t = (deg - k0) / 5
+    (x0, y0), (x1, y1) = cp["b"][k0], cp["b"][k1]
+    return x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+
+
+def shapes(out):
+    """the cast's drawn shapes and the monsters at the cast (the lines after the last P1_AIM_CAST)"""
+    cast = list(re.finditer(r"P1_AIM_CAST .*", out))
+    if not cast:
+        return None
+    text = out[cast[-1].start():]
+    sh = {"tunnels": {}, "lands": {}, "cones": {}, "enemies": {}, "rot": None, "targets": {}}
+    for n, t in re.findall(r" c(\d+)=t(-?\d+)", cast[-1].group(0)):
+        sh["targets"][int(n)] = int(t)
+    for m in re.finditer(r"P1_AIM_TUNNEL vi=\d+ spell=\S+ cast=(\d+) land=(-?\d+) beads=(\S*)", text):
+        sh["tunnels"][int(m[1])] = [tuple(float(v) for v in b.replace(":", ",").split(",")) for b in m[3].split(";") if b]
+        sh["lands"][int(m[1])] = int(m[2])
+    for m in re.finditer(r"P1_AIM_CONE vi=\d+ spell=\S+ cast=(\d+) start=([-\d.]+),([-\d.]+) bins=(\d+) r=(\S*)", text):
+        bins = {int(i): (float(a), float(b)) for i, a, b in re.findall(r"(\d+):([-\d.]+):([-\d.]+);", m[5])}
+        sh["cones"][int(m[1])] = (float(m[2]), float(m[3]), int(m[4]), bins)
+    en = re.search(r"P1_AIM_ENEMIES .*", text)
+    if en:
+        for i, x, y, z, r in re.findall(r" e(\d+)=([-\d.]+),([-\d.]+),([-\d.]+),r([\d.]+)", en.group(0)):
+            sh["enemies"][int(i)] = (float(x), float(y), float(z), float(r))
+    ap = re.search(r"P1_AIM_APPLY .*rot=[-\d.]+>([-\d.]+)", out)
+    if ap:
+        sh["rot"] = float(ap.group(1))
+    sh["hitat"] = [(int(m[2]), int(m[3]), float(m[4]), float(m[5]), int(m[6]), int(m[7], 16), int(m[1]))
+                   for m in re.finditer(r"P1_AIM_HITAT vi=(\d+) slot=(\d+) enemy=(\d+) fx=([-\d.]+),[-\d.]+,([-\d.]+) "
+                                        r"left=(\d+) flags=(\w+)", text)]
+    return sh
+
+
+def tunnel_margin(sh, e, casts=None):
+    """how far monster e's edge is outside the tunnels (under 0: inside), and the place (cast, k) nearest"""
+    x, _, z, r = sh["enemies"][e]
+    best, where = 1e9, None
+    for n, beads in sh["tunnels"].items():
+        if casts is not None and n not in casts:
+            continue
+        for k, bx, by, bz, w in beads:
+            d = math.hypot(x - bx, z - bz) - w - r
+            if d < best:
+                best, where = d, (n, int(k))
+    return best, where
+
+
+def cone_margin(sh, e):
+    """how far monster e's edge is outside every cone (under 0: inside one)"""
+    x, _, z, r = sh["enemies"][e]
+    best = 1e9
+    for sx, sz, nb, bins in sh["cones"].values():
+        for i, (r0, r1) in bins.items():
+            th = i * 2 * math.pi / nb
+            ux, uz = math.sin(th), math.cos(th)
+            t = (x - sx) * ux + (z - sz) * uz
+            t = min(max(t, r0), r1)
+            best = min(best, math.hypot(x - (sx + ux * t), z - (sz + uz * t)) - r)
+    return best
+
+
 def aim_lines(out):
+    """the aim's lines, without their VIs; numbers to 1 decimal (a ground aim's point, from the pointer's ray, differs in
+    its last bits between 4:3 and 16:9)"""
     keep = ("P1_AIM_CLICK", "P1_AIM_APPLY", "P1_AIM_CAST", "P1_AIM_HITS", "P1_AIM_PANEL", "P1_AIM_DROPPED")
-    return [re.sub(r" ?vi=\d+", "", l) for l in out.splitlines() if l.startswith(keep)]
+    return [re.sub(r"-?\d+\.\d+", lambda m: f"{float(m.group(0)):.1f}".replace("-0.0", "0.0"), re.sub(r" ?vi=\d+", "", l))
+            for l in out.splitlines() if l.startswith(keep)]
 
 
 def field(out, pattern):
@@ -287,10 +430,142 @@ def check(c, out, label, results):
                 problems.append(f"{label}: no undo to one element")
             if not (hits and hits.group(1) == "2.0"):
                 problems.append(f"{label}: Water Pillar Lv1 not cast after the undo")
+        elif what in ("tunnel", "cone", "off_line", "outside", "flight"):
+            sh = shapes(out)
+            if not sh or not hits:
+                problems.append(f"{label}: no shapes or hits")
+                continue
+            actual = int(hits.group(3), 16)
+            info = results.setdefault(c["name"], {}).setdefault(label, {})
+            if what == "tunnel":
+                # every monster: hit exactly when its edge is inside the drawn tunnel (0.02: the log's rounding)
+                for e in sh["enemies"]:
+                    d, where = tunnel_margin(sh, e)
+                    hit = bool(actual >> e & 1)
+                    info[f"e{e}"] = f"{d:+.2f}{' hit' if hit else ''}"
+                    if abs(d) > 0.02 and hit != (d < 0):
+                        problems.append(f"{label}: e{e} {'hit' if hit else 'missed'} but {d:+.2f} {'outside' if d > 0 else 'inside'} "
+                                        f"the tunnel (nearest place {where})")
+                # and every hit at a live place of the tunnel, touching it there; unless a monster was hit fewer times than
+                # the copy said (killed by an earlier bolt: the later ones fly elsewhere, docs/SPELL_AIM.md)
+                beads = [(n, b) for n, bl in sh["tunnels"].items() for b in bl]
+                counts = re.search(r"P1_AIM_CAST .*counts=(\d+)", out)
+                got = [sum(1 for h in sh["hitat"] if h[1] == e) for e in range(6)]
+                until = 1 << 62
+                if counts and any(got[e] < int(counts.group(1)[e]) for e in range(6)):
+                    # (the hits up to the last one on a monster hit fewer times than predicted: up to its death)
+                    until = min(max(h[6] for h in sh["hitat"] if h[1] == e) for e in range(6) if got[e] < int(counts.group(1)[e]))
+                    info["paths"] = (f"differ after a kill at vi {until} (hits per monster " + "".join(map(str, got)) +
+                                     " predicted " + counts.group(1) + "): the hits up to it checked")
+                for slot, e, fx, fz, left, flags, hvi in sh["hitat"]:
+                    if hvi > until:
+                        continue
+                    near = min(beads, key=lambda nb: math.hypot(nb[1][1] - fx, nb[1][3] - fz), default=None)
+                    if near is None or math.hypot(near[1][1] - fx, near[1][3] - fz) > 0.05:
+                        problems.append(f"{label}: e{e} hit at {fx:.2f},{fz:.2f}: no live place of the tunnel there")
+                    elif e in sh["enemies"]:
+                        x, _, z, r = sh["enemies"][e]
+                        if math.hypot(x - fx, z - fz) - near[1][4] - r > 0.02:
+                            problems.append(f"{label}: e{e} hit from {fx:.2f},{fz:.2f}, outside that place's disc")
+                info["hitat"] = len(sh["hitat"])
+            elif what == "cone":
+                if not sh["cones"]:
+                    problems.append(f"{label}: no cone")
+                for e in sh["enemies"]:
+                    d = cone_margin(sh, e)
+                    hit = bool(actual >> e & 1)
+                    info[f"cone_e{e}"] = f"{d:+.2f}"
+                    # (1.0: the cone is kept per 1.5 degrees of bearing)
+                    if hit and d > 1.0:
+                        problems.append(f"{label}: e{e} hit {d:.2f} outside the cones")
+            elif what == "outside":
+                e = int(arg[1])
+                d = cone_margin(sh, e)
+                if d < 1.0:
+                    problems.append(f"{label}: {arg} {d:+.2f} from the cones' edge, not outside")
+            elif what == "off_line":
+                # the monster is well off each bolt's straight line (its launch bearing from its first place)
+                e = int(arg[1])
+                x, _, z, r = sh["enemies"][e]
+                for n, (sx, sz, nb, bins) in sh["cones"].items():
+                    th = sh["rot"] + math.radians({0: 0, 1: -45, 2: 45}.get(n, 0))
+                    ux, uz = math.sin(th), math.cos(th)
+                    t = max(0.0, (x - sx) * ux + (z - sz) * uz)
+                    d = math.hypot(x - (sx + ux * t), z - (sz + uz * t))
+                    info[f"line{n}_e{e}"] = f"{d:.1f}"
+                    if sh["targets"].get(n) == e and d < 6 + r + 2:
+                        problems.append(f"{label}: {arg} only {d:.1f} off bolt {n}'s straight line")
+            elif what == "flight":
+                # monster e: hit before the rock lands exactly when a place of the tunnel before the landing reaches it
+                e = int(arg[1])
+                x, _, z, r = sh["enemies"][e]
+                land = sh["lands"].get(0, -1)
+                flight = [b for b in sh["tunnels"].get(0, []) if land < 0 or b[0] < land]
+                d = min((math.hypot(x - b[1], z - b[3]) - b[4] - r for b in flight), default=1e9)
+                hit_air = any(he == e and not (fl & 1) for _, he, _, _, _, fl, _ in sh["hitat"])
+                info["flight"] = f"e{e} {'hit in flight' if hit_air else 'not hit in flight'}, tunnel {d:+.2f}"
+                if abs(d) > 0.02 and hit_air != (d < 0):
+                    problems.append(f"{label}: e{e} {'hit' if hit_air else 'not hit'} in flight, the flight's tunnel {d:+.2f}")
         elif what == "ui_off":
             if any("collapsed=1" in l for l in aim_lines(out)):
                 problems.append(f"{label}: the panel folded with the spell UI off")
     return problems
+
+
+def body_distance(px, py, body):
+    """how far (CENTRE units) a point is outside a monster's body on the picture (P1_AIM_COMPASS body: its feet, its top,
+    its half-width; spell_aim.c body_distance)"""
+    fx, fy, tx, ty, half = body
+    ex, ey = tx - fx, ty - fy
+    ln = math.hypot(ex, ey)
+    ux, uy = ex / ln, ey / ln
+    along = (px - fx) * ux + (py - fy) * uy
+    side = abs((px - fx) * uy - (py - fy) * ux)
+    past = -along if along < 0 else along - ln if along > ln else 0.0
+    return max(side - half, past)
+
+
+def pick_test(args, work, saves):
+    """The monster pick: the pointer on e0's body picks it; 2 units off its side (between PICK_IN 1 and PICK_STAY 3)
+    keeps it once picked; 4 off is the ground; back to 2 off stays the ground, as does 2.5 above its head; on the body
+    again picks it. Where the old pick (the radius and 3 more) would have taken the monster, the ground. At 4:3 and
+    16:9."""
+    seq = [2, 2]
+    t0 = 370 + 6 * len(seq) + 40
+    base = START + WALK + keys(seq, 370) + [f"mouse {370 + 6 * len(seq) + 6} 0 0 0 0 {{c:300}} 60"]
+    c = dict(name="pick", env={}, rows=base, t_vi=t0, c_vi=-1, target="e0", pictures=[t0 + 16])
+    probe(c, args, work, saves)
+    body = c["compass"]["body"][0]
+    fx, fy, tx, ty, half = body
+    mx, my = (fx + tx) / 2, (fy + ty) / 2
+    # the steps: (offset to the right of the column, the pick wanted); each point's real distance from the column
+    want = [(0, 0, 0), (half + 2, 0, 0), (half + 4, 0, -1), (half + 2, 0, -1), (0, ty - my - 2.5, -1), (0, 0, 0)]
+    steps, rows = [], list(base)
+    for k, (off, up, tgt) in enumerate(want):
+        x, y = round(mx + off), round(my + up)
+        d = body_distance(x, y, body)
+        steps.append((t0 + 10 * k, x, y, d, tgt))
+        rows.append(f"mouse {t0 + 10 * k} 0 0 0 0 {{c:{x}}} {y}")
+    problems = []
+    for aspect, wide in (("43", False), ("169", True)):
+        out = run(c, args, aspect, work, saves, substitute(rows, wide, (0, 0)), (t0 + 60) // 2 + 40, c["frames_shot"])
+        hov = [(int(m[1]), int(m[2])) for m in re.finditer(r"P1_AIM_HOVER vi=(\d+) active=1 \S+ target=(-?\d+)", out)]
+        got = []
+        for vi_, x, y, d, tgt in steps:
+            now = [t for v, t in hov if v <= vi_ + 6]
+            g = now[-1] if now else None
+            got.append(g)
+            if g != tgt:
+                problems.append(f"{aspect}: the pointer {d:+.1f} from e0's body's side picked {g}, wanted {tgt}")
+        old = half / 0.6 + 3  # the old pick: the radius and 3 more round the column
+        print(f"SPELL_AIM pick {aspect}: e0 body half-width {half:.1f} (the old pick reached {old:.1f}); "
+              + " ".join(f"{d:+.1f}>{g}" for (_, _, _, d, _), g in zip(steps, got)))
+    if steps[2][3] + half > half / 0.6 + 3:
+        problems.append("the ground step is outside the old pick too: it shows nothing")
+    for pr in problems:
+        print("    !", pr)
+    print(f"SPELL_AIM pick {'OK' if not problems else 'FAIL'}")
+    return bool(problems)
 
 
 def verify(args, work, saves, which):
@@ -308,6 +583,7 @@ def verify(args, work, saves, which):
         c["env"] = {"ELTALE_SPELL_AIM_LOG": "3"}
         pt = probe(c, args, work, saves)
         out = run(c, args, "verify", work, saves, substitute(c["rows"], False, pt), c["frames"] + 60)
+        full = out
         cut = out.find("P1_AIM_HITS")
         if cut >= 0:
             out = out[:out.find("\n", cut) + 1]
@@ -329,6 +605,14 @@ def verify(args, work, saves, which):
                 worst = max(worst, min(math.dist(pos, q) for q in paths[cur[0]]))
         hits = re.search(r"P1_AIM_HITS .*predicted=(\w+) actual=(\w+)", out)
         ok = hits and hits.group(1) == hits.group(2)
+        # the moving spells: every monster hit exactly when inside the drawn tunnel, every hit at a live place of it
+        # (and Fire Ball's hits inside its cone)
+        tunnel = []
+        if kind in ("line", "lob", "fan", "homing"):
+            c["expect"] = [("tunnel", None)] + ([("cone", None)] if kind == "fan" else [])
+            info = {}
+            tunnel = check(c, full, "tunnel", info)
+            ok = ok and not tunnel
         failed += not ok
         print(f"VERIFY {sid:5} {kind:7} effects={len(order)} worst={worst:.2f} hits={hits.group(1) + '/' + hits.group(2) if hits else '-'} "
               + " ".join(f"c{n}:{a[0]:.1f},{a[2]:.1f}>{b[0]:.1f},{b[2]:.1f}" for n, (a, b) in sorted(ends.items()))
@@ -336,6 +620,10 @@ def verify(args, work, saves, which):
         cast = re.search(r"P1_AIM_CAST .*", out)
         if cast:
             print("      " + cast.group(0)[:400])
+        if kind in ("line", "lob", "fan", "homing"):
+            print("      tunnel: " + " ".join(f"{k}={v}" for k, v in info.get(c["name"], {}).get("tunnel", {}).items()))
+        for pr in tunnel:
+            print("      !", pr)
     print("SPELL_AIM_VERIFY " + ("OK" if not failed else f"FAIL ({failed})"))
     return failed
 
@@ -346,7 +634,7 @@ def main():
     ap.add_argument("--rom", type=Path, required=True)
     ap.add_argument("--saves", type=Path, default=Path("C:/code/eltale/out/bugsaves"))
     ap.add_argument("--out", type=Path, default=ROOT / "out/spell_aim_test")
-    ap.add_argument("--only", help="cases, comma-separated (and lift, idle)")
+    ap.add_argument("--only", help="cases, comma-separated (and lift, pick, idle)")
     ap.add_argument("--verify", nargs="*", help="check the copy of the spell code against the game (spells: 0.5 1.3 ...)")
     args = ap.parse_args()
     args.exe = args.exe.resolve()
@@ -388,6 +676,9 @@ def main():
         hits = (re.findall(r"P1_AIM_HITS (.*)", o43) or [""])[-1]
         failed += bool(problems)
         print(f"SPELL_AIM {c['name']} {'OK' if not problems else 'FAIL'} target={c['target']}@{pt[0]:.0f},{pt[1]:.0f} {hits or ''}")
+        for label, info in results.get(c["name"], {}).items():
+            if isinstance(info, dict):
+                print(f"    {label}: " + " ".join(f"{k}={v}" for k, v in info.items()))
         for pr in problems:
             print("    !", pr)
     # the raised camera changes only the picture: the same aim (its own probe: the monsters are elsewhere on a flat view)
@@ -408,6 +699,8 @@ def main():
         print(f"SPELL_AIM lift {'OK' if not problems else 'FAIL'}")
         for pr in problems:
             print("    !", pr)
+    if not only or "pick" in only:
+        failed += pick_test(args, work, saves)
     # aim on with no pointer: the game as with it off (the keys build the spell, the controller's A casts it)
     if not only or "idle" in only:
         c = dict(name="idle", env={})
