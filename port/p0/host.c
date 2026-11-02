@@ -5,6 +5,7 @@
 #include "port/data.h"
 #endif
 #include "port/p0/host.h"
+#include "port/sanitize.h"
 #include "port/boot_probe.h"
 #include "game/core/main.h"
 #ifdef ELTALE_P1_OS
@@ -222,8 +223,14 @@ int Port_HostInit(const char *rom_path) {
         return -1;
     }
 #else
+#if PORT_ASAN
+    /* the AddressSanitizer build: RDRAM sits inside ASan's shadow layout (port/p0/asan_rdram.c) */
+    void *mem = Port_AsanMapRdram(RDRAM_BASE, RDRAM_BYTES);
+    if (mem == NULL) mem = MAP_FAILED;
+#else
     void *mem = mmap((void *)RDRAM_BASE, RDRAM_BYTES, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+#endif
     if (mem == MAP_FAILED) {
         fprintf(stderr, "P0 error: cannot reserve N64 address range: %s\n", strerror(errno));
         return -1;

@@ -12,6 +12,9 @@ BIN := $(OUT)/$(if $(filter 1,$(P1_OS)),eltale-p1,eltale-p0)
 GAME_SRC := $(filter-out work/src/game/audio/audio.c,$(shell find work/src/game -name '*.c')) \
   $(shell find work/src/overlays/intro -name '*.c')
 HOST_SRC := port/p0/boot_probe.c port/p0/host.c port/p0/stubs.c port/p0/unavailable.c
+ifeq ($(SANITIZE),1)
+HOST_SRC += port/p0/asan_rdram.c
+endif
 OS_SRC :=
 GU_SRC :=
 ifeq ($(P1_OS),1)
@@ -60,7 +63,19 @@ CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasin
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
 LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm -ldl
 
-.PHONY: p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean linux
+# The memory-safety build (docs/MEMORY_SAFETY.md): AddressSanitizer with UBSan's bound and pointer checks,
+# clang on Linux. `make asan ROM=...` -> out/asan/eltale-p1 (or tools/asan_run.sh). Reports go on; none stops
+# the game. Instrumented mem* calls go through port/p0/asan_rdram.c, which knows RDRAM.
+SANITIZE ?= 0
+SAN_CFLAGS :=
+ifeq ($(SANITIZE),1)
+SAN_FLAGS := -fsanitize=address,array-bounds,pointer-overflow,object-size,vla-bound,shift-exponent,float-cast-overflow,builtin,return,unreachable,bool,enum,nonnull-attribute,returns-nonnull-attribute
+SAN_CFLAGS := $(SAN_FLAGS) -fsanitize-recover=all -fno-omit-frame-pointer   -mllvm -asan-memory-access-callback-prefix=eltale_asan_ -mllvm -asan-instrumentation-with-call-threshold=1000000000
+CFLAGS += $(SAN_CFLAGS)
+LDFLAGS += $(SAN_FLAGS)
+endif
+
+.PHONY: asan p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean linux
 p0: assets $(BIN)
 
 assets:
@@ -89,6 +104,10 @@ $(OUT)/obj/host/unavailable.o: port/p0/unavailable.c
 	@mkdir -p $(dir $@)
 	$(CC) -std=gnu11 -O2 $(if $(filter 1,$(P1_OS)),-DELTALE_P1_OS,) -c $< -o $@
 
+$(OUT)/obj/host/asan_rdram.o: port/p0/asan_rdram.c
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -g -fno-builtin -c $< -o $@
+
 $(OUT)/obj/host/%.o: port/p0/%.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -107,20 +126,20 @@ $(OUT)/obj/audio/%.o: work/src/libultra/audio/%.c $(OUT)/include/PR/gbi.h
 
 $(OUT)/obj/io/%.o: decomp/src/libultra/io/%.c $(OUT)/include/PR/gbi.h
 	@mkdir -p $(dir $@)
-	$(CC) -std=gnu11 -O2 -D_LANGUAGE_C -D_MIPS_SZLONG=32 -I$(OUT)/include -Iport/include -Idecomp/include -Idecomp/src 		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR 		-include port/include/PR/ultratypes.h -c $< -o $@
+	$(CC) -std=gnu11 -O2 -D_LANGUAGE_C -D_MIPS_SZLONG=32 -I$(OUT)/include -Iport/include -Idecomp/include -Idecomp/src 		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR 		-include port/include/PR/ultratypes.h $(SAN_CFLAGS) -c $< -o $@
 
 $(OUT)/obj/gu/%.o: decomp/src/libultra/gu/%.c $(OUT)/include/PR/gbi.h
 	@mkdir -p $(dir $@)
 	$(CC) -std=gnu11 -O2 -ffp-contract=off -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI \
 		-I$(OUT)/include -Iport/include -Idecomp/include -Idecomp/src \
 		-idirafter decomp/include/ultra64 -idirafter decomp/include/ultra64/PR \
-		-include port/include/PR/ultratypes.h -c $< -o $@
+		-include port/include/PR/ultratypes.h $(SAN_CFLAGS) -c $< -o $@
 
 $(OUT)/host_address_map.c: $(GAME_OBJ) tools/gen_host_address_map.py
 	$(PYTHON) tools/gen_host_address_map.py $@ $(GAME_OBJ)
 
 $(OUT)/host_address_map.o: $(OUT)/host_address_map.c
-	$(CC) -std=gnu11 -O2 -c $< -o $@
+	$(CC) -std=gnu11 -O2 $(SAN_CFLAGS) -c $< -o $@
 
 $(OUT)/abs.rsp: $(OBJ) tools/gen_abs_symbols.py
 	$(PYTHON) tools/gen_abs_symbols.py $@ $(OBJ)
@@ -155,6 +174,14 @@ p1-os-test: $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	$(OUT)/gu-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/pak_test.c port/os/pak.c -o $(OUT)/pak-test
 	$(OUT)/pak-test $(OUT)/test.mpk
+
+# the memory-safety build (docs/MEMORY_SAFETY.md)
+# (and tools/asan_host_stub.c as libeltale_host.so: --dump-frames runs the game's native draw side without a GPU)
+asan:
+	$(MAKE) P1_OS=1 SANITIZE=1 CC=$(or $(ASAN_CC),clang-18) OUT=$(or $(ASAN_OUT),out/asan) ROM="$(ROM)" p0 		$(or $(ASAN_OUT),out/asan)/libeltale_host.so
+
+$(OUT)/libeltale_host.so: tools/asan_host_stub.c port/include/port/render.h port/include/port/automap.h
+	$(CC) -std=gnu11 -O1 -g -fPIC -shared -fsanitize=address -fno-omit-frame-pointer -Iport/include $< -o $@
 
 # Linux: out/p1-linux/eltale-p1 and libeltale_host.so (+ libSDL3.so.0) beside it (tools/build_linux.sh)
 linux:
