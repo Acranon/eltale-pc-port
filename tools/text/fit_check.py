@@ -178,6 +178,9 @@ def boxes():
     out.append((r"name\.", "speaker name tab", "box", (252 - 73 - 10, ONE)))
     # the battle HUD: spell names centred in the 110-pixel spell panel, monster names in the 110-pixel enemy panel
     out.append((r"(spell|monster)\.", "battle HUD name (110-pixel panel)", "hud", (110 - 4,)))
+    # the pause menu's region names (port/p0/pause_menu.c): the HUD font, between the region arrows over the map
+    # (150 wide at 4:3, less the two 20-pixel arrows)
+    out.append((r"region\.", "pause menu region name (between the arrows)", "hud", (150 - 2 * 20,)))
     return out
 
 
