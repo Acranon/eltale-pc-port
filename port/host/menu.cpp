@@ -108,6 +108,18 @@ void controls_page() {
          "keeps spells for each save: click an empty slot (or drag the plate onto one) to keep the spell you made, "
          "click a slot or press 5-0 to cast it; the wheel over the bar, , and . change its page. Off: the game's own "
          "spell panel.");
+    if (ImGui::Checkbox("Click to aim spells", &c.spell_aim)) save_settings();
+    help("In a battle, with a spell ready: point at a monster or the ground to see where the spell goes (its area, and a "
+         "ring under every monster it would hit), click to turn that way and cast. The spell's reach is the game's own: "
+         "move inside your ring first to get closer. Right click takes the last element back. Off: the game's own aim "
+         "(the way you face).");
+    if (!c.spell_aim) ImGui::BeginDisabled();
+    ImGui::Indent();
+    if (ImGui::Checkbox("Raise the camera while aiming", &c.spell_aim_camera)) save_settings();
+    help("The view rises over the battlefield while you aim, so the areas on the ground are easy to read, and comes back "
+         "down when you cast or take the spell back. Only the picture changes.");
+    ImGui::Unindent();
+    if (!c.spell_aim) ImGui::EndDisabled();
     help("Point at a menu's options, items and answers to move the game's cursor there; a left click picks (A), a "
          "right click backs out (B). Click an element crystal at the bottom left for its spell list, then a spell's "
          "name to add it and the middle name to cast.");

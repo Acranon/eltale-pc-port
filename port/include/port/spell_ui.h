@@ -53,8 +53,11 @@ void Port_SpellUiSaveEvent(int kind, s32 slot);
  * A spell is ready on the plate: elements put in and the game would cast it now (Magic_GetSpellRestrictionFlags 0).
  * Returns its id (Magic_LookupSpellSequence's: element << 8 | index) or -1. */
 s32 Port_SpellUiReady(void);
+/* The pointer is on the panel or the quick bar (a piece of them, or the open panel's area) at the last read: click to
+ * aim spells (port/spell_aim.h) leaves it alone */
+int Port_SpellUiPointerOver(void);
 /* Cast the spell on the plate: A pressed at the next read (the one way the UI casts: the plate, the quick bar's
- * last step, and a click on the battlefield once aiming is done). 0 when nothing is ready. */
+ * last step; a click on the battlefield is click to aim's own A: port/spell_aim.h). 0 when nothing is ready. */
 int Port_SpellUiCast(void);
 
 #endif

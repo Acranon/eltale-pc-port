@@ -60,6 +60,8 @@ void Port_MouseTargetFn(s32 tag, s32 anchor, s32 x, s32 y, s32 w, s32 h, PortMou
 void Port_MouseBack(void);
 /* the tag of the target under the shown pointer at the last read, or -1 */
 s32 Port_MouseHoverTag(void);
+/* the pointer was over one of the last frame's targets at this read (Port_MouseMenuRead; the Pak manager: always) */
+int Port_MouseOverTarget(void);
 /* pressed for this read too (a function target's doing) */
 void Port_MouseInject(u32 input);
 

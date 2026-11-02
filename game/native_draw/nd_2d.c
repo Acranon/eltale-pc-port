@@ -632,6 +632,33 @@ static void rect_item(float x0, float y0, float x1, float y1, int tile, float s,
     }
 }
 
+/* World-space triangles of the port's own (render.h v10 overlay: click to aim spells' areas and rings, port/spell_aim.h):
+ * in world units, coloured by their vertices (G_CC_SHADE), blended as the game's translucent surfaces (ZB_XLU_SURF:
+ * tested against the depth, not written), drawn with the recording's camera in this place of the recording's order */
+void nd_2d_world_tris(const ElRdVertex *v, uint32_t count) {
+    if (!recording || !count || muted || nd_automap_truth()) return;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        ElRdMaterial m;
+        memset(&m, 0, sizeof m);
+        /* colour and alpha = SHADE, both cycles */
+        m.combine[0] = 15u << 20 | 31u << 15 | 7u << 12 | 7u << 9 | 15u << 5 | 31u;
+        m.combine[1] = 15u << 28 | 15u << 24 | 7u << 21 | 7u << 18 | 4u << 15 | 7u << 12 | 4u << 9 | 4u << 6 | 7u << 3 | 4u;
+        m.othermode_h = 0; /* 1-cycle */
+        /* G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2: Z_CMP, IM_RD, CVG_DST_FULL, ZMODE_XLU, FORCE_BL, in x a + mem x (1 - a) */
+        m.othermode_l = 0x10u | 0x40u | 0x200u | 0x800u | 0x4000u | 1u << 22 | 1u << 20;
+        m.geometry = 0x1u | 0x4u | 0x200u; /* G_ZBUFFER, G_SHADE, G_SHADING_SMOOTH; no culling */
+        full = 0;
+        uint32_t id = material_id(&m);
+        if (full || id == ~0u) {
+            fprintf(stderr, "nd_2d: the renderer's buffers are full: loading again what is drawn\n");
+            nd_model_reset();
+            continue;
+        }
+        nd_api()->overlay(v, count, id);
+        return;
+    }
+}
+
 void nd_2d_texrect(int32_t xl, int32_t yl, int32_t xh, int32_t yh, uint32_t tile, int32_t s, int32_t t, int32_t dsdx,
                    int32_t dtdy) {
     if (!recording) return;

@@ -53,6 +53,7 @@ static int ptr_width, ptr_flags;
 static float last_x = -1.0f, last_y = -1.0f;
 static int last_in;
 static int hover_tag = -1;
+static int over_target; /* the pointer was over a target at the last read (Port_MouseOverTarget) */
 static u32 injected;
 static int log_on = -1;
 static int log_after; /* a click was pressed at the last read: the state it led to, at this one */
@@ -106,6 +107,8 @@ void Port_MouseBack(void) {
 }
 
 s32 Port_MouseHoverTag(void) { return hover_tag; }
+
+int Port_MouseOverTarget(void) { return over_target || pak_running; }
 
 void Port_MouseInject(u32 input) { injected |= input; }
 
@@ -279,6 +282,7 @@ void Port_MouseMenuRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
     last_in = in;
     if (in) last_x = ptr_x, last_y = ptr_y;
     hover_tag = -1;
+    over_target = 0;
     injected = 0;
     if (!in && !ptr_flags) return;
 
@@ -296,6 +300,7 @@ void Port_MouseMenuRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         }
         if (over) {
             float x, y;
+            over_target = 1;
             to_anchor(over->anchor, &x, &y);
             if (ptr_flags & PORT_POINTER_SHOWN) hover_tag = over->tag;
             if (moved || left) {

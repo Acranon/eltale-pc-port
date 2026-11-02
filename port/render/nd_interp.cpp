@@ -546,19 +546,19 @@ bool Interp::plan(const Recording &ra, const Recording &rb, const Recording *rbe
     // 3D items
     std::vector<uint32_t> m3, m2;
     match(ra.items.size(), rb.items.size(),
-          [&](uint32_t i) { return ra.items[i].item2d >= 0 ? ~0ull : ra.items[i].draw.id; },
-          [&](uint32_t i) { return rb.items[i].item2d >= 0 ? ~1ull : rb.items[i].draw.id; }, m3);
+          [&](uint32_t i) { return ra.items[i].item2d >= 0 || ra.items[i].overlay >= 0 ? ~0ull : ra.items[i].draw.id; },
+          [&](uint32_t i) { return rb.items[i].item2d >= 0 || rb.items[i].overlay >= 0 ? ~1ull : rb.items[i].draw.id; }, m3);
     // the tick before a (an effect's colour ramp): a's items in it
     std::vector<uint32_t> mb4;
     if (rbefore && rbefore->info.mode == ra.info.mode)
         match(ra.items.size(), rbefore->items.size(),
-              [&](uint32_t i) { return ra.items[i].item2d >= 0 ? ~0ull : ra.items[i].draw.id; },
-              [&](uint32_t i) { return rbefore->items[i].item2d >= 0 ? ~1ull : rbefore->items[i].draw.id; }, mb4);
+              [&](uint32_t i) { return ra.items[i].item2d >= 0 || ra.items[i].overlay >= 0 ? ~0ull : ra.items[i].draw.id; },
+              [&](uint32_t i) { return rbefore->items[i].item2d >= 0 || rbefore->items[i].overlay >= 0 ? ~1ull : rbefore->items[i].draw.id; }, mb4);
     else
         rbefore = nullptr;
     for (uint32_t i = 0; i < ra.items.size(); i++) {
         const Recording::Item &ia = ra.items[i];
-        if (ia.item2d >= 0) continue;
+        if (ia.item2d >= 0 || ia.overlay >= 0) continue; // (2D, and the overlays: a's as they are)
         stats.items++;
         const uint32_t j = m3[i];
         if (j == ~0u) { stats.unmatched++; continue; }
@@ -717,7 +717,7 @@ void Interp::check_ends(int *at0, int *at1) {
                           std::memcmp(p0.camera.lookat_x, a->camera.lookat_x, 3) || std::memcmp(p0.camera.lookat_y, a->camera.lookat_y, 3)))
         (*at0)++;
     for (size_t i = 0; i < p0.items.size(); i++)
-        if (p0.items[i].item2d < 0 && !same(p0.items[i].draw.matrix, a->items[i].draw.matrix, 16)) (*at0)++;
+        if (p0.items[i].item2d < 0 && p0.items[i].overlay < 0 && !same(p0.items[i].draw.matrix, a->items[i].draw.matrix, 16)) (*at0)++;
     for (size_t i = 0; i < p0.items2d.size(); i++)
         if (!same(p0.items2d[i].rect, a->items2d[i].rect, 4) || !same(p0.items2d[i].matrix, a->items2d[i].matrix, 16)) (*at0)++;
     const Recording &p1 = build(1.0f);

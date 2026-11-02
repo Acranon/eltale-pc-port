@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-#define EL_RENDER_API_VERSION 9
+#define EL_RENDER_API_VERSION 10
 
 /* ---- Resources: what the model loader makes ---------------------------------------------------- */
 
@@ -299,6 +299,13 @@ typedef struct ElRenderApi {
     /* v9: the game was reset (the F1 menu's Reset): the resources and every recording, finished or being
      * made, are dropped; the next recording is shown as it is (a cut: no picture between across a reset) */
     void (*reset)(void);
+
+    /* v10: world-space triangles of the port's own (click to aim spells' areas and rings: port/spell_aim.h), in the
+     * recording's order: `count` vertices (3 a triangle) in world units with their colours (c, EL_RDV_SHADE), drawn
+     * with the material's state (material_2d's: a 2D material's combiner and blender, depth-tested as its othermode
+     * says) through each picture's own camera, so they stay on the ground in pictures between ticks (where they are
+     * the earlier tick's, as a 2D item's mesh is). */
+    void (*overlay)(const ElRdVertex *vertices, uint32_t count, uint32_t material);
 } ElRenderApi;
 
 #ifdef __cplusplus

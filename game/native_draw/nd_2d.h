@@ -74,6 +74,9 @@ void nd_2d_words(uint32_t w0, uint32_t w1);
 void nd_2d_texrect(int32_t xl, int32_t yl, int32_t xh, int32_t yh, uint32_t tile, int32_t s, int32_t t, int32_t dsdx,
                    int32_t dtdy); /* gSPTextureRectangle's arguments (10.2, S10.5, S5.10) */
 void nd_2d_fillrect(int32_t ulx, int32_t uly, int32_t lrx, int32_t lry); /* gDPFillRectangle's (pixels) */
+/* world-space triangles of the port's own, drawn with the camera in this place of the recording (render.h v10
+ * overlay: click to aim spells' preview); vertex colours, translucent, depth-tested */
+void nd_2d_world_tris(const ElRdVertex *v, uint32_t count);
 
 /* The native draw core's hooks */
 void nd_2d_frame_begin(void);
@@ -90,6 +93,7 @@ void nd_2d_forget(uintptr_t host, uint32_t bytes);
 #define nd_2d_mute(on) ((void)0)
 #define nd_2d_push() ((void)0)
 #define nd_2d_pop() ((void)0)
+#define nd_2d_world_tris(v, c) ((void)0)
 
 #endif
 

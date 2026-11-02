@@ -21,6 +21,7 @@
 #include "port/gfx.h"
 #include "port/mouse_menu.h"
 #include "port/os.h"
+#include "port/spell_aim.h"
 #include "port/spell_ui.h"
 #include "port/text.h"
 
@@ -66,6 +67,7 @@ enum {
     SLOT_W = 17, SLOT_H = 15, SLOT_GAP = 3, LABEL_W = 38, DOTS_W = 14,
     SLOTS = 6, PAGES = 3,
     TIP_BOTTOM = 190,
+    PANEL_X0 = 8, PANEL_X1 = 312, PANEL_Y0 = 86, PANEL_Y1 = 240, /* the open panel's area and below it (the bar, the HUD) */
 };
 
 /* where the game's pieces are in its atlases */
@@ -97,6 +99,11 @@ static Rect next_rect(int e) {
 }
 static Rect plate_rect(void) {
     Rect r = { PLATE_X, PLATE_Y, PLATE_W, PLATE_H };
+    if (Port_SpellAimCollapsed()) { /* aiming: the plate alone, at the top (port/spell_aim.h) */
+        s32 x, y, w, h;
+        Port_SpellAimPlateRect(&x, &y, &w, &h);
+        r.x = (s16)x, r.y = (s16)y, r.w = (s16)w, r.h = (s16)h;
+    }
     return r;
 }
 static Rect bar_rect(void) {
@@ -174,7 +181,8 @@ int Port_SpellUiEnabled(void) {
 
 void Port_SpellUiKeys(u32 keys, int on) {
     S.keys |= keys;
-    if (on >= 0) S.host_on = on;
+    if (on >= 0) S.host_on = on & 1;
+    Port_SpellAimSwitch(on); /* (the host's bits 2 and 4: click to aim spells, port/spell_aim.h) */
 }
 
 /* ---- the game's rules ------------------------------------------------------------------------------------------ */
@@ -412,6 +420,17 @@ static void macro_step(u16 *buttons) {
     }
 }
 
+/* The pointer is on the panel or the bar: a piece of them, or anywhere in the panel's area while it is open in full (the
+ * middle and everything under it: from a HUD crystal to the panel the pointer never crosses the battlefield), so aiming
+ * starts once the pointer leaves it (port/spell_aim.h) */
+int Port_SpellUiPointerOver(void) {
+    if (!Port_SpellUiEnabled() || !(S.pflags & PORT_POINTER_IN)) return 0;
+    if (S.hover != T_NONE) return 1;
+    if (building() && ui_shown() && !Port_SpellAimCollapsed())
+        return S.px >= PANEL_X0 && S.px < PANEL_X1 && S.py >= PANEL_Y0 && S.py < PANEL_Y1;
+    return 0;
+}
+
 s32 Port_SpellUiReady(void) {
     u32 id;
     if (!building() || !ui_shown()) return -1;
@@ -423,16 +442,6 @@ int Port_SpellUiCast(void) {
     S.intent = I_CAST;
     macro_end("cast-asked");
     return 1;
-}
-
-/* Aiming (not done: docs/SPELL_UI.md "Aiming"): a left click on the battlefield, not on the panel or the bar, while a
- * spell is ready on the plate (Port_SpellUiReady). It will turn the point clicked into the spell's direction and then
- * cast (Port_SpellUiCast). Returns 1 when it took the click. For now it takes nothing: such a click does nothing (no
- * cast on a battlefield click, spec Q7). */
-static int battlefield_click(float x, float y) {
-    (void)x;
-    (void)y;
-    return 0;
 }
 
 /* the slot under the pointer (page-relative) or -1, in LEFT units */
@@ -451,7 +460,7 @@ static int target_at(int *arg) {
     if (building()) {
         Rect r = plate_rect();
         if (in_rect(&r, S.px, S.py)) return T_PLATE;
-        for (int e = 0; e < 4; e++) {
+        for (int e = 0; e < 4 && !Port_SpellAimCollapsed(); e++) {
             r = crystal_rect(e);
             if (in_rect(&r, S.px, S.py)) return *arg = e, T_CRYSTAL;
             r = next_rect(e);
@@ -685,8 +694,8 @@ void Port_SpellUiRead(u16 *buttons, s8 *stick_x, s8 *stick_y) {
         S.intent = I_BACK;
         macro_end("right");
     }
-    /* a click on the battlefield (none of the UI's) while a spell is ready on the plate: aiming's hook */
-    if (left && over == T_NONE && Port_SpellUiReady() >= 0 && battlefield_click(S.px, S.py)) take |= PORT_POINTER_LEFT;
+    /* (a click on the battlefield, none of the UI's, while a spell is ready: click to aim, port/p0/spell_aim.c, which
+     * reads the pointer after the menus) */
     if (over != T_NONE) take |= PORT_POINTER_LEFT | PORT_POINTER_UP;
     Port_MousePointerTake(take);
 
@@ -1130,6 +1139,46 @@ static void draw_panel(const Spell *st, int live_now, int t_open, int fading) {
     }
 }
 
+/* The plate alone while aiming (click to aim spells, port/spell_aim.h): the spell's plate where Port_SpellAimPlateRect
+ * puts it (gems, name, MP: clicking it casts as always) and a hint under it */
+static void draw_folded(const Spell *st) {
+    u8 buf[48];
+    static u8 b2[32];
+    const Rect r = plate_rect();
+    const int n = st->len;
+    u32 id = 0;
+    const int flags = n ? seq_flags(st->dirs, n, &id) : 7;
+    nd_2d_element(0x3D, EL_RD2D_ANCHOR_CENTRE);
+    flat(r.x + 2, r.y + 2, r.w, r.h, 0, 0, 0, 110); /* (a shadow: over the 3D) */
+    plate(1, r.x, r.y, r.w, r.h);
+    if (S.hover == T_PLATE) frame_rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2, 0xF2, 0xC4, 0x2A, 255);
+    for (int k = 0; k < 3; k++) {
+        if (k < n) gem(st->dirs[k], r.x + 13 + k * 12, r.y + 1);
+        else own(r.x + 13 + k * 12, r.y + 1, 11, 11, ART_EMPTY_S, ART_EMPTY_T);
+    }
+    const u8 *name = n ? spell_name(id) : NULL;
+    const u16 cost = mp_cost(n);
+    const s32 cost_w = digits_width(cost) + 12, left = r.x + 13 + 36 + 4, right = r.x + r.w - 13 - cost_w - 3;
+    nd_2d_element(0x3E | text_id(name), EL_RD2D_ANCHOR_CENTRE);
+    if (name) text(left + (right - left - text_width(name)) / 2, r.y + 3, hud_spell_label_palettes[flags & 7], name);
+    nd_2d_element(0x3F, EL_RD2D_ANCHOR_CENTRE);
+    if (n) {
+        const s32 cx = r.x + r.w - 13 - cost_w;
+        digits(cx, r.y + 2, cost);
+        text(cx + digits_width(cost) + 1, r.y + 3, 0, ascii("MP", buf, 8));
+    }
+    /* the hint */
+    const u8 *a = ascii("Click to cast", buf, sizeof buf);
+    const u8 *b = ascii("R-click to undo", b2, sizeof b2);
+    if (a && b) {
+        const s32 wa = text_width(a), wb = text_width(b), total = wa + 9 + wb, x0 = r.x + (r.w - total) / 2, y = r.y + r.h + 2;
+        glyphs(x0, y, white_text, a);
+        flat(x0 + wa + 3, y + 3, 3, 3, 0, 0, 0, 255);
+        flat(x0 + wa + 4, y + 4, 1, 1, 255, 255, 255, 255);
+        glyphs(x0 + wa + 9, y, white_text, b);
+    }
+}
+
 static void draw_pips(const Spell *s, s32 x, s32 y, int dim) {
     /* the small element pips, 5 apart, centred on x */
     s32 x0 = x - (s->len * 5) / 2;
@@ -1307,7 +1356,12 @@ void Port_SpellUiDraw(void) {
         if (S.tip_alpha) draw_tip();
     }
     alpha_mul = 255;
-    if (build) {
+    if (build && Port_SpellAimCollapsed()) {
+        /* aiming: the plate alone, at the top (port/spell_aim.h) */
+        Spell now = { (u8)count_now(), { 0, 0, 0 } };
+        memcpy(now.dirs, player_state.spell_input_dirs, 3);
+        draw_folded(&now);
+    } else if (build) {
         /* fades in over OPEN_TICKS */
         alpha_mul = 255 * (S.panel_t < OPEN_TICKS ? S.panel_t : OPEN_TICKS) / OPEN_TICKS;
         Spell now = { (u8)count_now(), { 0, 0, 0 } };
