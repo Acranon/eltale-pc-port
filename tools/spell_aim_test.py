@@ -328,7 +328,6 @@ def verify(args, work, saves, which):
             if kind != "random" and cur[0] in paths:
                 worst = max(worst, min(math.dist(pos, q) for q in paths[cur[0]]))
         hits = re.search(r"P1_AIM_HITS .*predicted=(\w+) actual=(\w+)", out)
-        player = re.search(r"P1_AIM_APPLY .*", out)
         ok = hits and hits.group(1) == hits.group(2)
         failed += not ok
         print(f"VERIFY {sid:5} {kind:7} effects={len(order)} worst={worst:.2f} hits={hits.group(1) + '/' + hits.group(2) if hits else '-'} "
@@ -337,7 +336,6 @@ def verify(args, work, saves, which):
         cast = re.search(r"P1_AIM_CAST .*", out)
         if cast:
             print("      " + cast.group(0)[:400])
-        del player
     print("SPELL_AIM_VERIFY " + ("OK" if not failed else f"FAIL ({failed})"))
     return failed
 

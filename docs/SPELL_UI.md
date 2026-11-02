@@ -174,13 +174,24 @@ is written at once to the current save's file; a new game keeps it in memory unt
 the intro forget it. A save copied to another Pak slot keeps its bar. A load with no file (every older save) starts
 empty. The save formats are unchanged. With the UI off nothing is read or written (headless runs too).
 
-## Aiming (the hook for later)
+## Aiming: the folded panel (docs/SPELL_AIM.md)
 
-- `Port_SpellUiReady()`: a spell is ready on the plate (elements in and the game would cast it now): its id, else -1.
-- `Port_SpellUiCast()`: cast it (A at the next read; the same path as the plate's click).
-- `battlefield_click(x, y)` in spell_ui.c is called for a left click that hits none of the UI while a spell is
-  ready; it takes nothing today (a click on the battlefield does not cast: spec Q7). Click-to-aim fills it in: turn
-  the point into the spell's direction (docs/SPELL_TARGETING.md), then `Port_SpellUiCast()`.
+Click to aim spells (port/p0/spell_aim.c) reads the pointer after the menus, so a click the panel and the bar do not
+take reaches it.
+
+- **The panel's area.** While the panel is open in full, the pointer belongs to it anywhere in its area
+  (`Port_SpellUiPointerOver`): the middle of the picture from y 86 down to the bottom, which covers the panel, the
+  quick bar and the HUD. Going from a HUD crystal up to the panel never aims on the way.
+- **Folding.** Once the pointer is on the battlefield outside that area with a spell ready, aiming starts and the panel
+  folds (`Port_SpellAimCollapsed`). `draw_folded` draws only the spell's plate (the same chevron plate, gems, name, MP)
+  at x 122, y 9 (CENTRE: right of the HP block), with the hint *Click to cast · R-click to undo* under it. The plate
+  is then the panel's only target: a click on it casts as before, with the facing the player has. The crystals and the
+  next-spell plates are gone. Keys 1-4, the C buttons and the HUD's crystals still add elements, and the quick bar
+  stays.
+- **Undo.** A right click is still the undo. It opens the full panel, which stays open until the pointer has moved on
+  its area and leaves it again, so the pointer can go to another crystal without the panel folding on the way.
+- `Port_SpellUiReady()` and `Port_SpellUiCast()` are as before. The battlefield's click is click to aim's own A
+  (`battlefield_click` is gone).
 
 ## Answers to the spec's open questions
 
@@ -191,7 +202,8 @@ empty. The save formats are unchanged. With the UI off nothing is read or writte
 4. Slots start empty.
 5. Our own 3 x 5 digits (the ROM has none that small).
 6. The game's textures (above).
-7. No click on the battlefield to cast; casting is the plate, a slot, or the game's A. The hook is left.
+7. Casting is the plate, a slot, or the game's A, and since click to aim spells (docs/SPELL_AIM.md) a click on the
+   battlefield, which turns the player toward the point first.
 8. Kept clear of the 24 % minimap (above).
 9. No descriptions yet: the name box shows the name, the gems and the MP; `spell_description()` is where they go (a
    line is added to the box when it returns one).
@@ -225,7 +237,6 @@ not learned, x not here, + keep here, - empty), `P1_SPELLUI_SLOTS`, `P1_SPELLUI_
 
 ## Not done
 
-- Click-to-aim (the hook is above).
 - Descriptions for the name box.
 - The minimap moved to a top corner can cover the panel's right end at 4:3.
 - In Japanese the hint and the labels are left out (the HUD font has no Latin letters there); the names are the

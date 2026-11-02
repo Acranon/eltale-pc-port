@@ -1,0 +1,24 @@
+# Click to aim spells (docs/SPELL_AIM.md) in a battle: the user's quick save battle-stuck (ELTALE_QUICK_LOAD_AT=100,
+# ELTALE_BATTLE_LOG=2: the battle at VI 194), with ELTALE_SPELL_UI=1 and ELTALE_SPELL_AIM=1. Each turn the spell is
+# put together (C down: water; then water again), the pointer goes onto the battlefield above the panel (the panel
+# folds, the camera rises, the preview is drawn: the overlay's pipeline, tools/warm_test.py `aim`), points at the ground
+# and clicks (aim and cast). x 213 is the top middle of a 16:9 picture and right of the middle at 4:3: the battlefield in
+# both.
+5 0x1000 0 0
+7 0 0 0
+120 0 0 80
+200 0 0 0
+370 0x0004 0 0
+372 0 0 0
+376 0x0004 0 0
+378 0 0 0
+mouse 390 0 0 0 0 213 40
+mouse 420 0 0 0 0 200 60
+mouse 440 0 0 0 2
+mouse 450 0 0 0 8
+880 0x0004 0 0
+882 0 0 0
+mouse 890 0 0 0 0 213 40
+mouse 920 0 0 0 0 230 50
+mouse 940 0 0 0 2
+mouse 950 0 0 0 8

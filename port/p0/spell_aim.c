@@ -1087,7 +1087,6 @@ void Port_SpellAimDraw(void) {
     const Preview *p = &A.preview;
     if (id < 0 || !p->valid || p->spell != (u32)id) return;
     nverts = 0;
-    const Actor *pl = &player_state.actor;
     const int any = p->hits != 0;
     u8 fill[4], edge[4], faint[4], none[4];
     /* an area that would hit: the game's water-blue; one that would not: grey */
@@ -1149,6 +1148,5 @@ void Port_SpellAimDraw(void) {
     for (int i = 0; i < MAX_ENEMIES; i++)
         if (alive(i) && (p->hits & (1u << i))) glow(i, p->kind == K_HOMING || p->kind == K_FAN ? p->hit_count[i] : 1);
     if (A.active && directional(p->kind)) facing_arrow(p->yaw);
-    (void)pl;
     if (nverts) nd_2d_world_tris(verts, (uint32_t)nverts);
 }
