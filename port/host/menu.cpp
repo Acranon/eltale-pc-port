@@ -108,6 +108,13 @@ void controls_page() {
          "keeps spells for each save: click an empty slot (or drag the plate onto one) to keep the spell you made, "
          "click a slot or press 5-0 to cast it; the wheel over the bar, , and . change its page. Off: the game's own "
          "spell panel.");
+    if (ImGui::Checkbox("Unified pause menu", &c.pause_menu)) save_settings();
+    help("Start (or Esc) opens one screen: the map of a region on the left (drag or the D-pad and stick to move it, "
+         "the wheel, + and - or C up and down to zoom, the arrows, Z, L and R or C left and right for the other "
+         "regions you have been to), your Status and Elements on the right, and Options (O, the controller's Y). "
+         "Right click on the map (or A at the cross in the middle) puts your marker there, and again on it takes it "
+         "away; while you are in its region the compass shows a cyan dot toward it. Off: the game's own four "
+         "pages.");
     help("Point at a menu's options, items and answers to move the game's cursor there; a left click picks (A), a "
          "right click backs out (B). Click an element crystal at the bottom left for its spell list, then a spell's "
          "name to add it and the middle name to cast.");

@@ -5,7 +5,7 @@
 Each output row is "<ROM offset hex>\t<English>": the offset of the Japanese string the row replaces
 (from the id, as tools/text/dump.py made it; spell names, which have no Japanese string to
 match, get 0x2000000 + element * 16 + index, the "can't use" label 0x20000FF; monster names, in the HUD
-font's kana codes, 0x3000000 + their ROM offset), the English in ASCII with \\n a line break, \\f a page
+font's kana codes, 0x3000000 + their ROM offset; the world map's region names 0x4000000 + the region), the English in ASCII with \\n a line break, \\f a page
 break and \\2 a Yes/No choice (port/text/en_text.c reads it).
 """
 import os
@@ -34,6 +34,10 @@ def main():
             # monster names (the battle HUD's kana codes, read by port/text/en_text.c Port_TextMonster):
             # 0x3000000 + the name's ROM offset
             at = 0x3000000 + int(rest, 16)
+        elif kind == "region":
+            # the world map's region names (painted into the map pictures; the pause menu's header, port/pause_menu.h):
+            # 0x4000000 + the region (menu_map_region 0..9)
+            at = 0x4000000 + int(rest)
         elif kind == "ui":
             asset, off = rest.rsplit(".", 1)
             at = assets[asset] + int(off, 16)
