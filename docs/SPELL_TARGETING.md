@@ -362,7 +362,7 @@ These rules keep the game's hashes unchanged:
 
 ## 5. The enemies' spells (element 4)
 
-The enemies cast these through `Enemy_RunAttackScript` → `Magic_CreateCastEffect`. For an enemy caster, both target
+The enemies cast these through `Enemy_StateCastSpell` → `Magic_CreateCastEffect`. For an enemy caster, both target
 rules pick the player. They are not player spells and need no aim. Their reach (`effect_extent`) is also used by the
 enemy AI (`enemy.c`, `enemy_temp_vec.z`).
 
