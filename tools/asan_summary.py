@@ -21,12 +21,27 @@ frame = re.compile(r"#\d+ 0x[0-9a-f]+ in (\S+) (\S+)")
 located = re.compile(r"is located .*")
 
 
+def short(path):
+    """a source path from the repository's root (work/src/..., port/..., game/..., tools/...)"""
+    for i in range(len(path)):
+        if (i == 0 or path[i - 1] == "/") and path.startswith(("work/src/", "port/", "game/", "tools/"), i):
+            return path[i:]
+    return path
+
+
+# Reports looked at and found harmless (docs/MEMORY_SAFETY.md): marked, not counted as open
+KNOWN = {
+    "work/src/game/env/env.c:150": "B1 benign: a row of map_backdrop_phase_tluts[4][256] reached as an offset from row 0",
+    "work/src/game/camera/camera.c:733": "B2 benign: Camera_UpdateHeightOscillation writes only .y of the Vec2f",
+    "work/src/libultra/audio/env.c:540": "A1 audio (port/audio is being replaced): float to s16 out of range, as the N64",
+}
+
+
 def where(lines):
     for ln in lines:
         m = frame.search(ln)
         if m and ("/work/src/" in m.group(2) or "/port/" in m.group(2) or "/game/" in m.group(2)):
-            path = re.sub(r"^.*?/(work/src|port|game)/", r"\1/", m.group(2))
-            return f"{m.group(1)} {path}"
+            return f"{m.group(1)} {short(m.group(2))}"
     for ln in lines:
         m = frame.search(ln)
         if m:
@@ -61,12 +76,12 @@ for log in args:
             report = lines[i:j + 1] if ends else lines[i:j]
             if m:
                 det = next((located.search(x).group(0) for x in report if located.search(x)), "")
-                det = re.sub(r"'(/home/[^']*?/)(work/src|port|game)/", r"'\2/", det)
+                det = re.sub(r"'([^']*)'", lambda q: "'" + short(q.group(1)) + "'", det)
                 det = re.sub(r"0x[0-9a-f]+", "", det).replace("(", "").replace(")", "")
                 det = re.sub(r"located \d+ bytes", "located N bytes", det)
                 key = ("asan " + m.group(1), where(report), det)
             elif u:
-                path = re.sub(r"^.*?/(work/src|port|game)/", r"\1/", u.group(1))
+                path = short(u.group(1))
                 msg = re.sub(r"-?\d+(\.\d+)?(e[+-]?\d+)?", "N", u.group(4))
                 key = ("ubsan", f"{path}:{u.group(2)}", msg)
             else:
@@ -77,11 +92,18 @@ for log in args:
             continue
         i += 1
 
+known = 0
 for n, (key, f) in enumerate(findings.items(), 1):
-    logs = ", ".join(f"{l.split('/')[-1]}x{c}" for l, c in f["logs"].items())
+    logs = ", ".join(f"{l.split('/')[-1]}x{c}" for l, c in list(f["logs"].items())[:6])
+    if len(f["logs"]) > 6:
+        logs += f", ... {len(f['logs'])} logs"
+    note = next((v for k, v in KNOWN.items() if k in key[1]), None)
+    known += note is not None
     print(f"[{n}] {key[0]} at {key[1]}: {f['count']} ({logs})")
     if key[2]:
         print(f"     {key[2]}")
+    if note:
+        print(f"     known: {note}")
     if full:
         print("\n".join("     | " + x for x in f["report"][:40]))
-print(f"{len(findings)} distinct findings")
+print(f"{len(findings)} distinct findings ({known} known, {len(findings) - known} open)")

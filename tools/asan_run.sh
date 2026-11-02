@@ -13,6 +13,9 @@
 #   native  the long plays with --dump-frames: New Game, ending, camera tour, map tour, English, 16:9, small buffers
 #   long    the map tour with battles left to run (ELTALE_BATTLE_LOG=2 encounters on every walk) and the saves'
 #           battles played for 20000 frames
+#   saves   a Controller Pak with two saves (tools/pak_two_saves.py): load the first, the save menu, the Pak manager
+#   tools   the headless test tools against this build: spell_ui_test, mouse_menu_test, pause_menu_test, interp_test
+#           (their pass/fail is about pictures, which the stub does not make; only the reports count here)
 # Saves: the quick saves the lists name (default C:/code/eltale/out/bugsaves), copied into a scratch data folder.
 # Logs: ASan/UBSan reports go to LOGS/<run>.<pid> (ASAN_OPTIONS log_path), stdout to LOGS/<run>.out.
 set -u
@@ -28,7 +31,7 @@ while [ $# -gt 0 ]; do
         --exe) EXE="$2"; shift 2 ;;
         --saves) SAVES="$2"; shift 2 ;;
         --logs) LOGS="$2"; shift 2 ;;
-        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
         *) SUITES+=("$1"); shift ;;
     esac
 done
@@ -108,6 +111,34 @@ for suite in "${SUITES[@]}"; do
                 s=$(basename "$s")
                 run "long-battle-$s" "$s" 3600 ELTALE_QUICK_LOAD_AT=100 ELTALE_BATTLE_LOG=2 \
                     -- --frames 20000 --input tests/battle-spells.input --dump-frames "$SCRATCH/frames"
+            done ;;
+        saves)
+            pak="$SCRATCH/one.mpk"
+            rm -f "$pak"
+            run saves-make "" 1200 ELTALE_MAP_TOUR=1 -- --frames 16000 --input tests/tour-save.input --pak "$pak"
+            for tail in keep 0 0x55; do
+                if [ "$tail" = keep ]; then python3 tools/pak_two_saves.py "$pak" "$SCRATCH/two.mpk" > /dev/null
+                else python3 tools/pak_two_saves.py "$pak" "$SCRATCH/two.mpk" "$tail" > /dev/null; fi
+                cp "$SCRATCH/two.mpk" "$SCRATCH/t.mpk"
+                run "saves-load-$tail" "" 1200 ELTALE_LOAD_TEST=1 -- --frames 5000 --pak "$SCRATCH/t.mpk"
+                grep -a P1_LOAD "$LOGS/saves-load-$tail.err" | tee -a "$LOGS/runs.txt"
+                cp "$SCRATCH/two.mpk" "$SCRATCH/t.mpk"
+                run "saves-continue-$tail" "" 1200 -- --frames 500 --input tests/title-continue.input --pak "$SCRATCH/t.mpk" \
+                    --dump-frames "$SCRATCH/frames"
+                cp "$SCRATCH/two.mpk" "$SCRATCH/t.mpk"
+                run "saves-pakmanager-$tail" "" 1200 -- --frames 400 --input tests/pak-manager-delete.input --pak "$SCRATCH/t.mpk"
+            done ;;
+        tools)
+            for t in spell_ui_test mouse_menu_test pause_menu_test interp_test; do
+                start=$SECONDS
+                if [ $t = interp_test ]; then where=--work; else where=--out; fi
+                ASAN_OPTIONS="log_path=$LOGS/tool-$t" UBSAN_OPTIONS="log_path=$LOGS/tool-$t" ELTALE_ASAN_LOG="$LOGS/tool-$t.own" \
+                    timeout 7200 python3 tools/$t.py --exe "$EXE" --rom "$ROM" --saves "$SAVES" $where "$SCRATCH/tool-$t" \
+                    > "$LOGS/tool-$t.out" 2>&1
+                rc=$?
+                n=$(cat "$LOGS/tool-$t".[0-9]* 2>/dev/null | grep -c 'ERROR: AddressSanitizer\|runtime error')
+                printf '%-28s rc=%-3s %4ss reports=%s (%s)\n' "tool-$t" "$rc" $((SECONDS - start)) "$n" \
+                    "$(tail -1 "$LOGS/tool-$t.out" | cut -c1-100)" | tee -a "$LOGS/runs.txt"
             done ;;
         *) echo "unknown suite $suite" >&2 ;;
     esac

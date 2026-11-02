@@ -1781,7 +1781,7 @@ index 71bd19a..b0fd96f 100644
              if (dust->life == 0) {
                  effect_active_sprite_count -= 1;
 diff --git a/src/game/input/input.c b/src/game/input/input.c
-index cc5330a..975387d 100644
+index cc5330a..27bc658 100644
 --- a/src/game/input/input.c
 +++ b/src/game/input/input.c
 @@ -86,6 +86,7 @@ s32 Input_InitControllers(void) {
@@ -1839,7 +1839,7 @@ index cc5330a..975387d 100644
      return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 0, offset, nbytes, buf);
  }
  
-@@ -243,6 +263,15 @@ s32 Pak_WriteFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
+@@ -243,6 +263,19 @@ s32 Pak_WriteFile(s32 arg0, s32 file_no, s32 offset, s32 nbytes, u8 *buf) {
      if (ret != 0) {
          return ret;
      }
@@ -1847,7 +1847,11 @@ index cc5330a..975387d 100644
 +    if (offset == 0 && nbytes >= 0x68) {
 +        u8 big[0x80];
 +        if (nbytes > (s32)sizeof big) Port_HostFatal("save header write too long");
-+        memcpy(big, buf, nbytes);
++        /* (docs/MEMORY_SAFETY.md M5) the retail write is 0x80 bytes from a 0x68-byte SaveHeader: the rest came from
++         * the next slot's header (past save_menu_save_headers' end for the last slot). Nothing reads those bytes
++         * back (save_menu.c M3 puts them in D_80090358): zeros. */
++        memset(big, 0, sizeof big);
++        memcpy(big, buf, nbytes < 0x68 ? nbytes : 0x68);
 +        port_swap_save_header(big);
 +        return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, big);
 +    }
@@ -1855,7 +1859,7 @@ index cc5330a..975387d 100644
      return osPfsReadWriteFile(&pak_port_states[arg0], file_no, 1, offset, nbytes, buf);
  }
  
-@@ -298,6 +327,14 @@ s32 Pak_ClassifyError(s32 arg0) {
+@@ -298,6 +331,14 @@ s32 Pak_ClassifyError(s32 arg0) {
  }
  
  s32 Pak_CompareNameBytes(u8 *a, u8 *b, s32 n) {
@@ -1870,7 +1874,7 @@ index cc5330a..975387d 100644
      do {
          if (*a++ != *b++) {
              break;
-@@ -321,3 +358,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
+@@ -321,3 +362,4 @@ void Input_GetControllerQuery(OSContStatus *status) {
  void Pak_InitGbPak(void) {
      func_8003D6B0();
  }
@@ -2773,10 +2777,31 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..016226a 100644
+index 89b373a..c135393 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
-@@ -91,7 +91,7 @@ void Npc_UpdateAll(void) {
+@@ -39,10 +39,20 @@ u8 text_speaker_name[0x20];
+  * D_8007AA28, player.h): retail addresses them as their own symbols. */
+ 
+ /* Message text that Npc_StartTalk hands to the text box. */
++#ifdef ELTALE_P1_OS
++/* (port, docs/MEMORY_SAFETY.md M2) Text_OpenWindow copies 24 bytes from each choice row (a window's row is 24): the
++ * inn's rows are 8, so it read past them (on the N64 into the next row and what follows). Room for the whole copy,
++ * zeros after; each row ends (0xFF) inside its 8 bytes, so nothing shown changes. */
++u8 npc_rest_choice_row0[24] = {
++#include "assets/npc_rest_choice_row0.inc.c"
++};
++u8 npc_rest_choice_row1[24] = {
++#else
+ u8 npc_rest_choice_row0[8] = {
+ #include "assets/npc_rest_choice_row0.inc.c"
+ };
+ u8 npc_rest_choice_row1[8] = {
++#endif
+ #include "assets/npc_rest_choice_row1.inc.c"
+ };
+ 
+@@ -91,7 +101,7 @@ void Npc_UpdateAll(void) {
                      if (--npc->timer == 0) {
                          if (npc_walking_count < 3) {
                              npc->state = 1;
@@ -2785,7 +2810,7 @@ index 89b373a..016226a 100644
                              Anim_SetCurrentAndNext(obj, 1, 1, 1, 1, 1);
                              dx = npc->homeX - obj->x;
                              dz = npc->homeZ - obj->z;
-@@ -102,7 +102,7 @@ void Npc_UpdateAll(void) {
+@@ -102,7 +112,7 @@ void Npc_UpdateAll(void) {
                              }
                              npc_walking_count++;
                          } else {
@@ -2794,7 +2819,7 @@ index 89b373a..016226a 100644
                          }
                      }
                  }
-@@ -114,7 +114,7 @@ void Npc_UpdateAll(void) {
+@@ -114,7 +124,7 @@ void Npc_UpdateAll(void) {
                  Npc_Move(npc_walk_step.x, npc_walk_step.y, obj);
                  if (--npc->timer == 0) {
                      npc->state = 0;
@@ -2803,7 +2828,7 @@ index 89b373a..016226a 100644
                      Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
                      npc_walking_count--;
                  }
-@@ -133,7 +133,7 @@ void Npc_UpdateAll(void) {
+@@ -133,7 +143,7 @@ void Npc_UpdateAll(void) {
                  obj->rot -= npc->turn_delta / 15.0f;
                  if (npc->timer == 0) {
                      npc->state = 0;
@@ -2812,7 +2837,7 @@ index 89b373a..016226a 100644
                      obj->rot = npc->homeAngle;
                      Anim_SetCurrentAndNext(obj, 0, 1, 0, 1, 1);
                  }
-@@ -154,6 +154,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -154,6 +164,9 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
      AnimSet *anims;
  
      npc_drawn_count = 0;
@@ -2822,7 +2847,7 @@ index 89b373a..016226a 100644
      i = npc_count;
      npc = npc_slots;
      list = npc_drawn_list;
-@@ -162,9 +165,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
+@@ -162,9 +175,16 @@ void Npc_DrawAll(struct GfxFrameData *arg0) {
          obj = &npc->actor;
          dz = npc->actor.z - player_state.actor.z;
          dist = dx * dx + dz * dz;
@@ -2839,7 +2864,7 @@ index 89b373a..016226a 100644
              anims = npc->def->anim_sets;
              Anim_DrawModel(0, obj, &anims[obj->animIndex], arg0);
              Anim_AdvanceFrame(obj->animStep, obj, &anims[obj->animIndex]);
-@@ -180,7 +190,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
+@@ -180,7 +200,12 @@ void Npc_LoadAreaAssets(s32 arg0) {
      u8 *end;
  
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
@@ -2852,7 +2877,7 @@ index 89b373a..016226a 100644
      Dma_ReadRom(D_A70350, D_802A0000, D_A77F10 - D_A70350);
      start = npc_area_set_rom_range->start;
      end = npc_area_set_rom_range->end;
-@@ -392,7 +407,7 @@ void Npc_EndTalk(s32 idx) {
+@@ -392,7 +417,7 @@ void Npc_EndTalk(s32 idx) {
          npc->timer = Math_Rand(30) + 30;
      } else if (npc->def->flags & 2) {
          npc->state = 0;
@@ -2862,7 +2887,7 @@ index 89b373a..016226a 100644
          npc->state = 3;
          npc->timer = 15;
 diff --git a/src/game/npc/npc.h b/src/game/npc/npc.h
-index e16ca6a..cb2771f 100644
+index e16ca6a..c7b3fa7 100644
 --- a/src/game/npc/npc.h
 +++ b/src/game/npc/npc.h
 @@ -19,8 +19,14 @@ typedef struct NpcDef {
@@ -2880,6 +2905,20 @@ index e16ca6a..cb2771f 100644
          } b;
      } u6;
      /* 0x08 */ u16 message_offset; /* message offset */
+@@ -70,8 +76,13 @@ extern u8 text_message_buf[0x4B0];
+ extern u8 text_speaker_name[0x20];
+ 
+ /* .data */
++#ifdef ELTALE_P1_OS
++extern u8 npc_rest_choice_row0[24]; /* (port) room for Text_OpenWindow's 24-byte copy: npc.c */
++extern u8 npc_rest_choice_row1[24];
++#else
+ extern u8 npc_rest_choice_row0[8];
+ extern u8 npc_rest_choice_row1[8];
++#endif
+ 
+ void Npc_InitArea(void);
+ void Npc_UpdateAll(void);
 diff --git a/src/game/player/player.c b/src/game/player/player.c
 index c8c3fd5..b61f54d 100644
 --- a/src/game/player/player.c
@@ -3054,10 +3093,18 @@ index 8d67837..1f91b77 100644
  void Player_LoadAnim(Actor *arg0);
  /* returns the enemy_slots index + 1 of the target, 0: none (retail returns it unmasked) */
 diff --git a/src/game/save/save_menu.c b/src/game/save/save_menu.c
-index f2ae77c..1c0ed4a 100644
+index f2ae77c..b411ea1 100644
 --- a/src/game/save/save_menu.c
 +++ b/src/game/save/save_menu.c
-@@ -13,6 +13,53 @@
+@@ -1,4 +1,7 @@
+ #include "game/save/save_menu.h"
++#ifdef ELTALE_P1_OS
++#include <string.h>
++#endif
+ #include "game/audio/sound.h"
+ #include "game/core/main.h"
+ #include "game/enemy/boss.h"
+@@ -13,6 +16,53 @@
  #include "game/text/text.h"
  #include "game/text/text_window.h"
  #include "game/ui/menu.h"
@@ -3111,7 +3158,7 @@ index f2ae77c..1c0ed4a 100644
  
  
  /*
-@@ -112,10 +159,18 @@ void SaveMenu_Update(void) {
+@@ -112,10 +162,18 @@ void SaveMenu_Update(void) {
  void SaveMenu_DrawOperationPanel(void) {
      u8 unused[4];
      s16 *r = save_menu_operation_panel_rects[save_menu_operation_panel_index];
@@ -3130,7 +3177,7 @@ index f2ae77c..1c0ed4a 100644
  
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
-@@ -128,7 +183,11 @@ void SaveMenu_DrawOperationPanel(void) {
+@@ -128,7 +186,11 @@ void SaveMenu_DrawOperationPanel(void) {
      Menu_DrawSprite(0x38, x + 1, y + 2, 1, h - 4);
      Menu_DrawSprite(0x39, x + 1, y + h - 2, w - 2, 1);
      Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
@@ -3142,7 +3189,7 @@ index f2ae77c..1c0ed4a 100644
      SaveMenu_SetTextDrawState();
  }
  
-@@ -246,6 +305,9 @@ void SaveMenu_UpdateDialog(void) {
+@@ -246,6 +308,9 @@ void SaveMenu_UpdateDialog(void) {
      } else {
          msg = save_menu_dialog_messages_load_delete[save_menu_dialog_index];
      }
@@ -3152,7 +3199,7 @@ index f2ae77c..1c0ed4a 100644
      Menu_DrawSprite(0, x, y, w, h);
      Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
      Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -259,6 +321,13 @@ void SaveMenu_UpdateDialog(void) {
+@@ -259,6 +324,13 @@ void SaveMenu_UpdateDialog(void) {
      Menu_DrawSprite(0x39, x + w - 2, y + 1, 1, h - 3);
      Text_DrawEncodedString(x + 6, y + 6, msg);
      SaveMenu_SetTextDrawState();
@@ -3166,7 +3213,7 @@ index f2ae77c..1c0ed4a 100644
      if (save_menu_delay_frames >= 0) {
          save_menu_delay_frames--;
      }
-@@ -362,6 +431,13 @@ void SaveMenu_UpdateDialog(void) {
+@@ -362,6 +434,13 @@ void SaveMenu_UpdateDialog(void) {
              w = save_menu_dialog_rects[2][2];
              h = save_menu_dialog_rects[2][3];
          }
@@ -3180,7 +3227,7 @@ index f2ae77c..1c0ed4a 100644
          Menu_DrawSprite(0, x, y, w, h);
          Menu_DrawSprite(0x37, x + 3, y + h, w, 3);
          Menu_DrawSprite(0x37, x + w + 1, y + 6, 2, h - 5);
-@@ -394,6 +470,11 @@ void SaveMenu_UpdateDialog(void) {
+@@ -394,6 +473,11 @@ void SaveMenu_UpdateDialog(void) {
                  save_menu_flags &= ~8;
              }
              SaveMenu_SetTextDrawState();
@@ -3192,7 +3239,7 @@ index f2ae77c..1c0ed4a 100644
              if (save_menu_flags & 0x10) {
                  Menu_DrawSprite(4, save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][0], save_menu_choice_cursor_positions[save_menu_choice_cursor + 2][1], 12, 12);
              } else {
-@@ -515,6 +596,39 @@ void SaveMenu_UpdateDialog(void) {
+@@ -515,6 +599,39 @@ void SaveMenu_UpdateDialog(void) {
      }
  }
  
@@ -3232,7 +3279,7 @@ index f2ae77c..1c0ed4a 100644
  /* .data 80061650..80061660: SaveMenu_UpdateSlotList's local message (an initialized u8[14]
   * that IDO copies to the stack); becomes its initializer when the function is C. */
  #ifdef NON_MATCHING
-@@ -770,6 +884,12 @@ void SaveMenu_UpdateSlotList(s32 arg0) {
+@@ -770,6 +887,12 @@ void SaveMenu_UpdateSlotList(s32 arg0) {
      } else {
          Menu_DrawSprite(1, flag + 0x42, 0x37, 0x10, 0xD);
      }
@@ -3245,7 +3292,7 @@ index f2ae77c..1c0ed4a 100644
      if (arg0 != 1) {
          n = 0;
          if (input_stick_y < -20) {
-@@ -974,7 +1094,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -974,7 +1097,7 @@ void SaveMenu_SaveSelectedFile(void) {
          SaveMenu_CaptureGameState(idx);
      }
      id = save_menu_selected_slot;
@@ -3254,16 +3301,51 @@ index f2ae77c..1c0ed4a 100644
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -996,7 +1116,7 @@ void SaveMenu_SaveSelectedFile(void) {
+@@ -996,7 +1119,18 @@ void SaveMenu_SaveSelectedFile(void) {
          save_menu_flags &= ~0x2000;
          return;
      }
 -    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, &save_menu_game_state_block);
++#ifdef ELTALE_P1_OS
++    /* (port, docs/MEMORY_SAFETY.md M4) the retail write is 0xE0 bytes from the 0xC8-byte block: the last 0x18 came
++     * from whatever lies behind it (the N64: the header scratch). Loading reads the 0xE0 and keeps 0xC8, so those
++     * bytes are never used: written as zeros here, from a whole buffer. */
++    {
++        u8 whole[0xE0] = { 0 };
++        memcpy(whole, &save_menu_game_state_block, sizeof save_menu_game_state_block);
++        err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, whole);
++    }
++#else
 +    err = Pak_WriteFile(input_primary_port, save_menu_file_entries[save_menu_selected_slot].file_no, 0x80, 0xE0, (u8 *)&save_menu_game_state_block);
++#endif
      if (err != 0) {
          save_menu_pak_error = err;
          switch (-Pak_ClassifyError(err)) {
-@@ -1146,6 +1266,12 @@ void SaveMenu_DrawBackground(void) {
+@@ -1095,7 +1229,23 @@ void SaveMenu_RefreshFileList(void) {
+     for (i = 0; i < 16; i++) {
+         if (save_menu_file_entries[i].file_no >= 0) {
+             e = &save_menu_save_headers[i];
++#ifdef ELTALE_P1_OS
++            /* (port, docs/MEMORY_SAFETY.md M3) the retail read is 0x80 bytes into the 0x68-byte header, on into
++             * D_80090358 (0x18, unreferenced) behind it on the N64. The port's linker keeps no such order: on Windows
++             * the 0x18 bytes landed on save_menu_operation_panel_index, save_menu_pak_error, save_menu_repair_count
++             * and the first 12 bytes of save_menu_save_headers[0] (its stats' hp, max_hp, mp, max_mp), so with two
++             * saves on the Pak, loading the first one gave max HP 0 and the HUD divided by it (a crash). Read into a
++             * whole buffer, then the two parts where they belong. */
++            {
++                u8 whole[0x80];
++                _Static_assert(sizeof save_menu_header_read_scratch + sizeof D_80090358 == sizeof whole, "0x80 bytes");
++                ret = Pak_ReadFile(input_primary_port, save_menu_file_entries[i].file_no, 0, 0x80, whole);
++                memcpy(&save_menu_header_read_scratch, whole, sizeof save_menu_header_read_scratch);
++                memcpy(D_80090358, whole + sizeof save_menu_header_read_scratch, sizeof D_80090358);
++            }
++#else
+             ret = Pak_ReadFile(input_primary_port, save_menu_file_entries[i].file_no, 0, 0x80, (u8 *)&save_menu_header_read_scratch);
++#endif
+             *e = save_menu_header_read_scratch;
+             if (ret != 0) {
+                 save_menu_pak_error = err;
+@@ -1146,6 +1296,12 @@ void SaveMenu_DrawBackground(void) {
      Menu_DrawSprite(0x47, 0xA2, 0xA6, 0x18, 0xE);
  }
  
@@ -3276,7 +3358,7 @@ index f2ae77c..1c0ed4a 100644
  void SaveMenu_CaptureGameState(s32 arg0) {
      SaveHeader *e = &save_menu_save_headers[arg0];
      u8 *d;
-@@ -1189,6 +1315,11 @@ void SaveMenu_CaptureGameState(s32 arg0) {
+@@ -1189,6 +1345,11 @@ void SaveMenu_CaptureGameState(s32 arg0) {
      for (s = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
@@ -3288,7 +3370,7 @@ index f2ae77c..1c0ed4a 100644
  }
  
  void SaveMenu_RestoreGameState(s32 arg0) {
-@@ -1231,4 +1362,9 @@ void SaveMenu_RestoreGameState(s32 arg0) {
+@@ -1231,4 +1392,9 @@ void SaveMenu_RestoreGameState(s32 arg0) {
      for (d = boss_defeated_bits, n = sizeof(save_menu_game_state_block.defeated_bosses); n != 0; n--) {
          *d++ = *s++;
      }
@@ -4174,7 +4256,7 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..26b64a8 100644
+index c955abf..5c2b7a2 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
 @@ -9,6 +9,11 @@
@@ -4296,7 +4378,22 @@ index c955abf..26b64a8 100644
      gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
      gDPSetBlendColor(gfx_dl_head++, 0, 0, 0, 1);
      if ((input_pressed_buttons & 0x5000) && !(menu_flags & 0x6020)) {
-@@ -1432,19 +1520,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
+@@ -1343,7 +1431,14 @@ MenuRomRange npc_area_set_rom_ranges[7] = {
+     { (u8 *)0x00871D10, (u8 *)0x008D1960 }, { (u8 *)0x008D1960, (u8 *)0x00926C00 }, { (u8 *)0x00926C00, (u8 *)0x0095D4E0 }, { (u8 *)0x0095D4E0, (u8 *)0x00988580 },
+     { (u8 *)0x00988580, (u8 *)0x009E16C0 }, { (u8 *)0x009E16C0, (u8 *)0x00A14190 }, { (u8 *)0x00A14190, (u8 *)0x00A70350 },
+ };
++#ifdef ELTALE_P1_OS
++/* (port, docs/MEMORY_SAFETY.md M1) Npc_InitArea hands this to Npc_SetMessage, which copies 0x4B0 bytes: 0x1B8 past
++ * the retail 0x2F8 (on the N64 the start of map_area_defs; in the port whatever the linker put next). Room for the
++ * whole copy, zeros after the message. The message ends (0xFF) inside the first 0x2F8, so nothing shown changes. */
++u8 npc_area_entry_message[0x4B0] = {
++#else
+ u8 npc_area_entry_message[0x2F8] = {
++#endif
+ #include "assets/npc_area_entry_message.inc.c"
+ };
+ MapAreaDef map_area_defs[36] = {
+@@ -1432,19 +1527,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
  u32 mapobjanim_type23_keys[0x8F] = {
  #include "assets/mapobjanim_type23_keys.inc.c"
  };
@@ -4320,7 +4417,7 @@ index c955abf..26b64a8 100644
  u32 mapobj_loop_anim0_keys[0x27] = {
  #include "assets/mapobj_loop_anim0_keys.inc.c"
  };
-@@ -1458,10 +1546,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
+@@ -1458,10 +1553,10 @@ u32 mapobj_loop_anim3_keys[0x41] = {
  #include "assets/mapobj_loop_anim3_keys.inc.c"
  };
  AnimNode mapobj_loop_anims[4] = {
@@ -4335,7 +4432,7 @@ index c955abf..26b64a8 100644
  };
  u16 mapobj_kind11_tlut[0x200] = {
  #include "assets/mapobj_kind11_tlut.inc.c"
-@@ -1536,7 +1624,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
+@@ -1536,7 +1631,7 @@ Gfx mapobj_kind11_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4344,7 +4441,7 @@ index c955abf..26b64a8 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1552,7 +1640,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1552,7 +1647,7 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xBA000E02, 0x00008000 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4353,7 +4450,7 @@ index c955abf..26b64a8 100644
      {{ 0xE8000000, 0x00000000 }},
      {{ 0xF5000100, 0x07000000 }},
      {{ 0xE6000000, 0x00000000 }},
-@@ -1561,12 +1649,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
+@@ -1561,12 +1656,12 @@ Gfx mapobj_kind12_setup_dl[13] = {
      {{ 0xB8000000, 0x00000000 }},
  };
  Gfx mapobj_kind11_quad_dl[3] = {
@@ -4368,7 +4465,7 @@ index c955abf..26b64a8 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1605,13 +1693,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
+@@ -1605,13 +1700,13 @@ Gfx mapobj_arc_sprite_dl[16] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4384,7 +4481,7 @@ index c955abf..26b64a8 100644
      {{ 0xB1000204, 0x00020604 }},
      {{ 0xB8000000, 0x00000000 }},
  };
-@@ -1632,11 +1720,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
+@@ -1632,11 +1727,11 @@ Gfx mapobj_drop_sprite_dl[10] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFCFF9BFF, 0xFFFCFE38 }},
      {{ 0xBB000001, 0x80008000 }},
@@ -4399,10 +4496,10 @@ index c955abf..26b64a8 100644
      { 0x00D86970, 0x01001300 }, { 0x00D8B170, 0x01001300 }, { 0x00D8F970, 0x01002410 }, { 0x00D92D70, 0x01003630 },
      { 0x00D96570, 0x01003630 }, { 0x00D99D70, 0x01003630 }, { 0x00D9D570, 0x01003630 }, { 0x00DA0D70, 0x01003630 },
 diff --git a/src/game/ui/menu.h b/src/game/ui/menu.h
-index a56b278..4f08d5e 100644
+index a56b278..9545a39 100644
 --- a/src/game/ui/menu.h
 +++ b/src/game/ui/menu.h
-@@ -96,6 +96,11 @@ extern EnemyEffectDef enemy_effect_defs[22];
+@@ -96,9 +96,18 @@ extern EnemyEffectDef enemy_effect_defs[22];
   * reads them as their own symbols in retail. */
  extern u16 D_8005685A;
  extern u16 D_8005685C;
@@ -4413,7 +4510,14 @@ index a56b278..4f08d5e 100644
 +#endif
  extern s32 D_80056878[2];
  extern MenuRomRange npc_area_set_rom_ranges[7];
++#ifdef ELTALE_P1_OS
++extern u8 npc_area_entry_message[0x4B0]; /* (port) room for Npc_SetMessage's whole copy: menu.c */
++#else
  extern u8 npc_area_entry_message[0x2F8];
++#endif
+ extern MapAreaDef map_area_defs[36];
+ extern MapRomRange map_extra_rom_ranges[6];
+ extern CellOffset mapobj_cell_single[2];
 diff --git a/src/libultra/audio/bnkf.c b/src/libultra/audio/bnkf.c
 index a0cdcde..2e70135 100644
 --- a/src/libultra/audio/bnkf.c
