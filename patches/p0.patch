@@ -24,7 +24,7 @@ index cf65666..ce7b699 100644
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
 diff --git a/src/game/actor/anim.c b/src/game/actor/anim.c
-index fe38701..93b56e1 100644
+index fe38701..728b29a 100644
 --- a/src/game/actor/anim.c
 +++ b/src/game/actor/anim.c
 @@ -1,8 +1,14 @@
@@ -42,7 +42,22 @@ index fe38701..93b56e1 100644
  
  /*
   * Actor model animation: state changes, root motion, frame advance, and node drawing.
-@@ -43,6 +49,9 @@ typedef struct {
+@@ -10,7 +16,14 @@
+  */
+ 
+ /* This file's .bss, 8008BFC0..8008C040, in address order. */
++#ifdef ELTALE_P1_OS
++/* (port) room for every node a model marks (flag 2): the retail array holds 4 and a fifth write lands on the next
++ * variable (on the N64 the count below; in the port's layout whatever the linker put next: the native renderer's
++ * pointer, which then crashed the next draw). Only [0] is read (Player_Draw), so more room changes nothing else. */
++Vec3f anim_node_world_positions[ANIM_NODE_POSITIONS];
++#else
+ Vec3f anim_node_world_positions[4];
++#endif
+ s32 anim_node_position_count;
+ MtxF anim_billboard_mtx_scratch;
+ 
+@@ -43,6 +56,9 @@ typedef struct {
  } Struct_80020568_xf;
  
  void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
@@ -52,7 +67,7 @@ index fe38701..93b56e1 100644
      s32 i;
      s16 count;
      u16 cur;
-@@ -56,7 +65,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -56,7 +72,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
  
      count = arg1->nodeCount;
      cur = arg0->frame;
@@ -61,7 +76,7 @@ index fe38701..93b56e1 100644
      i = 0;
      while (i < count && anim->parent != 0) {
          i++;
-@@ -70,7 +79,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -70,7 +86,7 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
      }
      Math_EvalTcbSpline(&anim->track, (f32*)&pos, frame);
      if (arg0->animFlags & 0x200) {
@@ -70,7 +85,7 @@ index fe38701..93b56e1 100644
          frame = anim->track.last;
          while (kf->frame != frame) {
              kf++;
-@@ -102,6 +111,9 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
+@@ -102,6 +118,9 @@ void Anim_UpdateRootMotion(Actor* arg0, AnimSet* arg1, f32 scale) {
  }
  
  void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData* frameData) {
@@ -80,7 +95,7 @@ index fe38701..93b56e1 100644
      s32 i;
      u16 frame;
      AnimNode* anims;
-@@ -114,21 +126,27 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
+@@ -114,21 +133,27 @@ void Anim_DrawModel(s32 flags, Actor* arg1, AnimSet* arg2, struct GfxFrameData*
      scale.x = arg1->scale;
      scale.y = arg1->scale;
      scale.z = arg1->scale;
@@ -110,7 +125,17 @@ index fe38701..93b56e1 100644
      s32* tbl;
      MtxF mtx;
      Struct_80020568_xf xf;
-@@ -174,18 +192,31 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -168,24 +193,41 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+         guMtxF2L(mtx.mf, &buf->mtx[gfx_mtx_index]);
+     }
+     gSPMatrix(gfx_dl_head++, &D_2000000.mtx[gfx_mtx_index++], G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
++#ifdef ELTALE_P1_OS
++    if ((anim->flags & 2) && anim_node_position_count < ANIM_NODE_POSITIONS) {
++#else
+     if (anim->flags & 2) {
++#endif
+         anim_node_world_positions[anim_node_position_count].x = mtx.mf[3][0];
+         anim_node_world_positions[anim_node_position_count].y = mtx.mf[3][1];
          anim_node_world_positions[anim_node_position_count].z = mtx.mf[3][2];
          anim_node_position_count++;
      }
@@ -145,7 +170,7 @@ index fe38701..93b56e1 100644
      for (i = 0; i < set->nodeCount; i++) {
          if (anims[i].parent == idx + 1) {
              Anim_DrawNode(&mtx, scale, flags, i, frame, total, set, anims, buf);
-@@ -194,6 +225,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
+@@ -194,6 +236,9 @@ void Anim_DrawNode(MtxF* parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  }
  
  void Anim_AdvanceFrame(s32 arg0, Actor* arg1, AnimSet* arg2) {
@@ -156,10 +181,10 @@ index fe38701..93b56e1 100644
  
      if (temp_v0 >= arg2->length) {
 diff --git a/src/game/actor/anim.h b/src/game/actor/anim.h
-index 66c2ccd..41f83a2 100644
+index 66c2ccd..96d1b51 100644
 --- a/src/game/actor/anim.h
 +++ b/src/game/actor/anim.h
-@@ -17,17 +17,20 @@ typedef struct AnimNode {
+@@ -17,21 +17,29 @@ typedef struct AnimNode {
      /* 0x15 */ s8 dl; /* index into AnimSet.dls, -1 = none */
      /* 0x16 */ u8 flags; /* 1 billboard, 2 record the world position */
      /* 0x17 */ u8 pad17;
@@ -184,7 +209,16 @@ index 66c2ccd..41f83a2 100644
  } AnimSet; /* 0xC bytes */
  
  /* .bss 8008BFC0..8008C040 */
-@@ -43,4 +46,17 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
++#ifdef ELTALE_P1_OS
++#define ANIM_NODE_POSITIONS 16 /* (port) anim.c: the retail 4 overflowed */
++extern Vec3f anim_node_world_positions[ANIM_NODE_POSITIONS];
++#else
+ extern Vec3f anim_node_world_positions[4];
++#endif
+ extern s32 anim_node_position_count;
+ extern MtxF anim_billboard_mtx_scratch;
+ 
+@@ -43,4 +51,17 @@ void Anim_DrawNode(MtxF *parent, Vec3f scale, s32 flags, s32 idx, s32 frame, s32
  void Anim_AdvanceFrame(s32 arg0, struct Actor *arg1, AnimSet *arg2);
  void Anim_ApplyPivotOffset(MtxF *arg0, AnimNode *arg1);
  
