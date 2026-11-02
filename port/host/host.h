@@ -124,7 +124,15 @@ void save_settings();
 // ---- host.cpp: the window ------------------------------------------------------------------------
 SDL_Window *window();
 void set_fullscreen(bool on);
+// The window has the keyboard: SDL's window flags now (SDL_WINDOW_INPUT_FOCUS); a hidden window (a test's): the focus
+// events
 bool focused();
+// The mouse is over the window as SDL's window flags say now (SDL_WINDOW_MOUSE_FOCUS): 1 or 0, or -1 for a hidden
+// window (a test's: the enter and leave events decide)
+int system_mouse_inside();
+// ELTALE_INPUT_TEST's "system_focus" / "system_mouse" rows: what SDL's flags say, in place of the window's (1, 0, or
+// -1: ask the window again); -2 leaves one as it is
+void set_test_system(int focus, int mouse);
 // The window's size in pixels.
 void window_pixels(int *w, int *h);
 // The game cannot go on (the GPU device was lost): `message` to stderr and the data folder's error.log, a message

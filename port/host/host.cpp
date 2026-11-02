@@ -17,7 +17,18 @@ namespace {
 SDL_Window *win;
 std::unique_ptr<Renderer> current;
 bool quit_requested;
-bool has_focus = true;
+bool has_focus = true; // (from the focus events: what a hidden window, a test's, goes by)
+int test_system_focus = -1, test_system_mouse = -1; // ELTALE_INPUT_TEST's system_focus / system_mouse rows
+
+// What SDL says of the window now: 1 or 0, or -1 when it cannot be asked (no window, or a hidden one: a test's,
+// which the system never focuses; the events decide there)
+int system_flag(int test, SDL_WindowFlags flag) {
+    if (test >= 0) return test;
+    if (!win) return -1;
+    const SDL_WindowFlags f = SDL_GetWindowFlags(win);
+    if (f & SDL_WINDOW_HIDDEN) return -1;
+    return (f & flag) ? 1 : 0;
+}
 
 void pump_events() {
     input_test_pump();
@@ -45,7 +56,20 @@ void menu_pause() {
 
 SDL_Window *window() { return win; }
 Renderer *renderer() { return current.get(); }
-bool focused() { return has_focus; }
+// The window's focus as SDL has it now (its window flags), not only as the focus events said: a fullscreen switch
+// can send a focus lost with no focus gained after it, and a flag kept from the events alone then stayed false (the
+// mouse's clicks, its wheel and mouse look dead while the keys worked)
+bool focused() {
+    const int s = system_flag(test_system_focus, SDL_WINDOW_INPUT_FOCUS);
+    return s >= 0 ? s != 0 : has_focus;
+}
+
+int system_mouse_inside() { return system_flag(test_system_mouse, SDL_WINDOW_MOUSE_FOCUS); }
+
+void set_test_system(int focus, int mouse) {
+    if (focus != -2) test_system_focus = focus;
+    if (mouse != -2) test_system_mouse = mouse;
+}
 
 void window_pixels(int *w, int *h) {
     *w = *h = 0;

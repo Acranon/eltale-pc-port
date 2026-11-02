@@ -10,6 +10,12 @@ positions come from the picture's place in the window (its own shape, as large a
 letterbox), so every case must report the same picture positions (P1_MOUSE_MENU pointer=, within half a picture
 pixel) and the same picks (P1_MOUSE_STATE title=20, mode=2 after the last click). Prints MOUSE_HOST <case> OK|FAIL and
 MOUSE_HOST_TEST OK when all pass.
+
+The focus cases (4:3) send the window a focus lost with no focus gained after it, as a fullscreen switch can: with
+the system saying the window has the focus (the system_focus row stands in for SDL's window flags, which a hidden
+window never has) the clicks must still reach the game; with the events alone deciding they must not (the check that
+the lost focus did arrive). The same for a mouse leave with no enter, with the system saying the mouse is over the
+window: the pointer is not left outside.
 """
 
 import argparse
@@ -23,14 +29,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# (name, window WxH, ELTALE_WIDESCREEN, ELTALE_RES_SCALE or None)
+# (name, window WxH, ELTALE_WIDESCREEN, ELTALE_RES_SCALE or None, extra events, clicks the game must see)
 CASES = [
-    ("4:3", (1280, 960), "off", None),
-    ("4:3-pillarbox", (1600, 900), "off", "2"),
-    ("16:9", (1600, 900), "16:9", None),
-    ("16:9-letterbox", (1280, 1200), "16:9", "3"),
-    ("window-narrow", (1000, 800), "window", None),
-    ("window-wide", (2000, 700), "window", "1"),
+    ("4:3", (1280, 960), "off", None, [], 2),
+    ("4:3-pillarbox", (1600, 900), "off", "2", [], 2),
+    ("16:9", (1600, 900), "16:9", None, [], 2),
+    ("16:9-letterbox", (1280, 1200), "16:9", "3", [], 2),
+    ("window-narrow", (1000, 800), "window", None, [], 2),
+    ("window-wide", (2000, 700), "window", "1", [], 2),
+    # a focus lost and never gained again (a fullscreen switch), the system saying focused: the mouse still works
+    ("focus-lost-system-focused", (1280, 960), "off", None, ["40 system_focus 1", "45 focus_lost"], 2),
+    # the same lost focus with the events alone deciding: no click gets through (the lost focus did arrive)
+    ("focus-lost-events-only", (1280, 960), "off", None, ["45 focus_lost"], 0),
+    # a mouse leave just after each press and never an enter, the system saying the mouse is over the window: the
+    # clicks still count (the leave after the press: a press itself puts the pointer back inside)
+    ("mouse-left-system-inside", (1280, 960), "off", None, ["40 system_mouse 1", "62 mouse_leave", "165 mouse_leave"], 2),
+    # the same leaves with the events alone deciding: the pointer is outside, no click gets through
+    ("mouse-left-events-only", (1280, 960), "off", None, ["62 mouse_leave", "165 mouse_leave"], 0),
 ]
 
 # the title's targets, in the 320x240 screen's units (CENTRE): Press Start anywhere, Continue at 113..187 x 154..178
@@ -58,7 +73,7 @@ def main():
     ap.add_argument("--rom", type=Path, required=True)
     args = ap.parse_args()
     failed = 0
-    for name, win, mode, scale in CASES:
+    for name, win, mode, scale, extra, want in CASES:
         fx, fy, fw, fh, w1 = picture_rect(win, mode)
         side = (w1 - 320) / 2
         pts = [((x + side) , y) for x, y in POINTS]  # picture units
@@ -66,6 +81,7 @@ def main():
         events = ["5 key_down Return", "7 key_up Return",
                   f"60 pointer {wpts[0][0]:.1f} {wpts[0][1]:.1f}", "62 mouse_down left", "63 mouse_up left",
                   f"150 pointer {wpts[1][0]:.1f} {wpts[1][1]:.1f}", "165 mouse_down left", "166 mouse_up left"]
+        events = sorted(events + extra, key=lambda e: int(e.split()[0]))  # (stable: a tick's rows keep their order)
         d = Path(tempfile.mkdtemp(prefix="mouse_host_"))
         try:
             (d / "settings.json").write_text('{"version": 2, "audio": {"volume": 0}, "game": {"language": "jp"}}\n')
@@ -83,13 +99,13 @@ def main():
         problems = []
         clicks = [l for l in out.splitlines() if l.startswith("P1_MOUSE_MENU")]
         states = [l for l in out.splitlines() if l.startswith("P1_MOUSE_STATE")]
-        if len(clicks) != 2:
-            problems.append(f"{len(clicks)} clicks seen, 2 sent")
+        if len(clicks) != want:
+            problems.append(f"{len(clicks)} clicks seen, {want} wanted")
         for c, (u, v) in zip(clicks, pts):
             m = re.search(r"pointer=([\d.]+),([\d.]+) width=(\d+)", c)
             if not m or abs(float(m.group(1)) - (u + 0.5)) > 0.5 or abs(float(m.group(2)) - (v + 0.5)) > 0.5 or int(m.group(3)) != w1:
                 problems.append(f"at {u + 0.5},{v + 0.5} width {w1}: {c}")
-        if len(states) < 2 or "title=20" not in states[1] or "mode=" not in states[1]:
+        if want and (len(states) < 2 or "title=20" not in states[1] or "mode=" not in states[1]):
             problems.append("Continue not picked: " + (states[1] if len(states) > 1 else "no state"))
         ok = re.search(r"P1_OS_OK[^\n]*", out)
         print(f"MOUSE_HOST {name} window={win[0]}x{win[1]} widescreen={mode} scale={scale or '-'} picture={fx},{fy},{fw}x{fh} "
