@@ -169,7 +169,9 @@ Monsters glow with a gold ring at their feet, a pulsing fill inside it, and one 
 - **The camera** (`Port_SpellAimLiftWanted`, `aim_lift` in mouse_camera.c):
   - Over 8 ticks it eases to a pitch of 47 degrees outdoors (38 indoors, for the ceilings).
   - The point looked at moves 32 units ahead along the view, so the monsters ahead stay in the picture.
-  - It comes back down the same way.
+  - It comes back down the same way after an undo. At the cast the game's focus view (`Camera_StartBattleFocus`)
+    takes the camera at once and the raise goes with it, a cut: easing down over a camera the game is moving itself
+    blended badly in the pictures between ticks (`interp_test.py aim` flagged it).
 
 ### Why the raised camera is clean
 

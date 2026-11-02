@@ -184,7 +184,11 @@ void Port_MouseCameraApply(void) {
     else lift_t -= 1.0f / LIFT_TICKS;
     if (lift_t < 0.0f) lift_t = 0.0f;
     if (lift_t > 1.0f) lift_t = 1.0f;
-    if (core_game_mode != 1 || cam->mode == CAM_MODE_SCRIPTED || cam->mode < 0 || cam->mode >= CAM_MODE_COUNT) lift_t = 0.0f;
+    /* (the cast's focus view, Camera_StartBattleFocus, takes the camera at once: the raise goes with it, a cut, rather
+     * than easing down over a camera the game is moving itself, which the pictures between ticks blend badly) */
+    if (core_game_mode != 1 || cam->mode == CAM_MODE_SCRIPTED || cam->mode < 0 || cam->mode >= CAM_MODE_COUNT ||
+        (cam->flags & CAM_FLAG_FOCUS))
+        lift_t = 0.0f;
     mouse_view(cam);
     aim_lift(cam);
 }
