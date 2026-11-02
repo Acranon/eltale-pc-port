@@ -151,6 +151,10 @@ from top to bottom. Nobody else is doing this: every other project targets the U
   command lists. We run them with our own HLE of the aspMain ABI, checked against an LLE run
   (RSPRecomp or an emulator) sample for sample on test songs. Check the US envelope bug (1µs releases);
   the PAL values are the fix.
+  - **Done (2026-11-02):** sound is native only. `port/audio/aspmain.c` (aspMain ABI 1 in C) is the only
+    play path. The game's own microcode on our RSP interpreter (`port/audio/rsp_lle.c`) is the test
+    reference (`ELTALE_AUDIO_CHECK`, `tests/audio_checks.sh`): 0 differing tasks over New Game, the intro,
+    the ending, both tours, battles and menus, fuzzed too. See docs/AUDIO.md.
 - **Test harness from day one** (holyland's best investment):
   - `--headless --fast` deterministic runs, `--input pad` scripts, and `--log` of game state;
   - boot_test and frame_test, with hashes of display lists and pictures;
@@ -228,7 +232,8 @@ paraLLEl-RDP) is mature.
   early, from the D0 test batch.
 - **Endianness:** this is new compared with KF4. Missed swaps show as garbage data, not crashes, so they
   need a census tool and data checks.
-- **RSP audio HLE accuracy:** an LLE reference run settles it.
+- **RSP audio HLE accuracy:** an LLE reference run settles it. (Settled: bit for bit, task by task,
+  docs/AUDIO.md.)
 - **Eltale-only data:** about 180KB of new files at ROM F2C170–F74890, purpose unknown. Identify them in
   D0/D2.
 - **Image text:** Japanese baked into graphics needs redrawn art.

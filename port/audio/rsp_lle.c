@@ -21,8 +21,9 @@
  * The microcode sees memory big-endian; the native game keeps it in host order. The DMA converts by
  * what the memory holds: sample data the PI copied from the ROM is bytes, the task's command list
  * is 32-bit words, and everything else the audio code hands the RSP (states, books, mix and output
- * buffers) is 16-bit samples. A DRAM address is 24 bits on the RSP; the audio heap and arenas sit in
- * the image at 0x10000000-0x10FFFFFF, so it maps back to the host by adding 0x10000000. */
+ * buffers) is 16-bit samples. A DRAM address is 24 bits on the RSP, and the audio heap and arenas sit
+ * anywhere in the image (0x10000000 on, more than 16 MiB), so the reference gives the microcode
+ * windows: each 1 MiB of the image a command names is seen at a 2 MiB window of the RSP's 16 MiB. */
 #include "ultra64.h"
 #include "port/audio.h"
 #include "../rsp/rsp.h"
@@ -39,7 +40,7 @@ extern void (*Port_AspWriteHook)(void *dst, u32 bytes);
 /* ---- what host memory holds: ROM bytes (one bit per 8 bytes of the image's first 16 MiB) ---- */
 
 #define IMAGE_BASE 0x10000000u
-#define IMAGE_SPAN (16u << 20)
+#define IMAGE_SPAN (64u << 20)
 static uint8_t rom_bytes_map[IMAGE_SPAN / 8 / 8];
 
 void Port_LleNotePiDma(void *dst, u32 size) {
@@ -55,6 +56,27 @@ static uint32_t list_start, list_end;
 static uint32_t list_copy[0x8000 / 4];
 
 static int in_image(uint32_t a) { return a >= IMAGE_BASE && a - IMAGE_BASE < IMAGE_SPAN; }
+
+/* the RSP's 16 MiB as 8 windows of 2 MiB, each showing the image from a 1 MiB boundary (so a DMA of up
+ * to 1 MiB never runs off one), given out as commands name addresses and kept */
+#define WINDOWS 8
+static uint32_t window_base[WINDOWS];
+static unsigned window_count;
+
+static uint32_t to_rsp(uint32_t host) {
+    uint32_t base = host & ~0xFFFFFu;
+    unsigned w;
+    for (w = 0; w < window_count; w++)
+        if (host - window_base[w] < (2u << 20)) return w << 21 | (host - window_base[w]);
+    if (window_count == WINDOWS) Port_HostFatal("RSP reference: the audio lists name too much of the image");
+    window_base[window_count] = base;
+    return window_count++ << 21 | (host - base);
+}
+static uint32_t to_host(uint32_t rsp_addr) {
+    rsp_addr &= 0xFFFFFF;
+    if ((rsp_addr >> 21) >= window_count) Port_HostFatal("RSP reference: DMA outside its windows");
+    return window_base[rsp_addr >> 21] + (rsp_addr & 0x1FFFFF);
+}
 
 /* host byte address of big-endian byte `a` (a host address) */
 static uint8_t *host_byte(uint32_t a) {
@@ -113,8 +135,8 @@ static Rsp rsp;
 static uint8_t *const dmem = rsp.dmem;
 static uint8_t *const imem = rsp.imem;
 
-static uint8_t dram_read(void *ctx, uint32_t a) { (void)ctx; return *host_byte(IMAGE_BASE + a); }
-static void dram_write(void *ctx, uint32_t a, uint8_t v) { (void)ctx; host_write(IMAGE_BASE + a, v); }
+static uint8_t dram_read(void *ctx, uint32_t a) { (void)ctx; return *host_byte(to_host(a)); }
+static void dram_write(void *ctx, uint32_t a, uint8_t v) { (void)ctx; host_write(to_host(a), v); }
 
 static void store(uint32_t a, int bytes, uint32_t v) {
     for (int i = bytes - 1; i >= 0; i--, v >>= 8) dmem[(a + i) & 0xFFF] = (uint8_t)v;
@@ -132,7 +154,7 @@ static void run_list(const OSTask *task, const uint32_t *at, const uint32_t *cmd
     uint32_t tw[16] = { 0 };
     tw[0] = task->t.type;
     tw[1] = task->t.flags;
-    tw[12] = (uint32_t)(uintptr_t)at - IMAGE_BASE; /* data_ptr, as a 24-bit RDRAM address */
+    tw[12] = to_rsp((uint32_t)(uintptr_t)at); /* data_ptr, as the RSP sees it */
     tw[13] = words * 4;
     for (int i = 0; i < 16; i++) store(0xFC0 + i * 4, 4, tw[i]);
     list_start = (uint32_t)(uintptr_t)at;
@@ -141,7 +163,7 @@ static void run_list(const OSTask *task, const uint32_t *at, const uint32_t *cmd
     for (uint32_t i = 0; i < words; i += 2) {
         uint32_t w0 = cmds[i], w1 = cmds[i + 1], op = w0 >> 24;
         /* ADPCM ENVMIXER LOADBUFF RESAMPLE SAVEBUFF LOADADPCM POLEF SETLOOP carry an address */
-        if (((1u << op) & 0xC87A) && in_image(w1)) w1 -= IMAGE_BASE;
+        if (((1u << op) & 0xC87A) && in_image(w1)) w1 = to_rsp(w1);
         list_copy[i] = w0;
         list_copy[i + 1] = w1;
     }

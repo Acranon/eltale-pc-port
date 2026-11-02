@@ -19,8 +19,8 @@ out/frame_N.bin (8 MiB + root DL)
 - **port/rsp** (`rsp.h`, `rsp.c`) is the RSP interpreter that used to live in port/audio/rsp_lle.c: the
   scalar unit, COP0 with SP DMA, the vector unit (ares' accumulator, clamp, flag and divide rules). The
   caller gives it DRAM (`dram_read`/`dram_write`, one big-endian byte at a time) and the RDP's DPC
-  registers (`dpc_read`/`dpc_write`, COP0 8-15). The audio check (`ELTALE_AUDIO_CHECK=1`) and
-  `ELTALE_AUDIO_LLE=1` use it with the game's native memory; eltale-rdpref uses it with the frame image.
+  registers (`dpc_read`/`dpc_write`, COP0 8-15). The audio check (`ELTALE_AUDIO_CHECK`, tests only:
+  docs/AUDIO.md) uses it with the game's native memory; eltale-rdpref uses it with the frame image.
 - **tools/rdpref/rdpref.cpp** (`eltale-rdpref`): starts the game's graphics task as `osSpTaskLoad` +
   `osSpTaskStartGo` would (the ROM's rspboot in IMEM at 0, the OSTask at DMEM 0xFC0), runs F3DEX to
   its halt, hands every RDP command to paraLLEl-RDP, reads the colour image back and writes PNGs.
