@@ -25,6 +25,8 @@ typedef volatile s64 vs64;
 typedef float f32;
 typedef double f64;
 
+#include "port/addr.h" /* PORT_PTR: a 32-bit N64 or image address as a pointer */
+
 #ifndef TRUE
 #define TRUE 1
 #endif

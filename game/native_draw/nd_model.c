@@ -49,10 +49,10 @@ static Ptr resolve(uint32_t w) {
     }
     if (is_rdram(w)) {
         uintptr_t n = Port_N64ToNative(w);
-        r.p = n ? (const uint8_t *)n : (const uint8_t *)(uintptr_t)w;
+        r.p = n ? (const uint8_t *)n : (const uint8_t *)PORT_PTR(w);
         r.native = n != 0;
     } else {
-        r.p = (const uint8_t *)(uintptr_t)w;
+        r.p = (const uint8_t *)PORT_PTR(w);
         r.native = 1;
     }
     return r;

@@ -293,12 +293,12 @@ static int active_set(void) {
 }
 
 void Port_TextFontLoaded(void) {
-    memcpy((void *)(uintptr_t)EXTRA_ADDR, en_extra_page, sizeof en_extra_page);
+    memcpy(PORT_PTR(EXTRA_ADDR), en_extra_page, sizeof en_extra_page);
     for (int k = 1; k < SETS; k++) {
         const EnFont *src = &en_fonts[k - 1];
         size_t bytes = (size_t)(sets[k].page_width / 2) * (size_t)src->height;
         for (int p = 0; p < src->pages; p++)
-            memcpy((void *)(uintptr_t)sets[k].page_addr[p], src->texels + p * bytes, bytes);
+            memcpy(PORT_PTR(sets[k].page_addr[p]), src->texels + p * bytes, bytes);
     }
 }
 
@@ -307,7 +307,7 @@ static FontSet *set_of(int font) { return font >= 1 && font <= SETS ? &sets[font
 void Port_TextPage(int font, int page, uint8_t **texels, int *width, int *height) {
     FontSet *f = set_of(font);
     if (page < 0 || page >= PAGES) page = 0;
-    *texels = (uint8_t *)(uintptr_t)f->page_addr[page];
+    *texels = (uint8_t *)PORT_PTR(f->page_addr[page]);
     *width = f->page_width;
     *height = f->height;
 }

@@ -66,7 +66,7 @@ static void present(u32 framebuffer) {
      * frames exist): native pixels, 320x240 RGBA5551 */
     int cpu = framebuffer && framebuffer != GAME_FB0 && framebuffer != GAME_FB1;
     if (cpu) {
-        h_present_cpu((const uint16_t *)(uptr)framebuffer, 320, 240);
+        h_present_cpu((const uint16_t *)PORT_PTR(framebuffer), 320, 240);
     } else if (Port_ViRegs(framebuffer, &r)) {
         ElHostVi vi = { r.status, r.origin, r.width, r.intr, r.v_current, r.timing, r.v_sync, r.h_sync, r.leap,
                         r.h_start, r.v_start, r.v_burst, r.x_scale, r.y_scale };

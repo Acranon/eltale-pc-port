@@ -24,7 +24,7 @@ index cf65666..ce7b699 100644
      /* 0x86 */ u16 agility; /* from ActorStats.agility (Player_InitBattle, Enemy_Spawn) */
      /* 0x88 */ u16 defense; /* from ActorStats.defense */
 diff --git a/src/game/actor/anim.c b/src/game/actor/anim.c
-index fe38701..728b29a 100644
+index fe38701..0213fda 100644
 --- a/src/game/actor/anim.c
 +++ b/src/game/actor/anim.c
 @@ -1,8 +1,14 @@
@@ -72,7 +72,7 @@ index fe38701..728b29a 100644
      count = arg1->nodeCount;
      cur = arg0->frame;
 -    anim = arg1->nodes;
-+    anim = (AnimNode *)(uptr)arg1->nodes;
++    anim = (AnimNode *)PORT_PTR(arg1->nodes);
      i = 0;
      while (i < count && anim->parent != 0) {
          i++;
@@ -81,7 +81,7 @@ index fe38701..728b29a 100644
      Math_EvalTcbSpline(&anim->track, (f32*)&pos, frame);
      if (arg0->animFlags & 0x200) {
 -        kf = anim->track.kfs;
-+        kf = (Keyframe *)(uptr)anim->track.kfs;
++        kf = (Keyframe *)PORT_PTR(anim->track.kfs);
          frame = anim->track.last;
          while (kf->frame != frame) {
              kf++;
@@ -100,7 +100,7 @@ index fe38701..728b29a 100644
      scale.y = arg1->scale;
      scale.z = arg1->scale;
 -    anims = arg2->nodes;
-+    anims = (AnimNode *)(uptr)arg2->nodes;
++    anims = (AnimNode *)PORT_PTR(arg2->nodes);
      frame = arg1->frame;
      total = arg1->ticks;
 +#ifdef ELTALE_P1_OS
@@ -141,8 +141,8 @@ index fe38701..728b29a 100644
      }
 -    dls = set->dls;
 -    tbl = anim->dlSeq;
-+    dls = (u32 *)(uptr)set->dls;
-+    tbl = (s32 *)(uptr)anim->dlSeq;
++    dls = (u32 *)PORT_PTR(set->dls);
++    tbl = (s32 *)PORT_PTR(anim->dlSeq);
 +#ifdef ELTALE_P1_OS
 +    u32 nd_dl = 0; /* the list this node calls (native_draw/nd_actor.c) */
 +#endif
@@ -237,7 +237,7 @@ index 66c2ccd..96d1b51 100644
 +
  #endif
 diff --git a/src/game/audio/audio.c b/src/game/audio/audio.c
-index b78bc53..a366783 100644
+index b78bc53..58c5865 100644
 --- a/src/game/audio/audio.c
 +++ b/src/game/audio/audio.c
 @@ -1,3 +1,6 @@
@@ -282,7 +282,7 @@ index b78bc53..a366783 100644
                  idx = audio_output_frame_index % 3;
                  Audio_FreeOldDmaBuffers();
 -                phys = (s16*) osVirtualToPhysical(audio_output_buffers[idx]);
-+                phys = (s16*)(uptr) osVirtualToPhysical(audio_output_buffers[idx]); /* port: a physical address until the audio port */
++                phys = (s16*)PORT_PTR(osVirtualToPhysical(audio_output_buffers[idx])); /* port: a physical address until the audio port */
                  audio_output_sample_counts[idx] = (frameSize - samplesLeft + 0x60) & ~0xF;
                  if (audio_output_sample_counts[idx] < frameSize - 16) {
                      audio_output_sample_counts[idx] = frameSize - 16;
@@ -783,7 +783,7 @@ index df8e981..07bb577 100644
  extern GfxFrameData D_2000000;
  
 diff --git a/src/game/core/overlay_load.c b/src/game/core/overlay_load.c
-index a502109..3d9c263 100644
+index a502109..8aadc56 100644
 --- a/src/game/core/overlay_load.c
 +++ b/src/game/core/overlay_load.c
 @@ -16,13 +16,25 @@ extern u8 D_E420D0[];
@@ -791,7 +791,7 @@ index a502109..3d9c263 100644
  
  void Overlay_LoadTitle(void) {
 +#ifdef ELTALE_P0_BOOT_PROBE
-+    Dma_ReadRom(D_DAB5F0, (void *)(uintptr_t)0x8020C0D0u, D_DC62B0 - D_DAB5F0);
++    Dma_ReadRom(D_DAB5F0, (void *)PORT_PTR(0x8020C0D0u), D_DC62B0 - D_DAB5F0);
 +#else
      Dma_ReadRom(D_DAB5F0, func_8020C0D0, D_DC62B0 - D_DAB5F0);
 +#endif
@@ -799,7 +799,7 @@ index a502109..3d9c263 100644
  
  void Overlay_LoadIntro(void) {
 +#ifdef ELTALE_P0_BOOT_PROBE
-+    Dma_ReadRom(D_DC62B0, (void *)(uintptr_t)0x8020C0D0u, D_E22690 - D_DC62B0);
++    Dma_ReadRom(D_DC62B0, (void *)PORT_PTR(0x8020C0D0u), D_E22690 - D_DC62B0);
 +#else
      Dma_ReadRom(D_DC62B0, func_8020C0D0, D_E22690 - D_DC62B0);
 +#endif
@@ -807,7 +807,7 @@ index a502109..3d9c263 100644
  
  void Overlay_LoadEnding(void) {
 +#ifdef ELTALE_P0_BOOT_PROBE
-+    Dma_ReadRom(D_E22690, (void *)(uintptr_t)0x8020C0D0u, D_E420D0 - D_E22690);
++    Dma_ReadRom(D_E22690, (void *)PORT_PTR(0x8020C0D0u), D_E420D0 - D_E22690);
 +#else
      Dma_ReadRom(D_E22690, func_8020C0D0, D_E420D0 - D_E22690);
 +#endif
@@ -826,7 +826,7 @@ index 647c971..9c10f84 100644
                  nnsc_retrace_count++;
                  nnScEventBroadcast(sc, &sc->retraceMsg);
 diff --git a/src/game/enemy/boss.c b/src/game/enemy/boss.c
-index 8b0df2f..e9fbd0f 100644
+index 8b0df2f..91b140a 100644
 --- a/src/game/enemy/boss.c
 +++ b/src/game/enemy/boss.c
 @@ -1,3 +1,6 @@
@@ -842,8 +842,8 @@ index 8b0df2f..e9fbd0f 100644
              if (Boss_IsDefeated(i) == 0) {
 +#ifdef ELTALE_P1_OS
 +                /* port: MenuRomRange records in the common block, N64 data */
-+                start = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8);
-+                end = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8 + 4);
++                start = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8); /* port: a ROM address */
++                end = (u8 *)(uptr)Port_N64U32(D_803AB390, p->rom_range_index * 8 + 4); /* port: a ROM address */
 +#else
                  start = D_803AB390[p->rom_range_index].start;
                  end = D_803AB390[p->rom_range_index].end;
@@ -902,7 +902,7 @@ index 8b0df2f..e9fbd0f 100644
          for (i = 0x20; i != 0; i--) {
              *dst++ = *src++;
 diff --git a/src/game/enemy/enemy.c b/src/game/enemy/enemy.c
-index 481f713..63183e8 100644
+index 481f713..d58a286 100644
 --- a/src/game/enemy/enemy.c
 +++ b/src/game/enemy/enemy.c
 @@ -1,3 +1,4 @@
@@ -1031,7 +1031,7 @@ index 481f713..63183e8 100644
      e->flags &= ~0x10;
      dist = sqrtf((player_state.actor.x - obj->x) * (player_state.actor.x - obj->x) + (player_state.actor.z - obj->z) * (player_state.actor.z - obj->z)) - D_8007AA84->body_radius * player_state.actor.scale;
 -    sel = e->def->attacks;
-+    sel = (EnemyAttack *)(uptr)e->def->attacks;
++    sel = (EnemyAttack *)PORT_PTR(e->def->attacks);
      for (i = 0; i < e->def->attack_count; i++) {
          list[i] = sel++;
      }
@@ -1040,7 +1040,7 @@ index 481f713..63183e8 100644
      }
      if (e->def->flags & 4) {
 -        sel = &e->def->attacks[Math_Rand(e->def->attack_count)];
-+        sel = &((EnemyAttack *)(uptr)e->def->attacks)[Math_Rand(e->def->attack_count)];
++        sel = &((EnemyAttack *)PORT_PTR(e->def->attacks))[Math_Rand(e->def->attack_count)];
      }
      e->selected_attack = sel;
      return sel;
@@ -1191,7 +1191,7 @@ index fe11d2c..d4dca20 100644
  
  /* .data */
 diff --git a/src/game/event/cutscene.c b/src/game/event/cutscene.c
-index f0c85f6..3bea90c 100644
+index f0c85f6..96e1836 100644
 --- a/src/game/event/cutscene.c
 +++ b/src/game/event/cutscene.c
 @@ -9,6 +9,7 @@
@@ -1207,7 +1207,7 @@ index f0c85f6..3bea90c 100644
      s32 i;
  
 -    cutscene_camera_track = e->camera_track;
-+    cutscene_camera_track = (KfAnim *)(uptr)e->camera_track;
++    cutscene_camera_track = (KfAnim *)PORT_PTR(e->camera_track);
      cutscene_camera_frame = 0;
      cutscene_camera_end_frame = cutscene_camera_track->last;
      map_id = -1;
@@ -1216,7 +1216,7 @@ index f0c85f6..3bea90c 100644
      enemy_count = 0;
      cutscene_image_frame = 0;
 -    cutscene_next_image_cue = e->image_cues;
-+    cutscene_next_image_cue = (CutsceneImageCue *)(uptr)e->image_cues;
++    cutscene_next_image_cue = (CutsceneImageCue *)PORT_PTR(e->image_cues);
      for (i = 0; i < 32; i++) {
          cutscene_image_cue_slots[i].remaining_frames = 0;
      }
@@ -1225,7 +1225,7 @@ index f0c85f6..3bea90c 100644
                  slot++;
              }
 -            cutscene_next_image_cue->tlut[0] = 0;
-+            ((u16 *)(uptr)cutscene_next_image_cue->tlut)[0] = 0;
++            ((u16 *)PORT_PTR(cutscene_next_image_cue->tlut))[0] = 0;
              slot->remaining_frames = cutscene_next_image_cue->dur;
              slot->cue = cutscene_next_image_cue;
              cutscene_next_image_cue++;
@@ -1256,7 +1256,7 @@ index 9033b8b..27ff0a6 100644
  
  typedef struct CutsceneImageCueSlot {
 diff --git a/src/game/event/scene.c b/src/game/event/scene.c
-index 4c00a3a..e0ffd78 100644
+index 4c00a3a..835b825 100644
 --- a/src/game/event/scene.c
 +++ b/src/game/event/scene.c
 @@ -1,3 +1,6 @@
@@ -1274,7 +1274,7 @@ index 4c00a3a..e0ffd78 100644
 +#ifdef ELTALE_P1_OS
 +    Port_SwapSceneEntry(entry);
 +#endif
-+    cutscene_next_message = (SceneMessage *)(uptr)entry->messages;
++    cutscene_next_message = (SceneMessage *)PORT_PTR(entry->messages);
      cutscene_messages_remaining = entry->message_count;
      cutscene_message_wait_frames = 0x3C;
      map_id = -1;
@@ -1312,7 +1312,7 @@ index 4c00a3a..e0ffd78 100644
      if (cutscene_message_wait_frames == 0) {
          if (cutscene_messages_remaining != 0) {
 -            Cutscene_CopyMessageBuffers(cutscene_next_message->text, cutscene_next_message->speaker_name);
-+            Cutscene_CopyMessageBuffers((u8 *)(uptr)cutscene_next_message->text, (u8 *)(uptr)cutscene_next_message->speaker_name);
++            Cutscene_CopyMessageBuffers((u8 *)PORT_PTR(cutscene_next_message->text), (u8 *)PORT_PTR(cutscene_next_message->speaker_name));
              Text_OpenWindow(cutscene_next_message->window_type);
              cutscene_message_wait_frames = 0xF;
              cutscene_next_message++;
@@ -1354,7 +1354,7 @@ index e9d4940..2c8006d 100644
      /* 0x3C */ u16 flags;
      /* 0x3E */ s16 unk3E;
 diff --git a/src/game/gfx/effect.c b/src/game/gfx/effect.c
-index 792d4bc..3f4e8cb 100644
+index 792d4bc..586be6b 100644
 --- a/src/game/gfx/effect.c
 +++ b/src/game/gfx/effect.c
 @@ -1,3 +1,7 @@
@@ -1376,6 +1376,15 @@ index 792d4bc..3f4e8cb 100644
  
  /*
   * Sprite particles, model effects, floating numbers, streaks, and terrain rings.
+@@ -36,7 +44,7 @@ extern Gfx D_800EB8E8[];
+  * descriptors must be function statics: IDO then stores their fields through
+  * lui/%lo instead of the descriptor's address register. */
+ EffectSprite effect_foot_particle_template = {
+-    0x0C, 0, 0, Effect_UpdateFootParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)0x800C3650, (Gfx*)0x800C3790,
++    0x0C, 0, 0, Effect_UpdateFootParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)PORT_PTR(0x800C3650), (Gfx*)PORT_PTR(0x800C3790),
+     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0,
+ };
+ f32 effect_foot_particle_scale_anim[12] = {
 @@ -73,6 +81,9 @@ void Effect_ResetAll(void) {
  }
  
@@ -1411,7 +1420,16 @@ index 792d4bc..3f4e8cb 100644
  }
  
  void Effect_ResetMapObjEmitters(void) {
-@@ -254,6 +275,9 @@ void Effect_UpdateMapObjParticle(EffectSprite* arg0) {
+@@ -202,7 +223,7 @@ void Effect_QueueMapObjEmitter(f32 x, f32 y, f32 z, MapObj* arg3) {
+ 
+ void Effect_UpdateMapObjEmitters(void) {
+     static EffectSprite effect_mapobj_particle_template = {
+-        0x2D, 0, 0, Effect_UpdateMapObjParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)0x800C3650, (Gfx*)0x800C37E0,
++        0x2D, 0, 0, Effect_UpdateMapObjParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)PORT_PTR(0x800C3650), (Gfx*)PORT_PTR(0x800C37E0),
+         0.0f, 0.0f, 0.0f, 0.0f, 4.0f, 4.0f, 0.1f, 0.25f, 0.05f, 0,
+     };
+     EffectMapObjEmitter* p;
+@@ -254,11 +275,14 @@ void Effect_UpdateMapObjParticle(EffectSprite* arg0) {
          b = 0xFF;
      }
      gDPSetEnvColor(gfx_dl_head++, r, g, b, effect_mapobj_particle_alpha_anim[arg0->life]);
@@ -1421,12 +1439,32 @@ index 792d4bc..3f4e8cb 100644
  }
  
  void Effect_SpawnFlipbookSprite(f32 x, f32 y, f32 z) {
+     static EffectSprite effect_flipbook_sprite_template = {
+-        0x0C, 0, 0, Effect_UpdateFlipbookSprite, 0x04, 0x20, 0x20, 0x00, 0, { 0 }, (u8*)0x800C3830, (Gfx*)0x800C4070,
++        0x0C, 0, 0, Effect_UpdateFlipbookSprite, 0x04, 0x20, 0x20, 0x00, 0, { 0 }, (u8*)PORT_PTR(0x800C3830), (Gfx*)PORT_PTR(0x800C4070),
+         0.0f, 0.0f, 0.0f, 0.0f, 0.4f, 0.4f, 0.0f, 0.0f, 0.0f, 0,
+     };
+ 
+@@ -278,11 +302,11 @@ u8 effect_floating_number_colors[4][4] = {
+     { 0xFF, 0xFF, 0xFF, 0xFF }, { 0xC8, 0xFF, 0xC8, 0xFF }, { 0xC8, 0xC8, 0xFF, 0xFF }, { 0xFF, 0x7F, 0x7F, 0xFF },
+ };
+ EffectSprite effect_converge_particle_template = {
+-    0x14, 0, 0, Effect_UpdateConvergeParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)0x800C4128, (Gfx*)0x800C4268,
++    0x14, 0, 0, Effect_UpdateConvergeParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)PORT_PTR(0x800C4128), (Gfx*)PORT_PTR(0x800C4268),
+     0.0f, 0.0f, 0.0f, 0.0f, 1.3f, 1.3f, 0.0f, 0.0f, 0.0f, 0,
+ };
+ EffectSprite effect_burst_particle_template = {
+-    0x14, 0, 0, Effect_UpdateBurstParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)0x800C4128, (Gfx*)0x800C4268,
++    0x14, 0, 0, Effect_UpdateBurstParticle, 0x02, 0x10, 0x10, 0x00, 0, { 0 }, (u8*)PORT_PTR(0x800C4128), (Gfx*)PORT_PTR(0x800C4268),
+     0.0f, 0.0f, 0.0f, 0.0f, 1.3f, 1.3f, 0.0f, 0.0f, 0.0f, 0,
+ };
+ u16 effect_ring_grow_frames[4] = { 0x14, 0xC, 0xC, 0 };
 @@ -297,10 +321,13 @@ void Effect_UpdateFlipbookSprite(EffectSprite* arg0) {
      u16 v = arg0->life;
  
      if (!(v & 3)) {
 -        arg0->tex = (u8*)effect_flipbook_frame_ptrs[v >> 2];
-+        arg0->tex = (u8*)(uptr)(u32)effect_flipbook_frame_ptrs[v >> 2]; /* N64 RDRAM addresses */
++        arg0->tex = (u8*)PORT_PTR((u32)effect_flipbook_frame_ptrs[v >> 2]); /* N64 RDRAM addresses */
      }
      arg0->scaleX = arg0->scaleY = effect_flipbook_scale_anim[v];
      gDPSetEnvColor(gfx_dl_head++, 255, 255, 255, effect_flipbook_alpha_anim[arg0->life]);
@@ -1568,7 +1606,7 @@ index 792d4bc..3f4e8cb 100644
      scale.y = arg0->scaleY * 0.01;
      scale.z = arg0->scaleZ * 0.01;
 -    anims = arg0->anim.nodes;
-+    anims = (AnimNode *)(uptr)arg0->anim.nodes;
++    anims = (AnimNode *)PORT_PTR(arg0->anim.nodes);
      frame = arg0->animFrame;
      if (gfx_mtx_index < 0x1E6) {
          for (i = 0; i < arg0->anim.nodeCount; i++) {
@@ -2222,7 +2260,7 @@ index 1922075..adfc9ed 100644
  void Magic_SelectFirstActiveTarget(MagicEffect *arg0);
  void Magic_TargetCaster(MagicEffect *arg0);
 diff --git a/src/game/map/chest.c b/src/game/map/chest.c
-index ad8d378..72c460c 100644
+index ad8d378..d30245a 100644
 --- a/src/game/map/chest.c
 +++ b/src/game/map/chest.c
 @@ -1,3 +1,7 @@
@@ -2233,6 +2271,51 @@ index ad8d378..72c460c 100644
  #include "game/map/chest.h"
  #include "game/actor/actor.h"
  #include "game/map/chest_flag.h"
+@@ -34,25 +38,25 @@ u8 item_message_suffix[20] = {
+ };
+ /* Per-map placement groups (the group arrays are in the map overlays). */
+ ChestPlacement chest_map_placements[19] = {
+-    { 0x0D, (ChestGroup*) 0x80199140 },
+-    { 0x0E, (ChestGroup*) 0x801A3B44 },
+-    { 0x0F, (ChestGroup*) 0x801697A4 },
+-    { 0x11, (ChestGroup*) 0x8016AA24 },
+-    { 0x13, (ChestGroup*) 0x8015EB40 },
+-    { 0x15, (ChestGroup*) 0x801A6C18 },
+-    { 0x16, (ChestGroup*) 0x80183200 },
+-    { 0x17, (ChestGroup*) 0x8018CBAC },
+-    { 0x18, (ChestGroup*) 0x80166608 },
+-    { 0x19, (ChestGroup*) 0x80171794 },
+-    { 0x1A, (ChestGroup*) 0x8016D584 },
+-    { 0x1B, (ChestGroup*) 0x8016E9E4 },
+-    { 0x1C, (ChestGroup*) 0x80169D7C },
+-    { 0x1D, (ChestGroup*) 0x80133504 },
+-    { 0x1E, (ChestGroup*) 0x801527CC },
+-    { 0x1F, (ChestGroup*) 0x8014C030 },
+-    { 0x20, (ChestGroup*) 0x8013D5D4 },
+-    { 0x21, (ChestGroup*) 0x80143378 },
+-    { 0x09, (ChestGroup*) 0x8015F1E4 },
++    { 0x0D, (ChestGroup*) PORT_PTR(0x80199140) },
++    { 0x0E, (ChestGroup*) PORT_PTR(0x801A3B44) },
++    { 0x0F, (ChestGroup*) PORT_PTR(0x801697A4) },
++    { 0x11, (ChestGroup*) PORT_PTR(0x8016AA24) },
++    { 0x13, (ChestGroup*) PORT_PTR(0x8015EB40) },
++    { 0x15, (ChestGroup*) PORT_PTR(0x801A6C18) },
++    { 0x16, (ChestGroup*) PORT_PTR(0x80183200) },
++    { 0x17, (ChestGroup*) PORT_PTR(0x8018CBAC) },
++    { 0x18, (ChestGroup*) PORT_PTR(0x80166608) },
++    { 0x19, (ChestGroup*) PORT_PTR(0x80171794) },
++    { 0x1A, (ChestGroup*) PORT_PTR(0x8016D584) },
++    { 0x1B, (ChestGroup*) PORT_PTR(0x8016E9E4) },
++    { 0x1C, (ChestGroup*) PORT_PTR(0x80169D7C) },
++    { 0x1D, (ChestGroup*) PORT_PTR(0x80133504) },
++    { 0x1E, (ChestGroup*) PORT_PTR(0x801527CC) },
++    { 0x1F, (ChestGroup*) PORT_PTR(0x8014C030) },
++    { 0x20, (ChestGroup*) PORT_PTR(0x8013D5D4) },
++    { 0x21, (ChestGroup*) PORT_PTR(0x80143378) },
++    { 0x09, (ChestGroup*) PORT_PTR(0x8015F1E4) },
+ };
+ extern u8* D_803AB288[]; /* overlay data: the item names (no module defines it) */
+ 
 @@ -79,7 +83,11 @@ void Chest_LoadForMap(void) {
          }
      }
@@ -2275,7 +2358,7 @@ index ad8d378..72c460c 100644
  
  u8 Chest_IsOpened(u16 arg0) {
 diff --git a/src/game/map/map.c b/src/game/map/map.c
-index ebb5c68..035d524 100644
+index ebb5c68..c2fed7e 100644
 --- a/src/game/map/map.c
 +++ b/src/game/map/map.c
 @@ -1,4 +1,5 @@
@@ -2324,6 +2407,15 @@ index ebb5c68..035d524 100644
  
  /* The last part of this file's .bss, 80082860..800842F0. */
  MapObj *mapobj_translucent_list[0x100];
+@@ -149,7 +162,7 @@ s32 mapobj_ambient_sfx[4] = { 0x19, 0x1B, 0x1E, 0x20 };
+ MapObjWaveBase mapobj_wave_base_init = { { 0 } };
+ u16 mapobj_scrolltex_offset = 0;
+ u8 *mapobj_scrolltex_tex[5] = {
+-    (u8 *)0x801093B0, (u8 *)0x8010A3B0, (u8 *)0x80129D10, (u8 *)0x80160B30, (u8 *)0x8014DA40,
++    (u8 *)PORT_PTR(0x801093B0), (u8 *)PORT_PTR(0x8010A3B0), (u8 *)PORT_PTR(0x80129D10), (u8 *)PORT_PTR(0x80160B30), (u8 *)PORT_PTR(0x8014DA40),
+ };
+ u16 mapobj_scrolltex_height[6] = { 0x40, 0x40, 0x20, 0x40, 0x20, 0 };
+ f32 mapobj_wave_x_div[4] = { 0.0f, 5000.0f, 1000.0f, 3000.0f };
 @@ -157,9 +170,7 @@ f32 mapobj_wave_y_div[4] = { 0.0f, 30000.0f, 30000.0f, 48000.0f };
  f32 mapobj_wave_z_div[4] = { 0.0f, 1000.0f, 5000.0f, 3000.0f };
  
@@ -2380,11 +2472,11 @@ index ebb5c68..035d524 100644
          map_backdrop_id = env_area_settings->backdropId;
 -        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
 -        Dma_ReadRom(map_backdrop_defs[map_backdrop_id].start + 0x800, map_backdrop_tex, 0x4000);
-+        Dma_ReadRom((u8 *)(uintptr_t)map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800);
++        Dma_ReadRom((u8 *)(uintptr_t)map_backdrop_defs[map_backdrop_id].start, map_backdrop_phase_tluts, 0x800); /* port: a ROM address */
 +#ifdef ELTALE_P1_OS
 +        Port_SwapHalfwords(map_backdrop_phase_tluts, 0x800);
 +#endif
-+        Dma_ReadRom((u8 *)(uintptr_t)(map_backdrop_defs[map_backdrop_id].start + 0x800), map_backdrop_tex, 0x4000);
++        Dma_ReadRom((u8 *)(uintptr_t)(map_backdrop_defs[map_backdrop_id].start + 0x800), map_backdrop_tex, 0x4000); /* port: a ROM address */
      }
      if (exit_destination.entry != -1) {
          sp = &map_subarea_def->entries[exit_destination.entry];
@@ -2531,7 +2623,7 @@ index ebb5c68..035d524 100644
      gfx_mtx_index++;
      gDPSetEnvColor(gfx_dl_head++, D_80084B60, D_80084B64, D_80084B68, 255);
 -    gSPDisplayList(gfx_dl_head++, map_backdrop_defs[env_area_settings->backdropId].dl);
-+    gSPDisplayList(gfx_dl_head++, (Gfx *)(uintptr_t)map_backdrop_defs[env_area_settings->backdropId].dl_addr);
++    gSPDisplayList(gfx_dl_head++, (Gfx *)PORT_PTR(map_backdrop_defs[env_area_settings->backdropId].dl_addr));
 +#ifdef ELTALE_P1_OS
 +    /* Port: the native renderer's backdrop (nd_backdrop.c); the caller drops the commands above
 +     * (ND_DL_END(EL_KIND_BACKDROP) in Gfx_BuildFrameDisplayList) */
@@ -2693,7 +2785,7 @@ index 98f7354..5238192 100644
  /* The types of the last .bss run are declared here, between the runs: the gap in declaration
   * numbers is where map.c's function static map_clock_blend_len (80082858) sorts (IDO orders
 diff --git a/src/game/map/spirit.c b/src/game/map/spirit.c
-index eed5d97..e4b9c3d 100644
+index eed5d97..fdf980b 100644
 --- a/src/game/map/spirit.c
 +++ b/src/game/map/spirit.c
 @@ -1,8 +1,14 @@
@@ -2711,6 +2803,99 @@ index eed5d97..e4b9c3d 100644
  
  /*
   * Spirits: per-map placement, collected flags, the pick-up test and the sparkle particles.
+@@ -18,49 +24,49 @@ CollResult spirit_coll;
+ u8 spirit_collected_flags[0x10];
+ 
+ SpiritPlacement spirit_map_placements[0x2B] = {
+-    { 0x0, 0x0, 1, (SpiritDef*)0x80154860 },
+-    { 0x0, 0x1, 1, (SpiritDef*)0x80154870 },
+-    { 0x1, 0x0, 1, (SpiritDef*)0x80141CB0 },
+-    { 0x2, 0x0, 2, (SpiritDef*)0x80146140 },
+-    { 0x3, 0x0, 3, (SpiritDef*)0x8013E480 },
+-    { 0x4, 0x2, 3, (SpiritDef*)0x8014C1F0 },
+-    { 0x5, 0x0, 3, (SpiritDef*)0x8015AD50 },
+-    { 0x6, 0x0, 3, (SpiritDef*)0x801348C0 },
+-    { 0x7, 0x0, 4, (SpiritDef*)0x801419F0 },
+-    { 0x8, 0x0, 4, (SpiritDef*)0x8015DB70 },
+-    { 0x8, 0x1, 1, (SpiritDef*)0x8015DBA0 },
+-    { 0x9, 0x0, 6, (SpiritDef*)0x8015F1F0 },
+-    { 0xA, 0x0, 2, (SpiritDef*)0x80135DD0 },
+-    { 0xA, 0x1, 2, (SpiritDef*)0x80135DF0 },
+-    { 0xB, 0x1, 1, (SpiritDef*)0x8016DA10 },
+-    { 0xB, 0x2, 4, (SpiritDef*)0x8016DA20 },
+-    { 0xC, 0x0, 4, (SpiritDef*)0x80127990 },
+-    { 0x1A, 0x0, 6, (SpiritDef*)0x8016DAE0 },
+-    { 0x1A, 0x2, 1, (SpiritDef*)0x8016DB30 },
+-    { 0x1B, 0x0, 2, (SpiritDef*)0x8016EFF0 },
+-    { 0x1C, 0x0, 5, (SpiritDef*)0x8016A0D0 },
+-    { 0x1D, 0x0, 2, (SpiritDef*)0x80133AF0 },
+-    { 0x1E, 0x8, 1, (SpiritDef*)0x80152BD0 },
+-    { 0x1E, 0xF, 1, (SpiritDef*)0x80152BE0 },
+-    { 0x1F, 0x0, 4, (SpiritDef*)0x8014C410 },
+-    { 0x1F, 0x2, 1, (SpiritDef*)0x8014C440 },
+-    { 0x20, 0x0, 6, (SpiritDef*)0x8013D9C0 },
+-    { 0x21, 0x0, 3, (SpiritDef*)0x80143680 },
+-    { 0x21, 0x1, 1, (SpiritDef*)0x801436B0 },
+-    { 0xE, 0xF, 1, (SpiritDef*)0x801A3BD0 },
+-    { 0xE, 0xC, 1, (SpiritDef*)0x801A3BE0 },
+-    { 0x10, 0x15, 1, (SpiritDef*)0x80183190 },
+-    { 0x15, 0x0, 2, (SpiritDef*)0x801A6C80 },
+-    { 0x15, 0x6, 1, (SpiritDef*)0x801A6CA0 },
+-    { 0x16, 0x1, 1, (SpiritDef*)0x801832D0 },
+-    { 0x16, 0x17, 2, (SpiritDef*)0x801832E0 },
+-    { 0x17, 0x13, 1, (SpiritDef*)0x8018CC80 },
+-    { 0x17, 0x17, 1, (SpiritDef*)0x8018CC90 },
+-    { 0x18, 0x0, 4, (SpiritDef*)0x80166620 },
+-    { 0x18, 0x2, 2, (SpiritDef*)0x80166650 },
+-    { 0x19, 0x1, 1, (SpiritDef*)0x801717F0 },
+-    { 0x19, 0x4, 1, (SpiritDef*)0x80171800 },
+-    { 0x19, 0x9, 1, (SpiritDef*)0x80171810 },
++    { 0x0, 0x0, 1, (SpiritDef*)PORT_PTR(0x80154860) },
++    { 0x0, 0x1, 1, (SpiritDef*)PORT_PTR(0x80154870) },
++    { 0x1, 0x0, 1, (SpiritDef*)PORT_PTR(0x80141CB0) },
++    { 0x2, 0x0, 2, (SpiritDef*)PORT_PTR(0x80146140) },
++    { 0x3, 0x0, 3, (SpiritDef*)PORT_PTR(0x8013E480) },
++    { 0x4, 0x2, 3, (SpiritDef*)PORT_PTR(0x8014C1F0) },
++    { 0x5, 0x0, 3, (SpiritDef*)PORT_PTR(0x8015AD50) },
++    { 0x6, 0x0, 3, (SpiritDef*)PORT_PTR(0x801348C0) },
++    { 0x7, 0x0, 4, (SpiritDef*)PORT_PTR(0x801419F0) },
++    { 0x8, 0x0, 4, (SpiritDef*)PORT_PTR(0x8015DB70) },
++    { 0x8, 0x1, 1, (SpiritDef*)PORT_PTR(0x8015DBA0) },
++    { 0x9, 0x0, 6, (SpiritDef*)PORT_PTR(0x8015F1F0) },
++    { 0xA, 0x0, 2, (SpiritDef*)PORT_PTR(0x80135DD0) },
++    { 0xA, 0x1, 2, (SpiritDef*)PORT_PTR(0x80135DF0) },
++    { 0xB, 0x1, 1, (SpiritDef*)PORT_PTR(0x8016DA10) },
++    { 0xB, 0x2, 4, (SpiritDef*)PORT_PTR(0x8016DA20) },
++    { 0xC, 0x0, 4, (SpiritDef*)PORT_PTR(0x80127990) },
++    { 0x1A, 0x0, 6, (SpiritDef*)PORT_PTR(0x8016DAE0) },
++    { 0x1A, 0x2, 1, (SpiritDef*)PORT_PTR(0x8016DB30) },
++    { 0x1B, 0x0, 2, (SpiritDef*)PORT_PTR(0x8016EFF0) },
++    { 0x1C, 0x0, 5, (SpiritDef*)PORT_PTR(0x8016A0D0) },
++    { 0x1D, 0x0, 2, (SpiritDef*)PORT_PTR(0x80133AF0) },
++    { 0x1E, 0x8, 1, (SpiritDef*)PORT_PTR(0x80152BD0) },
++    { 0x1E, 0xF, 1, (SpiritDef*)PORT_PTR(0x80152BE0) },
++    { 0x1F, 0x0, 4, (SpiritDef*)PORT_PTR(0x8014C410) },
++    { 0x1F, 0x2, 1, (SpiritDef*)PORT_PTR(0x8014C440) },
++    { 0x20, 0x0, 6, (SpiritDef*)PORT_PTR(0x8013D9C0) },
++    { 0x21, 0x0, 3, (SpiritDef*)PORT_PTR(0x80143680) },
++    { 0x21, 0x1, 1, (SpiritDef*)PORT_PTR(0x801436B0) },
++    { 0xE, 0xF, 1, (SpiritDef*)PORT_PTR(0x801A3BD0) },
++    { 0xE, 0xC, 1, (SpiritDef*)PORT_PTR(0x801A3BE0) },
++    { 0x10, 0x15, 1, (SpiritDef*)PORT_PTR(0x80183190) },
++    { 0x15, 0x0, 2, (SpiritDef*)PORT_PTR(0x801A6C80) },
++    { 0x15, 0x6, 1, (SpiritDef*)PORT_PTR(0x801A6CA0) },
++    { 0x16, 0x1, 1, (SpiritDef*)PORT_PTR(0x801832D0) },
++    { 0x16, 0x17, 2, (SpiritDef*)PORT_PTR(0x801832E0) },
++    { 0x17, 0x13, 1, (SpiritDef*)PORT_PTR(0x8018CC80) },
++    { 0x17, 0x17, 1, (SpiritDef*)PORT_PTR(0x8018CC90) },
++    { 0x18, 0x0, 4, (SpiritDef*)PORT_PTR(0x80166620) },
++    { 0x18, 0x2, 2, (SpiritDef*)PORT_PTR(0x80166650) },
++    { 0x19, 0x1, 1, (SpiritDef*)PORT_PTR(0x801717F0) },
++    { 0x19, 0x4, 1, (SpiritDef*)PORT_PTR(0x80171800) },
++    { 0x19, 0x9, 1, (SpiritDef*)PORT_PTR(0x80171810) },
+ };
+ Vtx spirit_sparkle_vtx[4] = {
+     { 1, 1, 1, 0, 0x3C0, 0, 0, 0, 0, 0 },
 @@ -76,7 +82,7 @@ Gfx spirit_sparkle_dl[10] = {
      {{ 0xB7000000, 0x00000005 }},
      {{ 0xFC629BFF, 0x1FFCFE38 }},
@@ -2746,7 +2931,7 @@ index eed5d97..e4b9c3d 100644
  
  u8 Spirit_IsCollected(u16 arg0) {
 diff --git a/src/game/math/keyframe.c b/src/game/math/keyframe.c
-index 198b105..bc0fcdb 100644
+index 198b105..e2477a5 100644
 --- a/src/game/math/keyframe.c
 +++ b/src/game/math/keyframe.c
 @@ -29,11 +29,11 @@ void Math_EvalTcbSpline(KfAnim* anim, f32* out, s32 frame) {
@@ -2754,12 +2939,12 @@ index 198b105..bc0fcdb 100644
      if (anim->count == 1) {
          for (i = 0; i < 9; i++) {
 -            out[(u32)i] = anim->kfs->v[i];
-+            out[(u32)i] = ((Keyframe *)(uptr)anim->kfs)->v[i];
++            out[(u32)i] = ((Keyframe *)PORT_PTR(anim->kfs))->v[i];
          }
          return;
      }
 -    for (k1 = anim->kfs + 1; k1->frame < frame; k1++) {
-+    for (k1 = (Keyframe *)(uptr)anim->kfs + 1; k1->frame < frame; k1++) {
++    for (k1 = (Keyframe *)PORT_PTR(anim->kfs) + 1; k1->frame < frame; k1++) {
      }
      frame -= k1[-1].frame;
      len = k1->frame - k1[-1].frame;
@@ -2777,7 +2962,7 @@ index df2372c..900f86e 100644
      /* 0x06 */ u16 last;
  } KfAnim; /* 0x8 bytes */
 diff --git a/src/game/npc/npc.c b/src/game/npc/npc.c
-index 89b373a..c135393 100644
+index 89b373a..08ceed7 100644
 --- a/src/game/npc/npc.c
 +++ b/src/game/npc/npc.c
 @@ -39,10 +39,20 @@ u8 text_speaker_name[0x20];
@@ -2870,7 +3055,7 @@ index 89b373a..c135393 100644
      npc_area_set_rom_range = &npc_area_set_rom_ranges[arg0];
 +#ifdef ELTALE_P1_OS
 +    /* port: the overlay area in RDRAM; func_8020C0D0 is a native function here */
-+    Dma_ReadRom(D_86F6F0, (void *)(uptr)0x8020C0D0u, D_871D10 - D_86F6F0);
++    Dma_ReadRom(D_86F6F0, (void *)PORT_PTR(0x8020C0D0u), D_871D10 - D_86F6F0);
 +#else
      Dma_ReadRom(D_86F6F0, func_8020C0D0, D_871D10 - D_86F6F0);
 +#endif
@@ -2920,7 +3105,7 @@ index e16ca6a..c7b3fa7 100644
  void Npc_InitArea(void);
  void Npc_UpdateAll(void);
 diff --git a/src/game/player/player.c b/src/game/player/player.c
-index c8c3fd5..0775e92 100644
+index c8c3fd5..e963dda 100644
 --- a/src/game/player/player.c
 +++ b/src/game/player/player.c
 @@ -1,3 +1,6 @@
@@ -3024,6 +3209,15 @@ index c8c3fd5..0775e92 100644
      arg0->state = 0xB;
      arg0->state_timer = 0x5A;
      arg1->animFlags |= 1;
+@@ -1543,7 +1565,7 @@ void Player_LoadAnim(Actor *arg0) {
+     if (player_loaded_anim != arg0->animIndex) {
+         player_loaded_anim = arg0->animIndex;
+         r = &player_anim_rom_ranges[player_loaded_anim];
+-        Dma_ReadRom(r->start, (void *) 0x80200000, r->end - r->start);
++        Dma_ReadRom(r->start, (void *) PORT_PTR(0x80200000), r->end - r->start);
+     }
+ }
+ 
 @@ -1843,7 +1865,10 @@ void Player_StartCastSpell(Player *p, Actor *a, AnimSet *anims) {
      u16 t;
  
@@ -3677,7 +3871,7 @@ index 4f9f215..8b492fe 100644
  }
  #else
 diff --git a/src/game/ui/hud.c b/src/game/ui/hud.c
-index e6f79b4..afc2631 100644
+index e6f79b4..0997dbc 100644
 --- a/src/game/ui/hud.c
 +++ b/src/game/ui/hud.c
 @@ -1,3 +1,11 @@
@@ -4214,7 +4408,7 @@ index e6f79b4..afc2631 100644
 +#ifdef ELTALE_P1_OS
 +    HudTextureDesc local; /* port: the descriptors are N64 records in RDRAM (the common block) */
 +    if (Port_InRdram(tex)) {
-+        local.img = (void *)(uptr)Port_N64U32(tex, 0);
++        local.img = PORT_PTR(Port_N64U32(tex, 0));
 +        local.is4b = Port_N64U16(tex, 4);
 +        local.width = Port_N64U32(tex, 8);
 +        tex = &local;
@@ -4262,7 +4456,7 @@ index 3246010..539f21a 100644
  void Hud_DrawSpellInput(struct GfxFrameData* buf, Player* arg1);
  void Hud_DrawSpellName(void* arg0);
 diff --git a/src/game/ui/menu.c b/src/game/ui/menu.c
-index c955abf..5c2b7a2 100644
+index c955abf..b08bbfe 100644
 --- a/src/game/ui/menu.c
 +++ b/src/game/ui/menu.c
 @@ -9,6 +9,11 @@
@@ -4384,7 +4578,35 @@ index c955abf..5c2b7a2 100644
      gDPSetTextureLUT(gfx_dl_head++, G_TT_NONE);
      gDPSetBlendColor(gfx_dl_head++, 0, 0, 0, 1);
      if ((input_pressed_buttons & 0x5000) && !(menu_flags & 0x6020)) {
-@@ -1343,7 +1431,14 @@ MenuRomRange npc_area_set_rom_ranges[7] = {
+@@ -1183,7 +1271,7 @@ void Menu_DrawNumberZeroPad(s32 ndigits, s32 x, s32 y, u32 value, s32 pal) {
+ #ifndef NON_MATCHING /* the NON_MATCHING build declares it earlier, for Menu_UpdateMapPage */
+ #endif
+ void *player_char_data[1] = {
+-    (void*)0x80206064,
++    (void*)PORT_PTR(0x80206064),
+ };
+ ActorStats player_default_stats = { 0, 0, 0x0032, 0x0032, 0x000F, 0x000F, 5, 4, 0, 500, 5e+01f, 1.6e+02f, 0.07f, { 1, 1, 1, 1 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, { 0, 0, 0 } };
+ u32 player_level_exp_table[100] = {
+@@ -1233,12 +1321,12 @@ u32 D_80056198[2] = {
+     0, 0,
+ };
+ EnemyAreaSet enemy_area_sets[6] = {
+-    { (u8 *)0x00A77F10, (u8 *)0x00ADA190, (AnimSet **)0x80270890, (EnemyDef *)0x802705F0, (u8 **)0x80270934 },
+-    { (u8 *)0x00ADA190, (u8 *)0x00B61550, (AnimSet **)0x80295990, (EnemyDef *)0x80295648, (u8 **)0x80295A6C },
+-    { (u8 *)0x00B61550, (u8 *)0x00BBBF30, (AnimSet **)0x80269010, (EnemyDef *)0x80268DA8, (u8 **)0x8026909C },
+-    { (u8 *)0x00BBBF30, (u8 *)0x00C2F900, (AnimSet **)0x80281FD0, (EnemyDef *)0x80281CF8, (u8 **)0x80282088 },
+-    { (u8 *)0x00C2F900, (u8 *)0x00C99EF0, (AnimSet **)0x80278C10, (EnemyDef *)0x80278970, (u8 **)0x80278CB0 },
+-    { (u8 *)0x00C99EF0, (u8 *)0x00CC2280, (AnimSet **)0x80236A38, (EnemyDef *)0x80236958, (u8 **)0x80236A70 },
++    { (u8 *)0x00A77F10, (u8 *)0x00ADA190, (AnimSet **)PORT_PTR(0x80270890), (EnemyDef *)PORT_PTR(0x802705F0), (u8 **)PORT_PTR(0x80270934) },
++    { (u8 *)0x00ADA190, (u8 *)0x00B61550, (AnimSet **)PORT_PTR(0x80295990), (EnemyDef *)PORT_PTR(0x80295648), (u8 **)PORT_PTR(0x80295A6C) },
++    { (u8 *)0x00B61550, (u8 *)0x00BBBF30, (AnimSet **)PORT_PTR(0x80269010), (EnemyDef *)PORT_PTR(0x80268DA8), (u8 **)PORT_PTR(0x8026909C) },
++    { (u8 *)0x00BBBF30, (u8 *)0x00C2F900, (AnimSet **)PORT_PTR(0x80281FD0), (EnemyDef *)PORT_PTR(0x80281CF8), (u8 **)PORT_PTR(0x80282088) },
++    { (u8 *)0x00C2F900, (u8 *)0x00C99EF0, (AnimSet **)PORT_PTR(0x80278C10), (EnemyDef *)PORT_PTR(0x80278970), (u8 **)PORT_PTR(0x80278CB0) },
++    { (u8 *)0x00C99EF0, (u8 *)0x00CC2280, (AnimSet **)PORT_PTR(0x80236A38), (EnemyDef *)PORT_PTR(0x80236958), (u8 **)PORT_PTR(0x80236A70) },
+ };
+ EnemyScriptCmd enemy_attack_script_0[6] = {
+     { 25, 0, 0, { 0, 0 }, 0.0f, 1.9e+02f, 2e+02f, 0.0f },
+@@ -1343,51 +1431,58 @@ MenuRomRange npc_area_set_rom_ranges[7] = {
      { (u8 *)0x00871D10, (u8 *)0x008D1960 }, { (u8 *)0x008D1960, (u8 *)0x00926C00 }, { (u8 *)0x00926C00, (u8 *)0x0095D4E0 }, { (u8 *)0x0095D4E0, (u8 *)0x00988580 },
      { (u8 *)0x00988580, (u8 *)0x009E16C0 }, { (u8 *)0x009E16C0, (u8 *)0x00A14190 }, { (u8 *)0x00A14190, (u8 *)0x00A70350 },
  };
@@ -4399,6 +4621,89 @@ index c955abf..5c2b7a2 100644
  #include "assets/npc_area_entry_message.inc.c"
  };
  MapAreaDef map_area_defs[36] = {
+-    { 0x0081, { 0, 0 }, (u8 *)0x000EF280, (u8 *)0x00133F20, (void*)0x8010FE00, (void*)0x8014F640, (void*)0x8014FB80, (void*)0x8014FF78, (void*)0x8015084C, (void*)0x80150290, (void*)0x80150518, (void*)0x80154810, (void*)0x801547BC, NULL, NULL, (void*)0x80154A90, 0, { 0, 0, 0, 5 } },
+-    { 1, { 0, 0 }, (u8 *)0x00133F20, (u8 *)0x00165E70, (void*)0x8010FE00, (void*)0x80140430, (void*)0x80140790, (void*)0x80140A28, (void*)0x80140F3C, (void*)0x80140C20, (void*)0x80140D10, (void*)0x80141CA0, (void*)0x80141C8C, NULL, NULL, (void*)0x80141D44, 1, { 0, 0, 0, 1 } },
+-    { 4, { 0, 0 }, (u8 *)0x00165E70, (u8 *)0x0019C1D0, (void*)0x8010FE00, (void*)0x80144464, (void*)0x80144710, (void*)0x80144858, (void*)0x80144CFC, (void*)0x80144A50, (void*)0x80144AD0, (void*)0x80145D70, (void*)0x80145D54, (void*)0x80146128, (void*)0x80146130, NULL, 1, { 0, 0, 0, 1 } },
+-    { 4, { 0, 0 }, (u8 *)0x0019C1D0, (u8 *)0x001CA8C0, (void*)0x8010FE00, (void*)0x8013C564, (void*)0x8013C870, (void*)0x8013C9F0, (void*)0x8013CEEC, (void*)0x8013CC00, (void*)0x8013CCB8, (void*)0x8013E190, (void*)0x8013E168, (void*)0x8013E460, (void*)0x8013E468, (void*)0x8013E4DC, 1, { 0, 0, 0, 2 } },
+-    { 1, { 0, 0 }, (u8 *)0x001CA8C0, (u8 *)0x00206D70, (void*)0x8010FE00, (void*)0x80149C98, (void*)0x8014A020, (void*)0x8014A3F8, (void*)0x8014AAFC, (void*)0x8014A6B0, (void*)0x8014A8C8, (void*)0x8014C1C0, (void*)0x8014C190, NULL, NULL, (void*)0x8014C2A4, 2, { 0, 0, 0, 3 } },
+-    { 4, { 0, 0 }, (u8 *)0x00206D70, (u8 *)0x00251D30, (void*)0x8010FE00, (void*)0x80157D98, (void*)0x801582C0, (void*)0x80158518, (void*)0x80158A1C, (void*)0x80158730, (void*)0x801587E8, (void*)0x8015A9C0, (void*)0x8015A99C, (void*)0x8015AD2C, (void*)0x8015AD34, (void*)0x8015ADAC, 2, { 0, 0, 0, 2 } },
+-    { 1, { 0, 0 }, (u8 *)0x00251D30, (u8 *)0x002768B0, (void*)0x8010FE00, (void*)0x80133438, (void*)0x80133720, (void*)0x80133948, (void*)0x80133DEC, (void*)0x80133B40, (void*)0x80133BC0, (void*)0x801348B0, (void*)0x80134898, NULL, NULL, (void*)0x80134974, 2, { 0, 0, 0, 1 } },
+-    { 4, { 0, 0 }, (u8 *)0x002768B0, (u8 *)0x002A8510, (void*)0x8010FE00, (void*)0x8013F1FC, (void*)0x8013F500, (void*)0x8013F6B8, (void*)0x8013FBBC, (void*)0x8013F8D0, (void*)0x8013F988, (void*)0x80141550, (void*)0x80141528, (void*)0x801419CC, (void*)0x801419D4, (void*)0x80141A4C, 3, { 0, 0, 0, 2 } },
+-    { 1, { 0, 0 }, (u8 *)0x002A8510, (u8 *)0x002F63B0, (void*)0x8010FE00, (void*)0x8015B89C, (void*)0x8015BD20, (void*)0x8015C090, (void*)0x8015C5FC, (void*)0x8015C270, (void*)0x8015C3D0, (void*)0x8015DB50, (void*)0x8015DB28, NULL, NULL, (void*)0x8015DC8C, 3, { 0, 0, 0, 2 } },
+-    { 4, { 0, 0 }, (u8 *)0x002F63B0, (u8 *)0x003457F0, (void*)0x8010FE00, (void*)0x8015A824, (void*)0x8015AE10, (void*)0x8015B230, (void*)0x8015B7AC, (void*)0x8015B4F0, (void*)0x8015B580, (void*)0x8015E870, (void*)0x8015E860, (void*)0x8015F1A8, (void*)0x8015F1B0, NULL, 4, { 0, 0, 0, 1 } },
+-    { 4, { 0, 0 }, (u8 *)0x003457F0, (u8 *)0x0036B800, (void*)0x8010FE00, (void*)0x801343D8, (void*)0x801345C0, (void*)0x80134738, (void*)0x80134CEC, (void*)0x80134920, (void*)0x80134AB8, (void*)0x80135DB0, (void*)0x80135D90, NULL, NULL, NULL, 4, { 0, 0, 0, 2 } },
+-    { 4, { 0, 0 }, (u8 *)0x0036B800, (u8 *)0x003C9490, (void*)0x8010FE00, (void*)0x80169190, (void*)0x80169610, (void*)0x80169CE8, (void*)0x8016A510, NULL, (void*)0x8016A018, (void*)0x8016D6D8, (void*)0x8016D57C, (void*)0x8016D9C4, (void*)0x8016D9DC, (void*)0x8016DA7C, 4, { 0, 0, 0, 8 } },
+-    { 4, { 0, 0 }, (u8 *)0x003C9490, (u8 *)0x003E1090, (void*)0x8010FE00, (void*)0x80125DA4, (void*)0x80126010, (void*)0x801261D4, (void*)0x801267BC, (void*)0x801264C0, (void*)0x80126588, (void*)0x80127800, (void*)0x801277CC, (void*)0x8012796C, (void*)0x80127974, (void*)0x801279EC, 5, { 0, 0, 0, 3 } },
+-    { 2, { 0, 0 }, (u8 *)0x003F1BA0, (u8 *)0x004374F0, (void*)0x801539F0, (void*)0x80194B14, (void*)0x80195480, (void*)0x80195E98, (void*)0x801967F8, (void*)0x80196108, (void*)0x80196510, (void*)0x80198F84, (void*)0x80198980, NULL, NULL, (void*)0x80199330, 0, { 0, 0, 0, 18 } },
+-    { 2, { 0, 0 }, (u8 *)0x004374F0, (u8 *)0x00487890, (void*)0x801539F0, (void*)0x8019DFA0, (void*)0x8019EC80, (void*)0x8019F7E0, (void*)0x8019FFF0, NULL, (void*)0x8019FD88, (void*)0x801A3900, (void*)0x801A3590, NULL, NULL, (void*)0x801A3D7C, 1, { 0, 0, 0, 16 } },
+-    { 2, { 0, 0 }, (u8 *)0x00487890, (u8 *)0x0049D830, (void*)0x801539F0, (void*)0x80166974, (void*)0x80167120, (void*)0x80167738, (void*)0x80167EF0, (void*)0x80167948, (void*)0x80167C98, (void*)0x801696A0, (void*)0x80169530, NULL, NULL, (void*)0x80169980, 0, { 0, 0, 0, 14 } },
+-    { 2, { 0, 0 }, (u8 *)0x0049D830, (u8 *)0x004CD2E0, (void*)0x801539F0, (void*)0x8017DA08, (void*)0x8017E510, (void*)0x8017EF80, (void*)0x8017FB58, (void*)0x8017F300, (void*)0x8017F850, (void*)0x8018302C, (void*)0x80182D34, NULL, NULL, (void*)0x8018348C, 1, { 0, 0, 0, 22 } },
+-    { 2, { 0, 0 }, (u8 *)0x004CD2E0, (u8 *)0x004E44A0, (void*)0x801539F0, (void*)0x80168D4C, (void*)0x801691F0, (void*)0x80169680, (void*)0x80169BD0, (void*)0x801697F8, (void*)0x80169AA0, (void*)0x8016A978, (void*)0x8016A75C, NULL, NULL, (void*)0x8016ABA4, 2, { 0, 0, 0, 8 } },
+-    { 2, { 0, 0 }, (u8 *)0x004E44A0, (u8 *)0x004F4E70, (void*)0x801539F0, (void*)0x801621D4, (void*)0x80162940, (void*)0x80162C10, (void*)0x801630B0, NULL, (void*)0x80162E90, (void*)0x80164180, (void*)0x801640FC, NULL, NULL, (void*)0x801643B8, 2, { 0, 0, 0, 8 } },
+-    { 2, { 0, 0 }, (u8 *)0x004F4E70, (u8 *)0x004FFFE0, (void*)0x801539F0, (void*)0x8015DE28, (void*)0x8015E010, (void*)0x8015E1A0, (void*)0x8015E468, NULL, (void*)0x8015E2E0, (void*)0x8015EA70, (void*)0x8015EA28, NULL, NULL, NULL, 2, { 0, 0, 0, 4 } },
+-    { 2, { 0, 0 }, (u8 *)0x004FFFE0, (u8 *)0x0051A6C0, (void*)0x801539F0, (void*)0x8016B158, (void*)0x8016B920, (void*)0x8016BEE8, (void*)0x8016C500, (void*)0x8016C0C8, (void*)0x8016C3A8, (void*)0x8016DE70, (void*)0x8016DD1C, NULL, NULL, (void*)0x8016E0BC, 2, { 0, 0, 0, 12 } },
+-    { 2, { 0, 0 }, (u8 *)0x0051A6C0, (u8 *)0x0056DB40, (void*)0x801539F0, (void*)0x801A2518, (void*)0x801A2CE0, (void*)0x801A34B8, (void*)0x801A3B08, NULL, (void*)0x801A3938, (void*)0x801A6A68, (void*)0x801A6644, NULL, NULL, (void*)0x801A6E68, 3, { 0, 0, 0, 13 } },
+-    { 2, { 0, 0 }, (u8 *)0x0056DB40, (u8 *)0x0059D6F0, (void*)0x801539F0, (void*)0x8017DA18, (void*)0x8017E500, (void*)0x8017F0A8, (void*)0x8017FDF8, (void*)0x8017F3D8, (void*)0x8017F9D8, (void*)0x80182FCC, (void*)0x80182D28, NULL, NULL, (void*)0x80183594, 3, { 0, 0, 0, 26 } },
+-    { 2, { 0, 0 }, (u8 *)0x0059D6F0, (u8 *)0x005D6D20, (void*)0x801539F0, (void*)0x80186F78, (void*)0x801879E0, (void*)0x801886D8, (void*)0x80189368, (void*)0x80188A08, (void*)0x80189040, (void*)0x8018C910, (void*)0x8018C644, NULL, NULL, (void*)0x8018D010, 4, { 0, 0, 0, 26 } },
+-    { 2, { 0, 0 }, (u8 *)0x005D6D20, (u8 *)0x005E99E0, (void*)0x801539F0, (void*)0x80164FB0, (void*)0x80165070, (void*)0x80165250, (void*)0x80165538, NULL, (void*)0x801653B8, (void*)0x80166464, (void*)0x801661A0, NULL, NULL, (void*)0x8016669C, 4, { 0, 0, 0, 3 } },
+-    { 2, { 0, 0 }, (u8 *)0x005E99E0, (u8 *)0x006078D0, (void*)0x801539F0, (void*)0x8016EEE0, (void*)0x8016F360, (void*)0x8016F860, (void*)0x80170018, (void*)0x8016FAC0, (void*)0x8016FD70, (void*)0x801716D0, (void*)0x8017162C, NULL, NULL, (void*)0x801718D0, 5, { 0, 0, 0, 10 } },
+-    { 0x0088, { 0, 0 }, (u8 *)0x006078D0, (u8 *)0x00665670, (void*)0x8010FE00, (void*)0x801649D8, (void*)0x80165460, (void*)0x80165A34, (void*)0x80165EB8, NULL, (void*)0x80165C38, (void*)0x8016D480, (void*)0x8016D430, (void*)0x8016DAC0, (void*)0x8016DAC8, (void*)0x8016DB98, 0, { 0, 0, 0, 5 } },
+-    { 0x0088, { 0, 0 }, (u8 *)0x00665670, (u8 *)0x006C4880, (void*)0x8010FE00, (void*)0x80168D08, (void*)0x8016A590, (void*)0x8016A668, (void*)0x8016A778, NULL, (void*)0x8016A6F0, (void*)0x8016E920, (void*)0x8016E910, (void*)0x8016EFD8, (void*)0x8016EFE0, NULL, 0, { 0, 0, 0, 1 } },
+-    { 0x0088, { 0, 0 }, (u8 *)0x006C4880, (u8 *)0x0071EB90, (void*)0x8010FE00, (void*)0x80163770, (void*)0x80164C90, (void*)0x80164D30, (void*)0x80164EE8, NULL, (void*)0x80164E68, (void*)0x80169C70, (void*)0x80169C5C, (void*)0x8016A0B4, (void*)0x8016A0BC, NULL, 0, { 0, 0, 0, 1 } },
+-    { 0x0088, { 0, 0 }, (u8 *)0x0071EB90, (u8 *)0x007428A0, (void*)0x8010FE00, (void*)0x8012FC8C, (void*)0x80130610, (void*)0x801306B0, (void*)0x80130868, NULL, (void*)0x801307E8, (void*)0x80133440, (void*)0x80133428, (void*)0x80133ACC, (void*)0x80133AD4, NULL, 0, { 0, 0, 0, 1 } },
+-    { 8, { 0, 0 }, (u8 *)0x007428A0, (u8 *)0x00785690, (void*)0x8010FE00, (void*)0x8014CFFC, (void*)0x8014D4A0, (void*)0x8014DDF4, (void*)0x8014E6C0, NULL, (void*)0x8014E370, (void*)0x80152534, (void*)0x80151E6C, (void*)0x80152A8C, (void*)0x80152AC4, (void*)0x80152BC4, 0, { 0, 0, 0, 16 } },
+-    { 8, { 0, 0 }, (u8 *)0x00785690, (u8 *)0x007C1CE0, (void*)0x8010FE00, (void*)0x801476DC, (void*)0x80147D20, (void*)0x80147F00, (void*)0x8014838C, NULL, (void*)0x80148068, (void*)0x8014BF70, (void*)0x8014BF38, (void*)0x8014C3F8, (void*)0x8014C400, NULL, 0, { 0, 0, 0, 3 } },
+-    { 8, { 0, 0 }, (u8 *)0x007C1CE0, (u8 *)0x007EF930, (void*)0x8010FE00, (void*)0x8013B150, (void*)0x8013B5F0, (void*)0x8013B7D0, (void*)0x8013BBB4, NULL, (void*)0x8013B900, (void*)0x8013D580, (void*)0x8013D550, (void*)0x8013D9A4, (void*)0x8013D9AC, (void*)0x8013DA3C, 0, { 0, 0, 0, 3 } },
+-    { 8, { 0, 0 }, (u8 *)0x007EF930, (u8 *)0x008231F0, (void*)0x8010FE00, (void*)0x80140DC4, (void*)0x80141190, (void*)0x80141370, (void*)0x80141714, NULL, (void*)0x80141468, (void*)0x80143300, (void*)0x801432C4, (void*)0x8014365C, (void*)0x80143664, NULL, 0, { 0, 0, 0, 3 } },
+-    { 8, { 0, 0 }, (u8 *)0x008231F0, (u8 *)0x00851240, (void*)0x8010FE00, (void*)0x80139374, (void*)0x80139680, (void*)0x80139ACC, (void*)0x8013A1B0, NULL, (void*)0x80139E80, (void*)0x8013D910, (void*)0x8013D854, (void*)0x8013DCE4, (void*)0x8013DD3C, (void*)0x8013DE48, 0, { 0, 0, 0, 11 } },
+-    { 0x0088, { 0, 0 }, (u8 *)0x00851240, (u8 *)0x00869620, (void*)0x8010FE00, (void*)0x801269B4, (void*)0x80127A80, (void*)0x80127AE8, (void*)0x80127C28, NULL, (void*)0x80127BA8, (void*)0x801281D0, (void*)0x801281C0, NULL, NULL, NULL, 0, { 0, 0, 0, 1 } },
++    { 0x0081, { 0, 0 }, (u8 *)0x000EF280, (u8 *)0x00133F20, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8014F640), (void*)PORT_PTR(0x8014FB80), (void*)PORT_PTR(0x8014FF78), (void*)PORT_PTR(0x8015084C), (void*)PORT_PTR(0x80150290), (void*)PORT_PTR(0x80150518), (void*)PORT_PTR(0x80154810), (void*)PORT_PTR(0x801547BC), NULL, NULL, (void*)PORT_PTR(0x80154A90), 0, { 0, 0, 0, 5 } },
++    { 1, { 0, 0 }, (u8 *)0x00133F20, (u8 *)0x00165E70, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80140430), (void*)PORT_PTR(0x80140790), (void*)PORT_PTR(0x80140A28), (void*)PORT_PTR(0x80140F3C), (void*)PORT_PTR(0x80140C20), (void*)PORT_PTR(0x80140D10), (void*)PORT_PTR(0x80141CA0), (void*)PORT_PTR(0x80141C8C), NULL, NULL, (void*)PORT_PTR(0x80141D44), 1, { 0, 0, 0, 1 } },
++    { 4, { 0, 0 }, (u8 *)0x00165E70, (u8 *)0x0019C1D0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80144464), (void*)PORT_PTR(0x80144710), (void*)PORT_PTR(0x80144858), (void*)PORT_PTR(0x80144CFC), (void*)PORT_PTR(0x80144A50), (void*)PORT_PTR(0x80144AD0), (void*)PORT_PTR(0x80145D70), (void*)PORT_PTR(0x80145D54), (void*)PORT_PTR(0x80146128), (void*)PORT_PTR(0x80146130), NULL, 1, { 0, 0, 0, 1 } },
++    { 4, { 0, 0 }, (u8 *)0x0019C1D0, (u8 *)0x001CA8C0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8013C564), (void*)PORT_PTR(0x8013C870), (void*)PORT_PTR(0x8013C9F0), (void*)PORT_PTR(0x8013CEEC), (void*)PORT_PTR(0x8013CC00), (void*)PORT_PTR(0x8013CCB8), (void*)PORT_PTR(0x8013E190), (void*)PORT_PTR(0x8013E168), (void*)PORT_PTR(0x8013E460), (void*)PORT_PTR(0x8013E468), (void*)PORT_PTR(0x8013E4DC), 1, { 0, 0, 0, 2 } },
++    { 1, { 0, 0 }, (u8 *)0x001CA8C0, (u8 *)0x00206D70, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80149C98), (void*)PORT_PTR(0x8014A020), (void*)PORT_PTR(0x8014A3F8), (void*)PORT_PTR(0x8014AAFC), (void*)PORT_PTR(0x8014A6B0), (void*)PORT_PTR(0x8014A8C8), (void*)PORT_PTR(0x8014C1C0), (void*)PORT_PTR(0x8014C190), NULL, NULL, (void*)PORT_PTR(0x8014C2A4), 2, { 0, 0, 0, 3 } },
++    { 4, { 0, 0 }, (u8 *)0x00206D70, (u8 *)0x00251D30, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80157D98), (void*)PORT_PTR(0x801582C0), (void*)PORT_PTR(0x80158518), (void*)PORT_PTR(0x80158A1C), (void*)PORT_PTR(0x80158730), (void*)PORT_PTR(0x801587E8), (void*)PORT_PTR(0x8015A9C0), (void*)PORT_PTR(0x8015A99C), (void*)PORT_PTR(0x8015AD2C), (void*)PORT_PTR(0x8015AD34), (void*)PORT_PTR(0x8015ADAC), 2, { 0, 0, 0, 2 } },
++    { 1, { 0, 0 }, (u8 *)0x00251D30, (u8 *)0x002768B0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80133438), (void*)PORT_PTR(0x80133720), (void*)PORT_PTR(0x80133948), (void*)PORT_PTR(0x80133DEC), (void*)PORT_PTR(0x80133B40), (void*)PORT_PTR(0x80133BC0), (void*)PORT_PTR(0x801348B0), (void*)PORT_PTR(0x80134898), NULL, NULL, (void*)PORT_PTR(0x80134974), 2, { 0, 0, 0, 1 } },
++    { 4, { 0, 0 }, (u8 *)0x002768B0, (u8 *)0x002A8510, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8013F1FC), (void*)PORT_PTR(0x8013F500), (void*)PORT_PTR(0x8013F6B8), (void*)PORT_PTR(0x8013FBBC), (void*)PORT_PTR(0x8013F8D0), (void*)PORT_PTR(0x8013F988), (void*)PORT_PTR(0x80141550), (void*)PORT_PTR(0x80141528), (void*)PORT_PTR(0x801419CC), (void*)PORT_PTR(0x801419D4), (void*)PORT_PTR(0x80141A4C), 3, { 0, 0, 0, 2 } },
++    { 1, { 0, 0 }, (u8 *)0x002A8510, (u8 *)0x002F63B0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8015B89C), (void*)PORT_PTR(0x8015BD20), (void*)PORT_PTR(0x8015C090), (void*)PORT_PTR(0x8015C5FC), (void*)PORT_PTR(0x8015C270), (void*)PORT_PTR(0x8015C3D0), (void*)PORT_PTR(0x8015DB50), (void*)PORT_PTR(0x8015DB28), NULL, NULL, (void*)PORT_PTR(0x8015DC8C), 3, { 0, 0, 0, 2 } },
++    { 4, { 0, 0 }, (u8 *)0x002F63B0, (u8 *)0x003457F0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8015A824), (void*)PORT_PTR(0x8015AE10), (void*)PORT_PTR(0x8015B230), (void*)PORT_PTR(0x8015B7AC), (void*)PORT_PTR(0x8015B4F0), (void*)PORT_PTR(0x8015B580), (void*)PORT_PTR(0x8015E870), (void*)PORT_PTR(0x8015E860), (void*)PORT_PTR(0x8015F1A8), (void*)PORT_PTR(0x8015F1B0), NULL, 4, { 0, 0, 0, 1 } },
++    { 4, { 0, 0 }, (u8 *)0x003457F0, (u8 *)0x0036B800, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x801343D8), (void*)PORT_PTR(0x801345C0), (void*)PORT_PTR(0x80134738), (void*)PORT_PTR(0x80134CEC), (void*)PORT_PTR(0x80134920), (void*)PORT_PTR(0x80134AB8), (void*)PORT_PTR(0x80135DB0), (void*)PORT_PTR(0x80135D90), NULL, NULL, NULL, 4, { 0, 0, 0, 2 } },
++    { 4, { 0, 0 }, (u8 *)0x0036B800, (u8 *)0x003C9490, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80169190), (void*)PORT_PTR(0x80169610), (void*)PORT_PTR(0x80169CE8), (void*)PORT_PTR(0x8016A510), NULL, (void*)PORT_PTR(0x8016A018), (void*)PORT_PTR(0x8016D6D8), (void*)PORT_PTR(0x8016D57C), (void*)PORT_PTR(0x8016D9C4), (void*)PORT_PTR(0x8016D9DC), (void*)PORT_PTR(0x8016DA7C), 4, { 0, 0, 0, 8 } },
++    { 4, { 0, 0 }, (u8 *)0x003C9490, (u8 *)0x003E1090, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80125DA4), (void*)PORT_PTR(0x80126010), (void*)PORT_PTR(0x801261D4), (void*)PORT_PTR(0x801267BC), (void*)PORT_PTR(0x801264C0), (void*)PORT_PTR(0x80126588), (void*)PORT_PTR(0x80127800), (void*)PORT_PTR(0x801277CC), (void*)PORT_PTR(0x8012796C), (void*)PORT_PTR(0x80127974), (void*)PORT_PTR(0x801279EC), 5, { 0, 0, 0, 3 } },
++    { 2, { 0, 0 }, (u8 *)0x003F1BA0, (u8 *)0x004374F0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x80194B14), (void*)PORT_PTR(0x80195480), (void*)PORT_PTR(0x80195E98), (void*)PORT_PTR(0x801967F8), (void*)PORT_PTR(0x80196108), (void*)PORT_PTR(0x80196510), (void*)PORT_PTR(0x80198F84), (void*)PORT_PTR(0x80198980), NULL, NULL, (void*)PORT_PTR(0x80199330), 0, { 0, 0, 0, 18 } },
++    { 2, { 0, 0 }, (u8 *)0x004374F0, (u8 *)0x00487890, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8019DFA0), (void*)PORT_PTR(0x8019EC80), (void*)PORT_PTR(0x8019F7E0), (void*)PORT_PTR(0x8019FFF0), NULL, (void*)PORT_PTR(0x8019FD88), (void*)PORT_PTR(0x801A3900), (void*)PORT_PTR(0x801A3590), NULL, NULL, (void*)PORT_PTR(0x801A3D7C), 1, { 0, 0, 0, 16 } },
++    { 2, { 0, 0 }, (u8 *)0x00487890, (u8 *)0x0049D830, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x80166974), (void*)PORT_PTR(0x80167120), (void*)PORT_PTR(0x80167738), (void*)PORT_PTR(0x80167EF0), (void*)PORT_PTR(0x80167948), (void*)PORT_PTR(0x80167C98), (void*)PORT_PTR(0x801696A0), (void*)PORT_PTR(0x80169530), NULL, NULL, (void*)PORT_PTR(0x80169980), 0, { 0, 0, 0, 14 } },
++    { 2, { 0, 0 }, (u8 *)0x0049D830, (u8 *)0x004CD2E0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8017DA08), (void*)PORT_PTR(0x8017E510), (void*)PORT_PTR(0x8017EF80), (void*)PORT_PTR(0x8017FB58), (void*)PORT_PTR(0x8017F300), (void*)PORT_PTR(0x8017F850), (void*)PORT_PTR(0x8018302C), (void*)PORT_PTR(0x80182D34), NULL, NULL, (void*)PORT_PTR(0x8018348C), 1, { 0, 0, 0, 22 } },
++    { 2, { 0, 0 }, (u8 *)0x004CD2E0, (u8 *)0x004E44A0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x80168D4C), (void*)PORT_PTR(0x801691F0), (void*)PORT_PTR(0x80169680), (void*)PORT_PTR(0x80169BD0), (void*)PORT_PTR(0x801697F8), (void*)PORT_PTR(0x80169AA0), (void*)PORT_PTR(0x8016A978), (void*)PORT_PTR(0x8016A75C), NULL, NULL, (void*)PORT_PTR(0x8016ABA4), 2, { 0, 0, 0, 8 } },
++    { 2, { 0, 0 }, (u8 *)0x004E44A0, (u8 *)0x004F4E70, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x801621D4), (void*)PORT_PTR(0x80162940), (void*)PORT_PTR(0x80162C10), (void*)PORT_PTR(0x801630B0), NULL, (void*)PORT_PTR(0x80162E90), (void*)PORT_PTR(0x80164180), (void*)PORT_PTR(0x801640FC), NULL, NULL, (void*)PORT_PTR(0x801643B8), 2, { 0, 0, 0, 8 } },
++    { 2, { 0, 0 }, (u8 *)0x004F4E70, (u8 *)0x004FFFE0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8015DE28), (void*)PORT_PTR(0x8015E010), (void*)PORT_PTR(0x8015E1A0), (void*)PORT_PTR(0x8015E468), NULL, (void*)PORT_PTR(0x8015E2E0), (void*)PORT_PTR(0x8015EA70), (void*)PORT_PTR(0x8015EA28), NULL, NULL, NULL, 2, { 0, 0, 0, 4 } },
++    { 2, { 0, 0 }, (u8 *)0x004FFFE0, (u8 *)0x0051A6C0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8016B158), (void*)PORT_PTR(0x8016B920), (void*)PORT_PTR(0x8016BEE8), (void*)PORT_PTR(0x8016C500), (void*)PORT_PTR(0x8016C0C8), (void*)PORT_PTR(0x8016C3A8), (void*)PORT_PTR(0x8016DE70), (void*)PORT_PTR(0x8016DD1C), NULL, NULL, (void*)PORT_PTR(0x8016E0BC), 2, { 0, 0, 0, 12 } },
++    { 2, { 0, 0 }, (u8 *)0x0051A6C0, (u8 *)0x0056DB40, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x801A2518), (void*)PORT_PTR(0x801A2CE0), (void*)PORT_PTR(0x801A34B8), (void*)PORT_PTR(0x801A3B08), NULL, (void*)PORT_PTR(0x801A3938), (void*)PORT_PTR(0x801A6A68), (void*)PORT_PTR(0x801A6644), NULL, NULL, (void*)PORT_PTR(0x801A6E68), 3, { 0, 0, 0, 13 } },
++    { 2, { 0, 0 }, (u8 *)0x0056DB40, (u8 *)0x0059D6F0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8017DA18), (void*)PORT_PTR(0x8017E500), (void*)PORT_PTR(0x8017F0A8), (void*)PORT_PTR(0x8017FDF8), (void*)PORT_PTR(0x8017F3D8), (void*)PORT_PTR(0x8017F9D8), (void*)PORT_PTR(0x80182FCC), (void*)PORT_PTR(0x80182D28), NULL, NULL, (void*)PORT_PTR(0x80183594), 3, { 0, 0, 0, 26 } },
++    { 2, { 0, 0 }, (u8 *)0x0059D6F0, (u8 *)0x005D6D20, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x80186F78), (void*)PORT_PTR(0x801879E0), (void*)PORT_PTR(0x801886D8), (void*)PORT_PTR(0x80189368), (void*)PORT_PTR(0x80188A08), (void*)PORT_PTR(0x80189040), (void*)PORT_PTR(0x8018C910), (void*)PORT_PTR(0x8018C644), NULL, NULL, (void*)PORT_PTR(0x8018D010), 4, { 0, 0, 0, 26 } },
++    { 2, { 0, 0 }, (u8 *)0x005D6D20, (u8 *)0x005E99E0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x80164FB0), (void*)PORT_PTR(0x80165070), (void*)PORT_PTR(0x80165250), (void*)PORT_PTR(0x80165538), NULL, (void*)PORT_PTR(0x801653B8), (void*)PORT_PTR(0x80166464), (void*)PORT_PTR(0x801661A0), NULL, NULL, (void*)PORT_PTR(0x8016669C), 4, { 0, 0, 0, 3 } },
++    { 2, { 0, 0 }, (u8 *)0x005E99E0, (u8 *)0x006078D0, (void*)PORT_PTR(0x801539F0), (void*)PORT_PTR(0x8016EEE0), (void*)PORT_PTR(0x8016F360), (void*)PORT_PTR(0x8016F860), (void*)PORT_PTR(0x80170018), (void*)PORT_PTR(0x8016FAC0), (void*)PORT_PTR(0x8016FD70), (void*)PORT_PTR(0x801716D0), (void*)PORT_PTR(0x8017162C), NULL, NULL, (void*)PORT_PTR(0x801718D0), 5, { 0, 0, 0, 10 } },
++    { 0x0088, { 0, 0 }, (u8 *)0x006078D0, (u8 *)0x00665670, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x801649D8), (void*)PORT_PTR(0x80165460), (void*)PORT_PTR(0x80165A34), (void*)PORT_PTR(0x80165EB8), NULL, (void*)PORT_PTR(0x80165C38), (void*)PORT_PTR(0x8016D480), (void*)PORT_PTR(0x8016D430), (void*)PORT_PTR(0x8016DAC0), (void*)PORT_PTR(0x8016DAC8), (void*)PORT_PTR(0x8016DB98), 0, { 0, 0, 0, 5 } },
++    { 0x0088, { 0, 0 }, (u8 *)0x00665670, (u8 *)0x006C4880, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80168D08), (void*)PORT_PTR(0x8016A590), (void*)PORT_PTR(0x8016A668), (void*)PORT_PTR(0x8016A778), NULL, (void*)PORT_PTR(0x8016A6F0), (void*)PORT_PTR(0x8016E920), (void*)PORT_PTR(0x8016E910), (void*)PORT_PTR(0x8016EFD8), (void*)PORT_PTR(0x8016EFE0), NULL, 0, { 0, 0, 0, 1 } },
++    { 0x0088, { 0, 0 }, (u8 *)0x006C4880, (u8 *)0x0071EB90, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80163770), (void*)PORT_PTR(0x80164C90), (void*)PORT_PTR(0x80164D30), (void*)PORT_PTR(0x80164EE8), NULL, (void*)PORT_PTR(0x80164E68), (void*)PORT_PTR(0x80169C70), (void*)PORT_PTR(0x80169C5C), (void*)PORT_PTR(0x8016A0B4), (void*)PORT_PTR(0x8016A0BC), NULL, 0, { 0, 0, 0, 1 } },
++    { 0x0088, { 0, 0 }, (u8 *)0x0071EB90, (u8 *)0x007428A0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8012FC8C), (void*)PORT_PTR(0x80130610), (void*)PORT_PTR(0x801306B0), (void*)PORT_PTR(0x80130868), NULL, (void*)PORT_PTR(0x801307E8), (void*)PORT_PTR(0x80133440), (void*)PORT_PTR(0x80133428), (void*)PORT_PTR(0x80133ACC), (void*)PORT_PTR(0x80133AD4), NULL, 0, { 0, 0, 0, 1 } },
++    { 8, { 0, 0 }, (u8 *)0x007428A0, (u8 *)0x00785690, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8014CFFC), (void*)PORT_PTR(0x8014D4A0), (void*)PORT_PTR(0x8014DDF4), (void*)PORT_PTR(0x8014E6C0), NULL, (void*)PORT_PTR(0x8014E370), (void*)PORT_PTR(0x80152534), (void*)PORT_PTR(0x80151E6C), (void*)PORT_PTR(0x80152A8C), (void*)PORT_PTR(0x80152AC4), (void*)PORT_PTR(0x80152BC4), 0, { 0, 0, 0, 16 } },
++    { 8, { 0, 0 }, (u8 *)0x00785690, (u8 *)0x007C1CE0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x801476DC), (void*)PORT_PTR(0x80147D20), (void*)PORT_PTR(0x80147F00), (void*)PORT_PTR(0x8014838C), NULL, (void*)PORT_PTR(0x80148068), (void*)PORT_PTR(0x8014BF70), (void*)PORT_PTR(0x8014BF38), (void*)PORT_PTR(0x8014C3F8), (void*)PORT_PTR(0x8014C400), NULL, 0, { 0, 0, 0, 3 } },
++    { 8, { 0, 0 }, (u8 *)0x007C1CE0, (u8 *)0x007EF930, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x8013B150), (void*)PORT_PTR(0x8013B5F0), (void*)PORT_PTR(0x8013B7D0), (void*)PORT_PTR(0x8013BBB4), NULL, (void*)PORT_PTR(0x8013B900), (void*)PORT_PTR(0x8013D580), (void*)PORT_PTR(0x8013D550), (void*)PORT_PTR(0x8013D9A4), (void*)PORT_PTR(0x8013D9AC), (void*)PORT_PTR(0x8013DA3C), 0, { 0, 0, 0, 3 } },
++    { 8, { 0, 0 }, (u8 *)0x007EF930, (u8 *)0x008231F0, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80140DC4), (void*)PORT_PTR(0x80141190), (void*)PORT_PTR(0x80141370), (void*)PORT_PTR(0x80141714), NULL, (void*)PORT_PTR(0x80141468), (void*)PORT_PTR(0x80143300), (void*)PORT_PTR(0x801432C4), (void*)PORT_PTR(0x8014365C), (void*)PORT_PTR(0x80143664), NULL, 0, { 0, 0, 0, 3 } },
++    { 8, { 0, 0 }, (u8 *)0x008231F0, (u8 *)0x00851240, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x80139374), (void*)PORT_PTR(0x80139680), (void*)PORT_PTR(0x80139ACC), (void*)PORT_PTR(0x8013A1B0), NULL, (void*)PORT_PTR(0x80139E80), (void*)PORT_PTR(0x8013D910), (void*)PORT_PTR(0x8013D854), (void*)PORT_PTR(0x8013DCE4), (void*)PORT_PTR(0x8013DD3C), (void*)PORT_PTR(0x8013DE48), 0, { 0, 0, 0, 11 } },
++    { 0x0088, { 0, 0 }, (u8 *)0x00851240, (u8 *)0x00869620, (void*)PORT_PTR(0x8010FE00), (void*)PORT_PTR(0x801269B4), (void*)PORT_PTR(0x80127A80), (void*)PORT_PTR(0x80127AE8), (void*)PORT_PTR(0x80127C28), NULL, (void*)PORT_PTR(0x80127BA8), (void*)PORT_PTR(0x801281D0), (void*)PORT_PTR(0x801281C0), NULL, NULL, NULL, 0, { 0, 0, 0, 1 } },
+ };
+ MapRomRange map_extra_rom_ranges[6] = {
+-    { (u8 *)0x000C8DE0, (u8 *)0x000D0570, (void*)0x801F8000 }, { (u8 *)0x000D0570, (u8 *)0x000D7FE0, (void*)0x801F8000 },
+-    { (u8 *)0x000D7FE0, (u8 *)0x000DD790, (void*)0x801F8000 }, { (u8 *)0x000DD790, (u8 *)0x000E4D00, (void*)0x801F8000 },
+-    { (u8 *)0x000E4D00, (u8 *)0x000EBDE0, (void*)0x801F8000 }, { (u8 *)0x000EBDE0, (u8 *)0x000EF280, (void*)0x801F8000 },
++    { (u8 *)0x000C8DE0, (u8 *)0x000D0570, (void*)PORT_PTR(0x801F8000) }, { (u8 *)0x000D0570, (u8 *)0x000D7FE0, (void*)PORT_PTR(0x801F8000) },
++    { (u8 *)0x000D7FE0, (u8 *)0x000DD790, (void*)PORT_PTR(0x801F8000) }, { (u8 *)0x000DD790, (u8 *)0x000E4D00, (void*)PORT_PTR(0x801F8000) },
++    { (u8 *)0x000E4D00, (u8 *)0x000EBDE0, (void*)PORT_PTR(0x801F8000) }, { (u8 *)0x000EBDE0, (u8 *)0x000EF280, (void*)PORT_PTR(0x801F8000) },
+ };
+ /* One cell (the player's own); [1] pads to the word the table occupies. */
+ CellOffset mapobj_cell_single[2] = { { 0, 0 }, { 0, 0 } };
 @@ -1432,19 +1527,19 @@ CellOffset mapobj_cell_disc_r2[22] = {
  u32 mapobjanim_type23_keys[0x8F] = {
  #include "assets/mapobjanim_type23_keys.inc.c"
@@ -4501,6 +4806,92 @@ index c955abf..5c2b7a2 100644
  MapBackdropDef map_backdrop_defs[8] = {
      { 0x00D86970, 0x01001300 }, { 0x00D8B170, 0x01001300 }, { 0x00D8F970, 0x01002410 }, { 0x00D92D70, 0x01003630 },
      { 0x00D96570, 0x01003630 }, { 0x00D99D70, 0x01003630 }, { 0x00D9D570, 0x01003630 }, { 0x00DA0D70, 0x01003630 },
+@@ -1739,33 +1834,33 @@ s16 menu_map_spot_coords[108] = {
+     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+ };
+ void *menu_map_tluts[6] = {
+-    (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000,
++    (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000),
+ };
+ void *menu_map_strips[144] = {
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
+-    (void*)0x801C0200, (void*)0x801C09A0, (void*)0x801C1140, (void*)0x801C18E0, (void*)0x801C2080, (void*)0x801C2820,
+-    (void*)0x801C2FC0, (void*)0x801C3760, (void*)0x801C3F00, (void*)0x801C46A0, (void*)0x801C4E40, (void*)0x801C55E0,
+-    (void*)0x801C5D80, (void*)0x801C6520, (void*)0x801C6CC0, (void*)0x801C7460, (void*)0x801C7C00, (void*)0x801C83A0,
+-    (void*)0x801C8B40, (void*)0x801C92E0, (void*)0x801C9A80, (void*)0x801CA220, (void*)0x801CA9C0, (void*)0x801CB160,
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C09A0), (void*)PORT_PTR(0x801C1140), (void*)PORT_PTR(0x801C18E0), (void*)PORT_PTR(0x801C2080), (void*)PORT_PTR(0x801C2820),
++    (void*)PORT_PTR(0x801C2FC0), (void*)PORT_PTR(0x801C3760), (void*)PORT_PTR(0x801C3F00), (void*)PORT_PTR(0x801C46A0), (void*)PORT_PTR(0x801C4E40), (void*)PORT_PTR(0x801C55E0),
++    (void*)PORT_PTR(0x801C5D80), (void*)PORT_PTR(0x801C6520), (void*)PORT_PTR(0x801C6CC0), (void*)PORT_PTR(0x801C7460), (void*)PORT_PTR(0x801C7C00), (void*)PORT_PTR(0x801C83A0),
++    (void*)PORT_PTR(0x801C8B40), (void*)PORT_PTR(0x801C92E0), (void*)PORT_PTR(0x801C9A80), (void*)PORT_PTR(0x801CA220), (void*)PORT_PTR(0x801CA9C0), (void*)PORT_PTR(0x801CB160),
+ };
+ s16 menu_map_world_scale[12] = {
+     26, 20, 24, 24, 34, 13, 26, 21, 23, 24, 28, 13,
+@@ -1774,18 +1869,18 @@ s16 menu_map_origin[12] = {
+     139, 125, 124, 124, 88, 133, 88, 95, 87, 78, 60, 96,
+ };
+ MenuPictureDma menu_map_picture_dma[10] = {
+-    { (void*)0x801C0000, (u8 *)0x00F2FB70, (u8 *)0x00F3ADD0 }, { (void*)0x801C0000, (u8 *)0x00F3ADD0, (u8 *)0x00F46030 },
+-    { (void*)0x801C0000, (u8 *)0x00F46030, (u8 *)0x00F51290 }, { (void*)0x801C0000, (u8 *)0x00F51290, (u8 *)0x00F5C4F0 },
+-    { (void*)0x801C0000, (u8 *)0x00F5C4F0, (u8 *)0x00F67750 }, { (void*)0x801C0000, (u8 *)0x00F67750, (u8 *)0x00F729B0 },
+-    { (void*)0x801C0000, (u8 *)0x00F729B0, (u8 *)0x00F73050 }, { (void*)0x801C0000, (u8 *)0x00F73050, (u8 *)0x00F73730 },
+-    { (void*)0x801C0000, (u8 *)0x00F73730, (u8 *)0x00F73F90 }, { (void*)0x801C0000, (u8 *)0x00F73F90, (u8 *)0x00F74890 },
++    { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F2FB70, (u8 *)0x00F3ADD0 }, { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F3ADD0, (u8 *)0x00F46030 },
++    { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F46030, (u8 *)0x00F51290 }, { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F51290, (u8 *)0x00F5C4F0 },
++    { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F5C4F0, (u8 *)0x00F67750 }, { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F67750, (u8 *)0x00F729B0 },
++    { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F729B0, (u8 *)0x00F73050 }, { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F73050, (u8 *)0x00F73730 },
++    { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F73730, (u8 *)0x00F73F90 }, { (void*)PORT_PTR(0x801C0000), (u8 *)0x00F73F90, (u8 *)0x00F74890 },
+ };
+ void *menu_map_small_tluts[4] = {
+-    (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000, (void*)0x801C0000,
++    (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000), (void*)PORT_PTR(0x801C0000),
+ };
+ void *menu_map_small_tex[8] = {
+-    (void*)0x801C0200, (void*)0x801C0200, (void*)0x801C0200, (void*)0x801C0200,
+-    (void*)0x801C0200, (void*)0x801C0200, (void*)0x801C0200, (void*)0x801C0200,
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200),
++    (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200), (void*)PORT_PTR(0x801C0200),
+ };
+ u8 menu_map_small_sizes[4][3] = {
+     { 0x41, 0x12, 0 }, { 0x41, 0x13, 0 }, { 0x60, 0x11, 0 }, { 0x63, 0x12, 0 },
 diff --git a/src/game/ui/menu.h b/src/game/ui/menu.h
 index a56b278..9545a39 100644
 --- a/src/game/ui/menu.h
@@ -4549,7 +4940,7 @@ index a0cdcde..2e70135 100644
      s32 i;
      
 diff --git a/src/libultra/audio/cseq.c b/src/libultra/audio/cseq.c
-index b66b9d7..9ebf677 100644
+index b66b9d7..002b5f4 100644
 --- a/src/libultra/audio/cseq.c
 +++ b/src/libultra/audio/cseq.c
 @@ -27,6 +27,13 @@
@@ -4577,7 +4968,7 @@ index b66b9d7..9ebf677 100644
              flagTmp = 1 << i;
              seq->validTracks |= flagTmp;
 -            seq->curLoc[i] = (u8*)((u32)ptr + tmpOff);
-+            seq->curLoc[i] = (u8*)(uptr)((u32)(uptr)ptr + tmpOff);
++            seq->curLoc[i] = (u8*)PORT_PTR((u32)(uptr)ptr + tmpOff);
              seq->evtDeltaTicks[i] = __readVarLen(seq,i);
              /*__alCSeqGetTrackEvent(seq,i); prime the event buffers  */
          }
@@ -4606,7 +4997,7 @@ index b66b9d7..9ebf677 100644
  
  
 diff --git a/src/libultra/audio/env.c b/src/libultra/audio/env.c
-index 646c33e..dd69ecd 100644
+index 646c33e..54f73ea 100644
 --- a/src/libultra/audio/env.c
 +++ b/src/libultra/audio/env.c
 @@ -156,7 +156,7 @@ Acmd *alEnvmixerPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
@@ -4614,7 +5005,7 @@ index 646c33e..dd69ecd 100644
                        data.f = param->pitch;
                        (*f->source->setParam)(f->source, AL_FILTER_SET_PITCH,
 -                                            (void *)data.i);
-+                                            (void *)(uptr)(u32)data.i);
++                                            (void *)(uptr)(u32)data.i); /* port: a float's bits, not an address */
                    }
                    
                }
@@ -4623,7 +5014,7 @@ index 646c33e..dd69ecd 100644
  	      ptr = _pullSubFrame(e, &inp, &loutp, samples, sampleOffset, ptr);
                (*e->filter.setParam)(&e->filter, e->ctrlList->type,
 -                                    (void *) e->ctrlList->data.i);
-+                                    (void *)(uptr)(u32) e->ctrlList->data.i);
++                                    (void *)(uptr)(u32) e->ctrlList->data.i); /* port: a parameter, not an address */
                break;
          }
          loutp  += (samples<<1);
@@ -4771,7 +5162,7 @@ index 59bd09b..fdb66f3 100644
      switch (paramID) {
          case (AL_FILTER_SET_SOURCE):
 diff --git a/src/libultra/audio/synthInternals.h b/src/libultra/audio/synthInternals.h
-index c6c476c..17d0a0e 100644
+index c6c476c..17d0a0e 100755
 --- a/src/libultra/audio/synthInternals.h
 +++ b/src/libultra/audio/synthInternals.h
 @@ -103,6 +103,11 @@ typedef struct ALParam_s {
@@ -6088,7 +6479,7 @@ index a87243b..2fd2eb6 100644
  
  /* ovl_intro .data 80212250..80212270 (the rest of the slab is still asm): 250, 254,
 diff --git a/src/overlays/pakmenu/pakmenu.c b/src/overlays/pakmenu/pakmenu.c
-index 145e9b5..fe04e32 100644
+index 145e9b5..84cc0b9 100644
 --- a/src/overlays/pakmenu/pakmenu.c
 +++ b/src/overlays/pakmenu/pakmenu.c
 @@ -1,3 +1,6 @@
@@ -6108,6 +6499,15 @@ index 145e9b5..fe04e32 100644
  
  /* .data 80101FA0..80107050: images, palettes, sprite tables, message text, then the font. */
  /* palette, 16 colours */
+@@ -584,7 +590,7 @@ u8 pak_menu_state10_confirmation_message[0x58] = {
+ #include "assets/pak_menu_state10_confirmation_message.inc.c"
+ };
+ s32 pak_menu_framebuffer_index = 0;
+-u16* pak_menu_framebuffers[2] = { (u16*) 0x80200000, (u16*) 0x80225800 };
++u16* pak_menu_framebuffers[2] = { (u16*) PORT_PTR(0x80200000), (u16*) PORT_PTR(0x80225800) };
+ TextFontMetrics pak_menu_font_metrics[1] = { { 10, 13, 10, 14 } };
+ u16 D_8010567C_ovl_DA4570[8] = {
+ #include "assets/D_8010567C_ovl_DA4570.inc.c"
 @@ -665,7 +671,12 @@ void PakMenu_DrawChar(s32 arg0) {
      dst = pak_menu_text_pixel_cursor;
      for (i = 0; i < 12; i++) {
@@ -6137,6 +6537,15 @@ index 145e9b5..fe04e32 100644
          osViSwapBuffer(pak_menu_framebuffers[pak_menu_framebuffer_index & 1]);
          pak_menu_draw_framebuffer = pak_menu_framebuffers[++pak_menu_framebuffer_index & 1];
          pak_menu_redraw_pending = 0;
+@@ -901,7 +915,7 @@ s32 PakMenu_Run(OSMesgQueue* mq, OSMesgQueue* arg1) {
+     if (!(pads[input_primary_port].button & 0x1000) && (pak_menu_state != 5)) {
+         return 2;
+     }
+-    for (p = (u32*) 0x80200000; p != (u32*) 0x8024B000; p++) {
++    for (p = (u32*) PORT_PTR(0x80200000); p != (u32*) PORT_PTR(0x8024B000); p++) {
+         *p = 0;
+     }
+     osViBlack(0);
 @@ -1422,12 +1436,32 @@ void PakMenu_DrawText(s32 x, s32 y, u8* str) {
      s32 arg;
      static s32 font = 0;

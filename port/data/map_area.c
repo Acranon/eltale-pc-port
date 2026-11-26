@@ -39,11 +39,11 @@ static void *alloc(size_t bytes) {
 }
 
 static int in_block(u32 a) { return a >= block_start && a < block_end; }
-static const u8 *ram(u32 a) { return (const u8 *)(uptr)a; }
+static const u8 *ram(u32 a) { return (const u8 *)PORT_PTR(a); }
 static u16 r16(u32 a) { const u8 *p = ram(a); return (u16)(p[0] << 8 | p[1]); }
 static u32 r32(u32 a) { return (u32)r16(a) << 16 | r16(a + 2); }
 static f32 rf32(u32 a) { u32 v = r32(a); f32 f; memcpy(&f, &v, 4); return f; }
-static void *rptr(u32 a) { return (void *)(uptr)r32(a); } /* an N64 address, kept as is */
+static void *rptr(u32 a) { return PORT_PTR(r32(a)); } /* an N64 address, kept as is */
 
 static int cmp_u32(const void *a, const void *b) {
     u32 x = *(const u32 *)a, y = *(const u32 *)b;

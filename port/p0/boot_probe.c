@@ -206,7 +206,7 @@ static void battle_log(void) {
                 snprintf(hex + 3 * k, 4, "%02x ", name[k]);
                 if (name[k] == 0xFF) break;
             }
-            const EnemyAttack *atk = (const EnemyAttack *)(uintptr_t)e->def->attacks;
+            const EnemyAttack *atk = (const EnemyAttack *)PORT_PTR(e->def->attacks);
             fprintf(stderr, "P1_BATTLE enemy %d set=%d hp=%d agility=%d scale=%.3f radius=%.2f engage=%.2f attacks=%d"
                     " range0=%.2f reach0=%.2f walk_len=%d name@%08x=%s\n", i, e->def->anim_set_index, e->def->max_hp,
                     e->def->agility, e->def->scale, e->def->body_radius, e->engagement_radius, e->def->attack_count,
@@ -345,7 +345,7 @@ static void ai_wav_close(void) {
 /* Each screen the Controller Pak manager draws, as a hash of its pixels (the headless check). */
 void Port_NoteCpuFrame(u32 framebuffer, s32 state) {
     static unsigned count;
-    const u16 *px = (const u16 *)(uintptr_t)framebuffer;
+    const u16 *px = (const u16 *)PORT_PTR(framebuffer);
     uint64_t hash = UINT64_C(0xCBF29CE484222325);
     for (u32 i = 0; i < 320 * 240; i++) hash = (hash ^ px[i]) * UINT64_C(0x100000001B3);
     printf("P1_CPU_FRAME n=%u state=%d hash=%016llx\n", ++count, (int)state, (unsigned long long)hash);

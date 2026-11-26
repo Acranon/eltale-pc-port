@@ -41,6 +41,7 @@ static uint8_t *frame_data; /* segment 2 */
 
 static Ptr resolve(uintptr_t w) {
     Ptr r = { NULL, 0 };
+    w = PORT_ADDR_NARROW(w); /* a host pointer into the image or RDRAM, as its 32-bit address */
     if (w < 0x10000000u) {
         uint32_t seg = (uint32_t)(w >> 24) & 0xF, off = (uint32_t)w & 0xFFFFFF;
         if (seg == 2) {
@@ -49,7 +50,7 @@ static Ptr resolve(uintptr_t w) {
         }
         uintptr_t base = 0;
         if (seg == 1) {
-            uintptr_t s1 = (uintptr_t)gfx_segment1_base;
+            uintptr_t s1 = PORT_ADDR_NARROW((uintptr_t)gfx_segment1_base);
             base = s1 >= RDRAM && s1 < RDRAM + RDRAM_BYTES ? s1 - RDRAM : s1;
         }
         w = base + off;
@@ -57,10 +58,10 @@ static Ptr resolve(uintptr_t w) {
     }
     if (w >= RDRAM && w < RDRAM + RDRAM_BYTES) {
         uintptr_t n = Port_N64ToNative((uint32_t)w);
-        r.p = n ? (const uint8_t *)n : (const uint8_t *)w;
+        r.p = n ? (const uint8_t *)n : (const uint8_t *)PORT_PTR(w);
         r.native = n != 0;
     } else {
-        r.p = (const uint8_t *)w;
+        r.p = (const uint8_t *)PORT_PTR_ANY(w); /* a 32-bit image address, or a whole host pointer */
         r.native = 1;
     }
     return r;

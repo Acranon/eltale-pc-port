@@ -804,7 +804,7 @@ static void compass_art(void) {
     extern u8 D_8039ADB0[];
     if (compass_art_made) return;
     const HudTextureDesc *t = &D_803A86F8;
-    const u8 *img = Port_InRdram(t) ? (const u8 *)(uptr)Port_N64U32(t, 0) : (const u8 *)t->img;
+    const u8 *img = Port_InRdram(t) ? (const u8 *)PORT_PTR(Port_N64U32(t, 0)) : (const u8 *)t->img;
     const int width = Port_InRdram(t) ? (int)Port_N64U32(t, 8) : (int)t->width;
     if (!img || width <= 8) return;
     compass_art_made = 1;

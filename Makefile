@@ -77,7 +77,7 @@ CFLAGS += $(SAN_CFLAGS)
 LDFLAGS += $(SAN_FLAGS)
 endif
 
-.PHONY: asan p0 p0-test p1-os-run p1-os-test endian-test abi-test census assets clean linux
+.PHONY: asan p0 p0-test p1-os-run p1-os-test endian-test abi-test addr-test census assets clean linux
 p0: assets $(BIN)
 
 assets:
@@ -159,6 +159,16 @@ endian-test: tests/endian_test.c port/include/port/endian.h
 	@mkdir -p $(OUT)
 	$(CC) -std=gnu11 -O2 -Iport/include tests/endian_test.c -o $(OUT)/endian-test
 	$(OUT)/endian-test
+
+# the address model's macros (port/include/port/addr.h, docs/MACOS.md); on macOS linked where the game is
+ifeq ($(shell uname -s),Darwin)
+ADDR_TEST_LDFLAGS := -Wl,-segaddr,__TEXT,0x810000000 -Wl,-segaddr,__DATA_CONST,0x810004000 \
+  -Wl,-segaddr,__DATA,0x810008000 -Wl,-segaddr,__LINKEDIT,0x81000c000
+endif
+addr-test: tests/addr_test.c port/include/port/addr.h
+	@mkdir -p $(OUT)
+	$(CC) -std=gnu11 -O2 -Iport/include tests/addr_test.c $(ADDR_TEST_LDFLAGS) -o $(OUT)/addr-test
+	$(OUT)/addr-test
 
 abi-test: tests/abi_test.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
 	@mkdir -p $(OUT)

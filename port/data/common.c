@@ -52,7 +52,7 @@ void Port_SwapCommonBlock(void) {
 void Port_DumpCommonBlock(void) {
     for (uint32_t i = 0; i < 8; i++) {
         uint32_t d = i < 7 ? 0x803AB820 + i * 0x38 : 0x803AB9A8;
-        const unsigned char *p = (const unsigned char *)(uintptr_t)d;
+        const unsigned char *p = (const unsigned char *)PORT_PTR(d);
         uint16_t hp, cnt; uint32_t exp, att; float scale;
         memcpy(&hp, p + 6, 2); memcpy(&exp, p + 0x10, 4); memcpy(&scale, p + 0x20, 4);
         memcpy(&cnt, p + 0x2C, 2); memcpy(&att, p + 0x30, 4);
@@ -64,7 +64,7 @@ void Port_DumpCommonBlock(void) {
             uint32_t a = tb->addr + i * tb->size;
             printf("COMMON %08x[%u]", tb->addr, i);
             for (const char *s = tb->shape; *s; s++) {
-                const unsigned char *p = (const unsigned char *)(uintptr_t)a;
+                const unsigned char *p = (const unsigned char *)PORT_PTR(a);
                 if (*s == 'w') { uint32_t v; float f; memcpy(&v, p, 4); memcpy(&f, p, 4); printf(" %08x(%g)", v, f); a += 4; }
                 else if (*s == 'h') { uint16_t v; memcpy(&v, p, 2); printf(" %d", (int16_t)v); a += 2; }
                 else { printf(" b%02x", *p); a += 1; }

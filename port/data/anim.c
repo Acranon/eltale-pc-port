@@ -29,14 +29,14 @@ void Port_DataForget(u32 start, u32 bytes) {
     for (u32 h = lo; h < hi; h++) swapped[h / 8] &= (u8)~(1 << (h % 8));
 }
 
-static u16 be16(u32 a) { const u8 *p = (const u8 *)(uptr)a; return (u16)(p[0] << 8 | p[1]); }
+static u16 be16(u32 a) { const u8 *p = (const u8 *)PORT_PTR(a); return (u16)(p[0] << 8 | p[1]); }
 static u32 be32(u32 a) { return (u32)be16(a) << 16 | be16(a + 2); }
 
 void Port_Swap16(u32 a) {
     if (!in_ram(a, 2)) Port_HostFatal("swap outside RDRAM");
     if (done(a)) return;
     u16 v = be16(a);
-    memcpy((void *)(uptr)a, &v, 2);
+    memcpy(PORT_PTR(a), &v, 2);
     mark(a);
 }
 
@@ -44,14 +44,14 @@ void Port_Swap32(u32 a) {
     if (!in_ram(a, 4)) Port_HostFatal("swap outside RDRAM");
     if (done(a)) return;
     u32 v = be32(a);
-    memcpy((void *)(uptr)a, &v, 4);
+    memcpy(PORT_PTR(a), &v, 4);
     mark(a);
     mark(a + 2);
 }
 
 /* Read a field that may or may not be swapped yet. */
-static u32 rd32(u32 a) { u32 v; if (done(a)) { memcpy(&v, (void *)(uptr)a, 4); return v; } return be32(a); }
-static u16 rd16(u32 a) { u16 v; if (done(a)) { memcpy(&v, (void *)(uptr)a, 2); return v; } return be16(a); }
+static u32 rd32(u32 a) { u32 v; if (done(a)) { memcpy(&v, PORT_PTR(a), 4); return v; } return be32(a); }
+static u16 rd16(u32 a) { u16 v; if (done(a)) { memcpy(&v, PORT_PTR(a), 2); return v; } return be16(a); }
 
 static void swap_keyframes(u32 kfs, u32 count) {
     if (!kfs || !in_ram(kfs, 0x34u * count)) return;
@@ -103,7 +103,7 @@ static void swap_set(u32 a) {
     Port_Swap16(a + 2);
     Port_Swap32(a + 4);
     Port_Swap32(a + 8);
-    const AnimSet *set = (const AnimSet *)(uptr)a;
+    const AnimSet *set = (const AnimSet *)PORT_PTR(a);
     int max_dl = -1;
     for (s32 i = 0; i < set->nodeCount; i++) {
         u32 n = set->nodes + (u32)i * 0x20;
@@ -113,13 +113,13 @@ static void swap_set(u32 a) {
         for (u32 k = 0; k < 3; k++) Port_Swap32(n + 8 + k * 4); /* pivot */
         Port_Swap32(n + 0x18);      /* dlSeq */
         Port_Swap16(n + 0x1C);      /* dlSeqLen */
-        const AnimNode *node = (const AnimNode *)(uptr)n;
+        const AnimNode *node = (const AnimNode *)PORT_PTR(n);
         swap_keyframes(node->track.kfs, node->track.count);
         if (node->dl > max_dl) max_dl = node->dl;
         if (node->dlSeq && in_ram(node->dlSeq, 4u * node->dlSeqLen)) {
             for (u32 k = 0; k < node->dlSeqLen; k++) {
                 Port_Swap32(node->dlSeq + k * 4);
-                s32 v = ((const s32 *)(uptr)node->dlSeq)[k];
+                s32 v = ((const s32 *)PORT_PTR(node->dlSeq))[k];
                 if (v > max_dl) max_dl = v;
             }
         }
@@ -131,10 +131,10 @@ static void swap_set(u32 a) {
 void Port_SwapAnimSetDls(const AnimSet *set) {
     int max_dl = -1;
     for (s32 i = 0; i < set->nodeCount; i++) {
-        const AnimNode *node = (const AnimNode *)(uptr)(set->nodes + (u32)i * 0x20);
+        const AnimNode *node = (const AnimNode *)PORT_PTR(set->nodes + (u32)i * 0x20);
         if (node->dl > max_dl) max_dl = node->dl;
         for (u32 k = 0; node->dlSeq && k < node->dlSeqLen; k++) {
-            s32 v = ((const s32 *)(uptr)node->dlSeq)[k];
+            s32 v = ((const s32 *)PORT_PTR(node->dlSeq))[k];
             if (v > max_dl) max_dl = v;
         }
     }

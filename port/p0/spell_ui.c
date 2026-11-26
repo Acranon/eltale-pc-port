@@ -902,7 +902,7 @@ static void parchment(s32 x, s32 y, s32 w, s32 h) {
     void *img;
     u32 width;
     if (Port_InRdram(tex)) {
-        img = (void *)(uptr)Port_N64U32(tex, 0);
+        img = PORT_PTR(Port_N64U32(tex, 0));
         width = Port_N64U32(tex, 8);
     } else {
         img = tex->img;

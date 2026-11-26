@@ -45,7 +45,7 @@ void Port_ImagesUpdate(void) {
         memcpy(target, en ? img->en : img->original, img->size);
         if (img->ram) memcpy((void *)(uintptr_t)img->ram, en ? img->en : img->original, img->size);
     }
-    memcpy((void *)(uintptr_t)TITLE_STRIP_ADDR, en_title_strip, sizeof en_title_strip);
+    memcpy(PORT_PTR(TITLE_STRIP_ADDR), en_title_strip, sizeof en_title_strip);
     applied = en;
 }
 
@@ -97,7 +97,7 @@ const uint8_t *Port_HudSpellLocked(void) {
 int Port_TitleStrip(uint8_t **texels, int *width, int *height, int pieces[3][2]) {
     if (!Port_TextEnglish()) return 0;
     Port_ImagesUpdate();
-    *texels = (uint8_t *)(uintptr_t)TITLE_STRIP_ADDR;
+    *texels = (uint8_t *)PORT_PTR(TITLE_STRIP_ADDR);
     *width = EN_TITLE_W;
     *height = EN_TITLE_H;
     for (int i = 0; i < 3; i++) {

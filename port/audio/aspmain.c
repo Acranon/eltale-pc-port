@@ -75,16 +75,16 @@ static u32 align(u32 v, u32 a) { return (v + a - 1) & ~(a - 1); }
 
 /* A DRAM address in a command: a host address, or KSEG0 / physical RDRAM. */
 static void *dram(u32 a) {
-    if (a >= 0x80000000u && a < 0x80800000u) return (void *)(uptr)a;
-    if (a < 0x00800000u) return (void *)(uptr)(a | 0x80000000u);
-    if (a >= 0x10000000u) return (void *)(uptr)a;
+    if (a >= 0x80000000u && a < 0x80800000u) return PORT_PTR(a);
+    if (a < 0x00800000u) return PORT_PTR(a | 0x80000000u);
+    if (a >= 0x10000000u) return PORT_PTR(a);
     Port_HostFatal("aspMain: unexpected DRAM address");
 }
 
 static void load_lut(u32 ucode_data) {
     /* the 64x4 filter table sits 0xC0 bytes into aspMain's data; it is symmetric (last row is the
      * first reversed), which the check below uses to make sure we found it */
-    const u8 *p = (const u8 *)(uptr)(ucode_data | 0x80000000u) + 0xC0;
+    const u8 *p = (const u8 *)PORT_PTR(ucode_data | 0x80000000u) + 0xC0;
     for (int i = 0; i < 256; i++) resample_lut[i] = (s16)(p[i * 2] << 8 | p[i * 2 + 1]);
     for (int i = 0; i < 4; i++)
         if (resample_lut[i] != resample_lut[255 - i] || !resample_lut[1])
@@ -415,7 +415,7 @@ void Port_AspRestoreState(void) {
 static u16 be16(const u8 *p) { return (u16)(p[0] << 8 | p[1]); }
 void Port_AspTaskStart(const OSTask *task) {
     u32 size = task->t.ucode_data_size;
-    const u8 *data = (const u8 *)(uptr)((u32)(uptr)task->t.ucode_data | 0x80000000u);
+    const u8 *data = (const u8 *)PORT_PTR((u32)(uptr)task->t.ucode_data | 0x80000000u);
     if (size > 0x1000) size = 0x1000;
     if (size < 0x5C0) Port_HostFatal("aspMain: the task's microcode data is too short");
     for (int i = 0; i < 16; i++) par[i] = be16(data + 0x360 + i * 2);
