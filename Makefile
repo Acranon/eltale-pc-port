@@ -63,6 +63,20 @@ CFLAGS := -std=gnu11 -O2 -g -mcmodel=large -ffp-contract=off -fno-strict-aliasin
   -Werror=int-to-pointer-cast -Werror=pointer-to-int-cast -Werror=int-conversion
 LDFLAGS := -no-pie -Wl,-Ttext-segment=0x10000000 -Wl,--gc-sections -lm -ldl
 
+# arm64 macOS (docs/MACOS.md, tools/build_macos.sh): every program is position independent and Apple's
+# ld64 links it. The image goes to 0x8_10000000, in the 4 GiB window port/include/port/addr.h names: the
+# executable is linked once (NAME.pass1, kept beside it), and again with each segment moved there
+# (tools/macho_segaddr.py).
+MACOS := $(if $(filter Darwin,$(shell uname -s)),1,0)
+MACOS_IMAGE_BASE := 0x810000000
+ifeq ($(MACOS),1)
+CFLAGS := $(filter-out -mcmodel=large -fno-pie -ffunction-sections -fdata-sections,$(CFLAGS)) -Wno-unknown-warning-option
+# -no_fixup_chains: with its segments moved, ld64's chained fixups still count the game's own pointers from the
+# usual base (0x1_00000000), and each came out 0x7_10000000 too high; the older rebase opcodes count from the
+# segments as they are
+LDFLAGS := -Wl,-dead_strip -lm -Wl,-no_fixup_chains
+endif
+
 # The memory-safety build (docs/MEMORY_SAFETY.md): AddressSanitizer with UBSan's bound and pointer checks,
 # clang on Linux. `make asan ROM=...` -> out/asan/eltale-p1 (or tools/asan_run.sh). Reports go on; none stops
 # the game. Instrumented mem* calls go through port/p0/asan_rdram.c, which knows RDRAM. SAN_EXTRA adds flags (e.g.
@@ -77,7 +91,7 @@ CFLAGS += $(SAN_CFLAGS)
 LDFLAGS += $(SAN_FLAGS)
 endif
 
-.PHONY: asan p0 p0-test p1-os-run p1-os-test endian-test abi-test addr-test census assets clean linux
+.PHONY: asan p0 p0-test p1-os-run p1-os-test endian-test abi-test addr-test census assets clean linux macos
 p0: assets $(BIN)
 
 assets:
@@ -143,11 +157,24 @@ $(OUT)/host_address_map.c: $(GAME_OBJ) tools/gen_host_address_map.py
 $(OUT)/host_address_map.o: $(OUT)/host_address_map.c
 	$(CC) -std=gnu11 -O2 $(SAN_CFLAGS) -c $< -o $@
 
+ifeq ($(MACOS),1)
+# the raw D_ labels as absolute symbols in the window, and the two-pass link at MACOS_IMAGE_BASE
+$(OUT)/abs.s: $(OBJ) tools/gen_abs_symbols.py port/include/port/addr.h
+	$(PYTHON) tools/gen_abs_symbols.py --macho $@ $(OBJ)
+
+$(OUT)/abs.o: $(OUT)/abs.s
+	$(CC) -c $< -o $@
+
+$(BIN): $(OBJ) $(OUT)/abs.o $(P1_DATA) tools/macho_segaddr.py
+	$(CC) $(OBJ) $(OUT)/abs.o $(LDFLAGS) -o $@.pass1
+	$(CC) $(OBJ) $(OUT)/abs.o $(LDFLAGS) $$($(PYTHON) tools/macho_segaddr.py $@.pass1 $(MACOS_IMAGE_BASE)) -o $@
+else
 $(OUT)/abs.rsp: $(OBJ) tools/gen_abs_symbols.py
 	$(PYTHON) tools/gen_abs_symbols.py $@ $(OBJ)
 
 $(BIN): $(OBJ) $(OUT)/abs.rsp $(P1_DATA)
 	$(CC) $(OBJ) @$(OUT)/abs.rsp $(LDFLAGS) -o $@
+endif
 
 p0-test: p0 abi-test endian-test
 	$(BIN) --rom "$(ROM)" --headless --fast
@@ -161,13 +188,14 @@ endian-test: tests/endian_test.c port/include/port/endian.h
 	$(OUT)/endian-test
 
 # the address model's macros (port/include/port/addr.h, docs/MACOS.md); on macOS linked where the game is
-ifeq ($(shell uname -s),Darwin)
-ADDR_TEST_LDFLAGS := -Wl,-segaddr,__TEXT,0x810000000 -Wl,-segaddr,__DATA_CONST,0x810004000 \
-  -Wl,-segaddr,__DATA,0x810008000 -Wl,-segaddr,__LINKEDIT,0x81000c000
-endif
 addr-test: tests/addr_test.c port/include/port/addr.h
 	@mkdir -p $(OUT)
-	$(CC) -std=gnu11 -O2 -Iport/include tests/addr_test.c $(ADDR_TEST_LDFLAGS) -o $(OUT)/addr-test
+ifeq ($(MACOS),1)
+	$(CC) -std=gnu11 -O2 -Iport/include tests/addr_test.c -o $(OUT)/addr-test.pass1
+	$(CC) -std=gnu11 -O2 -Iport/include tests/addr_test.c $$($(PYTHON) tools/macho_segaddr.py $(OUT)/addr-test.pass1 $(MACOS_IMAGE_BASE)) -o $(OUT)/addr-test
+else
+	$(CC) -std=gnu11 -O2 -Iport/include tests/addr_test.c -o $(OUT)/addr-test
+endif
 	$(OUT)/addr-test
 
 abi-test: tests/abi_test.c $(OUT)/include/PR/gbi.h $(OUT)/include/port/addresses.h
@@ -198,6 +226,11 @@ $(OUT)/libeltale_host.so: tools/asan_host_stub.c port/render/png.c port/include/
 # Linux: out/p1-linux/eltale-p1 and libeltale_host.so (+ libSDL3.so.0) beside it (tools/build_linux.sh)
 linux:
 	bash tools/build_linux.sh --rom "$(ROM)"
+
+# macOS (Apple Silicon): out/p1-macos/eltale-p1 and libeltale_host.dylib (+ SDL3, MoltenVK) beside it
+# (tools/build_macos.sh, docs/MACOS.md)
+macos:
+	bash tools/build_macos.sh --rom "$(ROM)"
 
 census:
 	@mkdir -p $(OUT)

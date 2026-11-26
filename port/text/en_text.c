@@ -21,6 +21,9 @@
 #else
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h> /* _NSGetExecutablePath */
+#endif
 
 #include "en_glyphs.h"
 #include "en_fonts.h"
@@ -196,9 +199,14 @@ static const char *text_path(char *buf, size_t size) {
     snprintf(slash + 1, size - (size_t)(slash + 1 - buf), "text\\en.tsv");
     return buf;
 #else
+#ifdef __APPLE__
+    uint32_t got = (uint32_t)size;
+    if (_NSGetExecutablePath(buf, &got) != 0) return "text/en.tsv";
+#else
     ssize_t n = readlink("/proc/self/exe", buf, size - 1);
     if (n <= 0) return "text/en.tsv";
     buf[n] = 0;
+#endif
     char *slash = strrchr(buf, '/');
     if (!slash) return "text/en.tsv";
     snprintf(slash + 1, size - (size_t)(slash + 1 - buf), "text/en.tsv");

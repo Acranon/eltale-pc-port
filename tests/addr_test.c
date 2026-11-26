@@ -26,6 +26,7 @@ static int failures;
 
 /* PORT_PTR is a constant expression: static tables of RDRAM addresses use it */
 static void *const table[] = { PORT_PTR(0x80000400), PORT_PTR(0x807FFFFCu) };
+static void *const null_entry = PORT_PTR(0);
 
 int main(void) {
     const uintptr_t rdram = 0x80000000u + PORT_ADDR_HI;
@@ -55,6 +56,12 @@ int main(void) {
     const uint16_t lo = 0x1234;
     CHECK((uintptr_t)PORT_PTR(lo) == 0x1234u + PORT_ADDR_HI);
 
+    /* 0 stays NULL (the game tests converted pointers against NULL), in a static table too */
+    const uint32_t zero = 0;
+    CHECK(PORT_PTR(zero) == NULL);
+    CHECK(null_entry == NULL);
+    CHECK(PORT_PTR_ANY((uintptr_t)0) == NULL);
+
     CHECK(table[0] == (void *)(mem + 0x400));
     CHECK(table[1] == (void *)(mem + 0x7FFFFC));
 
@@ -66,6 +73,8 @@ int main(void) {
     const uintptr_t stack = (uintptr_t)&stack_byte;
     CHECK(PORT_ADDR_NARROW((uintptr_t)p) == a);
     CHECK(PORT_ADDR_NARROW((uintptr_t)a) == a);
+    /* a segmented label's address (&D_2000000: in the window on macOS) narrows to the segmented word */
+    CHECK(PORT_ADDR_NARROW((uintptr_t)PORT_PTR(0x02000040u)) == 0x02000040u);
     CHECK(PORT_ADDR_NARROW(stack) == stack);
     CHECK(PORT_PTR_ANY((uintptr_t)a) == (void *)p);
     CHECK(PORT_PTR_ANY(stack) == (void *)&stack_byte);

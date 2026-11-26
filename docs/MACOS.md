@@ -5,12 +5,83 @@ Linux builds exactly as they are. Rosetta was ruled out: it is being wound down 
 
 ## Where it is (2026-11-26)
 
-- **Done: the address model.** The game's code builds for arm64 macOS with its 32-bit addresses
-  placed one window higher up (below). Windows and Linux compile to the same machine code as before.
-- **Next:** the arm64 fiber switch (`port/os/fiber.c` has x64 only), the macOS build and link
-  (`Makefile`/a `tools/build_macos.sh`: `-segaddr`, `gen_abs_symbols.py --macho`, no `-mcmodel=large`),
-  `libeltale_host.dylib` and its loading (`port/gfx/host_bridge.c`), the data folder, then the renderer
-  on MoltenVK. None of it has run on a Mac yet: there is no ROM on the machine this was written on.
+- **The address model** (below): the game's 32-bit addresses live in a 4 GiB window higher up.
+- **The game builds and links natively** (`tools/build_macos.sh`, `make macos`): the AArch64 fiber
+  switch, the two-pass link that puts the image at `0x8_10000000`, the raw labels as absolute Mach-O
+  symbols, `libeltale_host.dylib` with SDL3 and MoltenVK beside it, the data folder.
+- **It plays.** On an M1 (macOS 27.2) with the ROM, `tests/p1_checks.sh --tour` prints the same 25 lines
+  as an x86-64 build of the same code (the Windows/Linux address model) does: New Game
+  (`dma_chunks=416 last_hash=74b8baf63f9c1889`, audio `be0b67b7b718648e`, as HOST_LAYER.md records for
+  Windows and Linux), the ending, the camera tour, the 30,374-frame tour of every map with its audio hash,
+  save and load, the Pak manager and quick saves. The game runs in a window (Retina swapchain, FIFO).
+  The OS, ABI, endian and `addr-test` tests pass, and the window and renderer open on MoltenVK
+  (`tests/host_smoke.c`). `tests/host_checks.sh` (a hidden window) passes: New Game drawn natively
+  (`last_hash=6472f32d00cadc74`, as HOST_LAYER.md records, and sound played), the F1 menu's Reset into the
+  Pak manager with its screens read back from the GPU matching the CPU frames, quick save and load with the
+  notice, Alt+Enter, reset and full buffers. Reset was Windows-only; macOS now snapshots the image's
+  writable segments (`__DATA`) and RDRAM as Windows does its sections (Linux still has none). Not yet
+  tried: `tests/audio_checks.sh`, a long play.
+- Windows and Linux build the same machine code as before throughout.
+
+What running it found (each fixed): `en_images.c` turned a 32-bit address into a pointer without
+`PORT_PTR` (the AST check could not compile it without the ROM's data; it does now); `PORT_PTR(0)` must stay
+NULL, since the game tests converted pointers against NULL; the native 2D draw read the HUD's
+`&D_2000000.ortho` (a segment-2 label, in the window) as a whole host pointer, as `PORT_ADDR_NARROW` only
+took in the window from 0x10000000 (a limit left from the first window, which malloc shared): it takes the
+whole window now, and so does `osVirtualToPhysical` (in play only: headless runs draw nothing natively);
+`Port_HostNormalizeFrameAddress` compared a 32-bit
+word with a host pointer (the frame hashes differed); and ld64's chained fixups do not survive the segments
+being moved (below).
+
+The ROM: a `.n64` dump is byte-swapped (`37 80 40 12`); swap each pair of bytes to `.z64` order first.
+## Building and playing (macOS)
+
+On an Apple Silicon Mac, with the Xcode command line tools and Homebrew:
+
+```sh
+brew install cmake ninja python sdl3 molten-vk
+python3 -m venv out/venv && out/venv/bin/pip install pillow pyyaml numpy fonttools
+git submodule update --init decomp third_party/granite
+git -C third_party/granite submodule update --init third_party/volk third_party/khronos/vulkan-headers
+out/venv/bin/python tools/patches.py apply
+PYTHON=out/venv/bin/python tools/build_macos.sh --rom /path/to/eltalemonsters.jp.z64
+out/p1-macos/eltale-p1 --window --rom /path/to/eltalemonsters.jp.z64
+```
+
+This builds `out/p1-macos/eltale-p1` with `libeltale_host.dylib`, `libSDL3.0.dylib` (named through
+`@rpath`) and `libMoltenVK.dylib` beside it, signed ad hoc, so the folder runs as it is. Settings, the
+Controller Pak and quick saves live in `~/Library/Application Support/eltale` (`ELTALE_DATA_DIR` moves
+it). The OS tests: `make p1-os-test abi-test endian-test addr-test P1_OS=1 OUT=out/p1-macos CC=clang
+PYTHON=out/venv/bin/python`.
+
+### What macOS needs besides the address model
+
+- **Fibers** (`port/os/fiber.c`): an AArch64 switch, saving AAPCS64's callee-saved registers (x19..x28,
+  the frame pointer and link register, d8..d15) and FPCR; x18 is Darwin's and is left alone. A new fiber
+  starts with FPCR's defaults (round to nearest, no flush to zero). The stacks' fixed region
+  (`0x1001_00000000`) is taken there as on Linux.
+- **The link** (`Makefile`, `tools/macho_segaddr.py`): ld64 ignores `-image_base` for a
+  position-independent executable, so the game is linked once, and again with each segment moved by the
+  same amount so `__TEXT` starts at `0x8_10000000` (the first link is kept as `eltale-p1.pass1`). The
+  raw `D_` labels come from `gen_abs_symbols.py --macho`; `-mcmodel=large`, `-fno-pie` and the section
+  flags are dropped; `-dead_strip` stands for `--gc-sections`. `-no_fixup_chains`: with the segments moved,
+  ld64's chained fixups still counted the game's own pointers from the usual base (`0x1_00000000`), each
+  `0x7_10000000` too high (a static table's pointer to the image's own data faulted); the older rebase
+  opcodes count from the segments as they are.
+- **`tools/gen_host_address_map.py`** reads Mach-O names (their leading underscore off) and looks a
+  32-bit word up with the window put back.
+- **The host library** (`port/host`): `libeltale_host.dylib`, rpath `@loader_path`. SDL3 from Homebrew
+  (its `SDL3::SDL3` is an alias, now resolved). Granite's pinned timer uses `clock_nanosleep`, which
+  macOS lacks: `cmake/granite_macos.cmake` makes it sleep with `nanosleep` on the same clock (Apple
+  only, at configure, as the other Granite patches are made).
+- **Vulkan** is MoltenVK. SDL (the surface) and Granite (the device) must load the same library, from
+  where neither looks by itself: `port/host/host.cpp` picks `libvulkan.1.dylib` or `libMoltenVK.dylib`
+  beside the host library, then Homebrew's and `/usr/local`'s, and gives both the one path
+  (`GRANITE_VULKAN_LIBRARY`, `SDL_HINT_VULKAN_LIBRARY`; either, when already set, wins). On the M1 MoltenVK
+  reports Vulkan 1.4; Granite notes it emulates events and push descriptors on Metal, and that it has no
+  calibrated timestamps (a profiling feature only).
+- **Paths**: the exe's folder from `_NSGetExecutablePath` (the host library, `text/en.tsv`), the data
+  folder in `~/Library/Application Support`.
 
 ## The address model
 
@@ -87,7 +158,11 @@ put the image between `0x8_100xxxxx` and `0x8_14dxxxxx`.
   object's code, data, relocations and symbols: all identical. `port/p0/host.c` was compiled with its
   macOS branches switched off for that, since the comparison ran on a Mac. `en_images.c` (needs ROM data)
   and `fiber.c` (x64 assembly) do not build there either way; their changes were read instead.
-- Not done: running the game on macOS (that needs the remaining steps above, and a ROM).
+- The second round (fibers, link, host library, paths) checked the same way: `fiber.c`, `host_bridge.c`,
+  `en_text.c` and the generated address map compile for x86-64 as at the first round's commit (the
+  macOS branches switched off, as the check ran on a Mac; `fiber.c` differs only in the inline asm's
+  source position).
+- Not done: a run with the real ROM.
 
 ## Risks
 

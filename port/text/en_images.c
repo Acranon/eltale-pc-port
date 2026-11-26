@@ -43,7 +43,7 @@ void Port_ImagesUpdate(void) {
             memcpy(img->original, target, img->size);
         }
         memcpy(target, en ? img->en : img->original, img->size);
-        if (img->ram) memcpy((void *)(uintptr_t)img->ram, en ? img->en : img->original, img->size);
+        if (img->ram) memcpy(PORT_PTR(img->ram), en ? img->en : img->original, img->size);
     }
     memcpy(PORT_PTR(TITLE_STRIP_ADDR), en_title_strip, sizeof en_title_strip);
     applied = en;

@@ -133,15 +133,31 @@ void Port_HostPace(uint64_t virtual_ticks) {
     }
 }
 
-#if defined(ELTALE_P1_OS) && defined(_WIN32)
+#if defined(ELTALE_P1_OS) && (defined(_WIN32) || defined(__APPLE__))
 /* A reset (the menu's Reset game): the program's writable sections and RDRAM as they were just
  * before Boot_Main, put back. Everything the game and the port keep is in those (the fiber stacks
  * have fixed slots, and the window and sound live in eltale_host.dll), so the game boots again as
- * if the program had just started. */
+ * if the program had just started. On macOS the writable segments are the image's own (__DATA:
+ * its variables, BSS and binding pointers); __DATA_CONST, read-only once loaded, never changes. */
 static struct { unsigned char *at, *copy; size_t bytes; } snapshot_parts[16];
 static unsigned snapshot_count;
 
 void Port_HostSnapshot(void) {
+#ifdef __APPLE__
+    extern const struct mach_header_64 _mh_execute_header;
+    const struct mach_header_64 *mh = &_mh_execute_header;
+    const intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+    const struct load_command *lc = (const struct load_command *)(mh + 1);
+    unsigned count = 0;
+    for (uint32_t i = 0; i < mh->ncmds && count < 15; i++, lc = (const struct load_command *)((const char *)lc + lc->cmdsize)) {
+        if (lc->cmd != LC_SEGMENT_64) continue;
+        const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
+        if (!(seg->initprot & VM_PROT_WRITE) || strstr(seg->segname, "_CONST")) continue;
+        snapshot_parts[count].at = (unsigned char *)(uintptr_t)(seg->vmaddr + slide);
+        snapshot_parts[count].bytes = (size_t)seg->vmsize;
+        count++;
+    }
+#else
     extern IMAGE_DOS_HEADER __ImageBase;
     unsigned char *base = (unsigned char *)&__ImageBase;
     IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + __ImageBase.e_lfanew);
@@ -153,6 +169,7 @@ void Port_HostSnapshot(void) {
             snapshot_parts[count].bytes = sec[i].Misc.VirtualSize;
             count++;
         }
+#endif
     snapshot_parts[count].at = (unsigned char *)RDRAM_BASE;
     snapshot_parts[count].bytes = RDRAM_BYTES;
     count++;
@@ -482,9 +499,9 @@ void osContGetReadData(OSContPad *pads) { memset(pads, 0, 4 * sizeof *pads); }
 u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
 #ifdef ELTALE_P1_OS
-    /* arm64 macOS (port/addr.h): only the image and RDRAM, in their 4 GiB window, cut to 32 bits; anything
-     * else (a heap block below the image) would read back as a segmented address */
-    if (PORT_ADDR_HI ? addr && (addr - PORT_ADDR_HI > UINT32_MAX || (u32)addr < 0x10000000u) : addr > UINT32_MAX)
+    /* arm64 macOS (port/addr.h): only what is in the 4 GiB window (the image, RDRAM, the raw labels, segmented
+     * ones too) cut to 32 bits; a heap or stack block is outside it and is refused, as above 4 GiB elsewhere */
+    if (PORT_ADDR_HI ? addr && addr - PORT_ADDR_HI > UINT32_MAX : addr > UINT32_MAX)
         Port_HostFatal("N64 address exceeds 32-bit display-list word");
     return (u32)addr;
 #else
@@ -502,7 +519,7 @@ u32 osVirtualToPhysical(void *ptr) {
 }
 
 uint32_t Port_HostNormalizeFrameAddress(uint32_t word) {
-    uintptr_t addr = word;
+    uintptr_t addr = (uintptr_t)PORT_PTR(word); /* the word as the host address it names (port/addr.h) */
     for (unsigned i = 0; i < 2; i++) {
         uintptr_t data = (uintptr_t)&port_gfx_frames[i].data;
         if (addr >= data && addr < data + sizeof port_gfx_frames[i].data)

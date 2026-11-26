@@ -46,7 +46,9 @@ struct PortFiber {
 #endif
 };
 
+#if defined(__x86_64__)
 static uint32_t port_os_mxcsr(void) { return 0x1F80u; }
+#endif
 
 static PortFiber host_fiber;
 static PortFiber fibers[MAX_FIBERS];
@@ -62,7 +64,10 @@ void port_fiber_start(PortFiber *fiber);
    stack bounds in its TEB (gs:0x08 StackBase, gs:0x10 StackLimit, gs:0x1478 DeallocationStack),
    which exception dispatch checks frames against: each fiber carries its own. System V keeps rbx,
    rbp, r12..r15. Both keep MXCSR's and the x87 control word's modes. A new fiber's stack is laid out
-   as if it had switched away, with the trampoline as its return address and itself in r12. */
+   as if it had switched away, with the trampoline as its return address and itself in r12.
+   AArch64 (AAPCS64, arm64 macOS) keeps x19..x28, the frame pointer x29, the link register x30 and the
+   low halves of v8..v15 (d8..d15), and FPCR's modes; x18 is Darwin's own and is left alone. Its new
+   fiber's frame has the trampoline as x30 and the fiber in x19. */
 #ifdef _WIN32
 #define SWAP_FRAME_SIZE 264 /* the xmm block (168), the TEB's three, eight registers, the return */
 #define SWAP_MXCSR_AT 160
@@ -132,7 +137,51 @@ __asm__(".pushsection .text\n" /* and back to the section the compiler was in, a
         "    call port_fiber_start\n"
         "    ud2\n"
         ".popsection\n");
-#else
+#elif defined(__aarch64__) && defined(__APPLE__)
+/* x19..x30 (96), d8..d15 (64), FPCR (8), padded to 16 */
+#define SWAP_FRAME_SIZE 176
+__asm__(".pushsection __TEXT,__text,regular,pure_instructions\n"
+        ".globl _port_fiber_swap\n"
+        ".p2align 2\n"
+        "_port_fiber_swap:\n" /* x0: where to leave this fiber's sp, x1: the sp to resume */
+        "    sub sp, sp, #176\n"
+        "    stp x19, x20, [sp, #0]\n"
+        "    stp x21, x22, [sp, #16]\n"
+        "    stp x23, x24, [sp, #32]\n"
+        "    stp x25, x26, [sp, #48]\n"
+        "    stp x27, x28, [sp, #64]\n"
+        "    stp x29, x30, [sp, #80]\n"
+        "    stp d8, d9, [sp, #96]\n"
+        "    stp d10, d11, [sp, #112]\n"
+        "    stp d12, d13, [sp, #128]\n"
+        "    stp d14, d15, [sp, #144]\n"
+        "    mrs x9, fpcr\n"
+        "    str x9, [sp, #160]\n"
+        "    mov x9, sp\n"
+        "    str x9, [x0]\n"
+        "    mov sp, x1\n"
+        "    ldr x9, [sp, #160]\n"
+        "    msr fpcr, x9\n"
+        "    ldp d14, d15, [sp, #144]\n"
+        "    ldp d12, d13, [sp, #128]\n"
+        "    ldp d10, d11, [sp, #112]\n"
+        "    ldp d8, d9, [sp, #96]\n"
+        "    ldp x29, x30, [sp, #80]\n"
+        "    ldp x27, x28, [sp, #64]\n"
+        "    ldp x25, x26, [sp, #48]\n"
+        "    ldp x23, x24, [sp, #32]\n"
+        "    ldp x21, x22, [sp, #16]\n"
+        "    ldp x19, x20, [sp, #0]\n"
+        "    add sp, sp, #176\n"
+        "    ret\n"
+        ".globl _port_fiber_trampoline\n"
+        ".p2align 2\n"
+        "_port_fiber_trampoline:\n" /* a new fiber's first return lands here, the fiber in x19 */
+        "    mov x0, x19\n"
+        "    bl _port_fiber_start\n"
+        "    brk #1\n"
+        ".popsection\n");
+#elif defined(__x86_64__)
 #define SWAP_FRAME_SIZE 64 /* MXCSR and the control word (8), six registers, the return */
 #define SWAP_MXCSR_AT 0
 __asm__(".pushsection .text\n" /* and back to the section the compiler was in, after */
@@ -172,6 +221,8 @@ __asm__(".pushsection .text\n" /* and back to the section the compiler was in, a
         "    ud2\n"
         ".size port_fiber_trampoline, .-port_fiber_trampoline\n"
         ".popsection\n");
+#else
+#error "port/os/fiber.c: no fiber switch for this platform"
 #endif
 
 /* ---- ASan (port/include/port/sanitize.h) ----------------------------------------------------
@@ -266,8 +317,10 @@ PortFiber *port_fiber_create(size_t stack_size, void (*entry)(void *), void *arg
     PortFiber *fiber;
     unsigned char *top;
     uint64_t *frame;
+#if defined(__x86_64__)
     uint32_t mxcsr;
     uint16_t control;
+#endif
     int slot;
 
     if (region == NULL) {
@@ -293,9 +346,11 @@ PortFiber *port_fiber_create(size_t stack_size, void (*entry)(void *), void *arg
 #endif
 
     /* the frame port_fiber_swap pops: the EE's float mode and the host's x87 control word, the fiber
-       in r12, the trampoline */
+       in r12, the trampoline (AArch64: FPCR's default modes, the fiber in x19, the trampoline in x30) */
+#if defined(__x86_64__)
     mxcsr = port_os_mxcsr();
     __asm__ volatile("fnstcw %0" : "=m"(control));
+#endif
     top = slot_top(slot);
     /* A slot keeps its stack when reused (the movie's threads are made for each movie), so the stack
        starts zeroed: what a game function reads of a local it did not set is then the same on every
@@ -310,6 +365,11 @@ PortFiber *port_fiber_create(size_t stack_size, void (*entry)(void *), void *arg
     frame[23] = (uint64_t)(uintptr_t)top;                     /* StackBase */
     frame[27] = (uint64_t)(uintptr_t)fiber;                   /* r12 */
     frame[32] = (uint64_t)(uintptr_t)port_fiber_trampoline;
+#elif defined(__aarch64__)
+    frame[0] = (uint64_t)(uintptr_t)fiber;                   /* x19 */
+    frame[10] = 0;                                           /* x29: the end of the frame chain */
+    frame[11] = (uint64_t)(uintptr_t)port_fiber_trampoline; /* x30 */
+    frame[20] = 0;                                           /* FPCR: round to nearest, no flush to zero */
 #else
     frame[0] = (uint64_t)mxcsr | ((uint64_t)control << 32);
     frame[4] = (uint64_t)(uintptr_t)fiber; /* r12 */

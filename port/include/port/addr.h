@@ -33,22 +33,26 @@
 #endif
 
 /* A 32-bit RDRAM or image address (an integer) as a host pointer; a constant expression when `a` is a
- * constant, so static tables can use it. (`* 1` makes passing a pointer a compile error.) */
-#define PORT_PTR(a) ((void *)((uintptr_t)((a) * 1) + (uintptr_t)PORT_ADDR_HI))
+ * constant, so static tables can use it. Address 0 stays NULL, as the plain cast gives it, so the game's
+ * `if (p == NULL)` after a conversion holds everywhere. (`* 1` makes passing a pointer a compile error.
+ * On arm64 macOS `a` is read twice: give it no side effects; elsewhere the test folds away unread.) */
+#define PORT_PTR(a) \
+    ((void *)((uintptr_t)((a) * 1) + (PORT_ADDR_HI && (a) ? (uintptr_t)PORT_ADDR_HI : (uintptr_t)0)))
 
 /* A host pointer into RDRAM or the image as its 32-bit address, kept as a uintptr_t: for range checks
  * and offsets against 0x80000000-style constants. */
 #define PORT_ADDR_OF(p) ((uintptr_t)(p) - (uintptr_t)PORT_ADDR_HI)
 
 /* For words that may hold either a 32-bit address or a whole host pointer (a stack or heap buffer: the
- * native 2D draw's entry points take both). PORT_ADDR_NARROW makes a host pointer into the image or RDRAM
- * (the part of the window at or above 0x10000000) its 32-bit address and leaves anything else as it is;
- * PORT_PTR_ANY makes a 32-bit address a pointer and leaves a whole host pointer as it is. Both read `w`
- * twice. */
-#define PORT_ADDR_NARROW(w)                                                                                  \
-    ((uintptr_t)(w) - (PORT_ADDR_HI && (uintptr_t)(w) - (uintptr_t)PORT_ADDR_HI - 0x10000000u < 0xF0000000u \
-                           ? (uintptr_t)PORT_ADDR_HI : 0))
+ * native 2D draw's entry points take both). PORT_ADDR_NARROW makes a host pointer into the window (the
+ * image, RDRAM, or a raw label: a segmented one such as &D_2000000 too) its 32-bit address and leaves
+ * anything else as it is;
+ * PORT_PTR_ANY makes a 32-bit address a pointer (0 stays NULL) and leaves a whole host pointer as it is.
+ * Both read `w` twice. */
+#define PORT_ADDR_NARROW(w) \
+    ((uintptr_t)(w) - (PORT_ADDR_HI && (uintptr_t)(w) - (uintptr_t)PORT_ADDR_HI <= 0xFFFFFFFFu ? (uintptr_t)PORT_ADDR_HI : 0))
 #define PORT_PTR_ANY(w) \
-    ((void *)((uintptr_t)(w) + (PORT_ADDR_HI && (uintptr_t)(w) <= 0xFFFFFFFFu ? (uintptr_t)PORT_ADDR_HI : 0)))
+    ((void *)((uintptr_t)(w) +                                                                         \
+              (PORT_ADDR_HI && (uintptr_t)(w) && (uintptr_t)(w) <= 0xFFFFFFFFu ? (uintptr_t)PORT_ADDR_HI : 0)))
 
 #endif
