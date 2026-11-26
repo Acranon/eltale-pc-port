@@ -23,7 +23,7 @@ void Port_SwapEnemyDefs(uint32_t defs, uint32_t count) {
     for (uint32_t i = 0; i < count; i++) {
         uint32_t d = defs + i * 0x38;
         swap_shape(d, "hhhhhhhhwwwwwhhhhhhwbbbb");
-        const EnemyDef *def = (const EnemyDef *)(uintptr_t)d;
+        const EnemyDef *def = (const EnemyDef *)PORT_PTR(d);
         if (def->attacks && def->attack_count > 64) Port_HostFatal("enemy def with an implausible attack count");
         for (uint32_t k = 0; def->attacks && k < def->attack_count; k++)
             swap_shape(def->attacks + k * 0x18, "hhhhhhhbbww");
@@ -54,12 +54,12 @@ void Port_SwapCutsceneTable(uint32_t table, uint32_t count) {
     for (uint32_t i = 0; i < count; i++) {
         uint32_t e = table + i * 0x20;
         swap_shape(e, "wwwwwwww");
-        const uint32_t *w = (const uint32_t *)(uintptr_t)e;
+        const uint32_t *w = (const uint32_t *)PORT_PTR(e);
         Port_SwapKfAnim(w[6]);
         for (uint32_t cue = w[7], n = 0;; cue += 0x14, n++) {
             if (n > 64) Port_HostFatal("cutscene image cues: no end");
             swap_shape(cue, "hhhhhhww");
-            if (*(const uint16_t *)(uintptr_t)cue == 0) break;
+            if (*(const uint16_t *)PORT_PTR(cue) == 0) break;
         }
     }
 }

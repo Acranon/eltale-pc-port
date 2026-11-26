@@ -13,7 +13,7 @@ Granite) from the game's own data, at any resolution, widescreen, with MSAA and 
 second; three presets (Classic, Classic + visuals, Everything on) set the switches. Sound is native as
 well: the game's synthesizer and its audio microcode both run as C, bit for bit ([docs/AUDIO.md](docs/AUDIO.md)). Linux builds and
 gives the same headless results; its window is not yet tried. See the [OS status](docs/P1_OS_STATUS.md)
-and the [renderer plan](docs/renderer/PLAN.md).
+and the [renderer plan](docs/renderer/PLAN.md). Native Apple Silicon macOS plays too, with the same headless results as Windows and Linux ([docs/MACOS.md](docs/MACOS.md)).
 
 ## Building and playing (Windows)
 

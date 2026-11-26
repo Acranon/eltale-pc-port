@@ -7,6 +7,10 @@ addresses (deterministic cross-platform hashes, and the frame image).
 Port_N64ToNative goes the other way, for display lists in the ROM that name a
 native object by its fixed N64 address (the backdrop's texture and palette): a
 symbol extends to the next symbol's N64 address.
+
+On arm64 macOS the image sits in a 4 GiB window at PORT_ADDR_HI (port/include/port/addr.h, docs/MACOS.md):
+a 32-bit word is looked up with the window put back, and Mach-O's leading underscore is taken off the
+names nm prints.
 """
 
 import re
@@ -22,13 +26,18 @@ symbols = dict(re.findall(r"^([A-Za-z_]\w*) = (0x[0-9A-Fa-f]+);",
                           (ROOT / "decomp/symbol_addrs.txt").read_text(), re.M))
 raw = re.compile(r"D_([0-9A-F]{5,8})(?:_ovl_\w+)?$")
 nm = shutil.which("llvm-nm") or shutil.which("nm") or "nm"
+MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe")
 defined = set()
 for obj in objects:
+    with open(obj, "rb") as f:
+        prefix = "_" if f.read(4) in MACHO_MAGIC else ""  # Mach-O C names
     output = subprocess.check_output([nm, "-g", obj], text=True)
     for line in output.splitlines():
         words = line.split()
-        if len(words) == 3 and words[1].upper() in {"B", "C", "D", "R", "S", "G"}:
-            defined.add(words[2])
+        if len(words) == 3 and words[1].upper() in {"B", "C", "D", "R", "S", "G"} and words[2].startswith(prefix):
+            defined.add(words[2][len(prefix):])
+addr_h = (ROOT / "port/include/port/addr.h").read_text()
+addr_hi = re.search(r"#define PORT_ADDR_HI (0x[0-9A-Fa-f]+)ull", addr_h).group(1)
 entries = []
 for name in sorted(defined):
     address = symbols.get(name)
@@ -51,6 +60,12 @@ lines = [
     "#include <stdint.h>",
     "#include <stdlib.h>",
     "typedef struct { uintptr_t host; uint32_t n64; } PortAddressEntry;",
+    "/* PORT_ADDR_HI (port/include/port/addr.h): the image's 4 GiB window, 0 but on arm64 macOS */",
+    "#if defined(__APPLE__) && defined(__aarch64__)",
+    f"#define ADDR_HI {addr_hi}ull",
+    "#else",
+    "#define ADDR_HI 0ull",
+    "#endif",
 ]
 lines.extend(f"extern char {name}[];" for name, _ in entries)
 lines.append("static PortAddressEntry addresses[] = {")
@@ -67,7 +82,7 @@ lines += [
     "    const size_t count = sizeof addresses / sizeof addresses[0];",
     "    if (word >= 0x00600000u && word < 0x00800000u) return word;",
     "    if (!sorted) { qsort(addresses, count, sizeof addresses[0], compare_address); sorted = 1; }",
-    "    uintptr_t target = word;",
+    "    uintptr_t target = (uintptr_t)word + (uintptr_t)ADDR_HI;",
     "    size_t lo = 0, hi = count;",
     "    while (lo < hi) {",
     "        size_t mid = lo + (hi - lo) / 2;",
@@ -102,7 +117,7 @@ lines += [
     "    if (!lo) return 0;",
     "    const PortAddressEntry *e = &by_n64[lo - 1];",
     "    uint32_t end = lo < count ? by_n64[lo].n64 : BSS_END;",
-    "    if (e->host == e->n64 || n64 - e->n64 >= end - e->n64) return 0;",
+    "    if (e->host == e->n64 + (uintptr_t)ADDR_HI || n64 - e->n64 >= end - e->n64) return 0;",
     "    return e->host + (n64 - e->n64);",
     "}",
 ]

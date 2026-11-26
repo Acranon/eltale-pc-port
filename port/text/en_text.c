@@ -21,6 +21,9 @@
 #else
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h> /* _NSGetExecutablePath */
+#endif
 
 #include "en_glyphs.h"
 #include "en_fonts.h"
@@ -196,9 +199,14 @@ static const char *text_path(char *buf, size_t size) {
     snprintf(slash + 1, size - (size_t)(slash + 1 - buf), "text\\en.tsv");
     return buf;
 #else
+#ifdef __APPLE__
+    uint32_t got = (uint32_t)size;
+    if (_NSGetExecutablePath(buf, &got) != 0) return "text/en.tsv";
+#else
     ssize_t n = readlink("/proc/self/exe", buf, size - 1);
     if (n <= 0) return "text/en.tsv";
     buf[n] = 0;
+#endif
     char *slash = strrchr(buf, '/');
     if (!slash) return "text/en.tsv";
     snprintf(slash + 1, size - (size_t)(slash + 1 - buf), "text/en.tsv");
@@ -293,12 +301,12 @@ static int active_set(void) {
 }
 
 void Port_TextFontLoaded(void) {
-    memcpy((void *)(uintptr_t)EXTRA_ADDR, en_extra_page, sizeof en_extra_page);
+    memcpy(PORT_PTR(EXTRA_ADDR), en_extra_page, sizeof en_extra_page);
     for (int k = 1; k < SETS; k++) {
         const EnFont *src = &en_fonts[k - 1];
         size_t bytes = (size_t)(sets[k].page_width / 2) * (size_t)src->height;
         for (int p = 0; p < src->pages; p++)
-            memcpy((void *)(uintptr_t)sets[k].page_addr[p], src->texels + p * bytes, bytes);
+            memcpy(PORT_PTR(sets[k].page_addr[p]), src->texels + p * bytes, bytes);
     }
 }
 
@@ -307,7 +315,7 @@ static FontSet *set_of(int font) { return font >= 1 && font <= SETS ? &sets[font
 void Port_TextPage(int font, int page, uint8_t **texels, int *width, int *height) {
     FontSet *f = set_of(font);
     if (page < 0 || page >= PAGES) page = 0;
-    *texels = (uint8_t *)(uintptr_t)f->page_addr[page];
+    *texels = (uint8_t *)PORT_PTR(f->page_addr[page]);
     *width = f->page_width;
     *height = f->height;
 }

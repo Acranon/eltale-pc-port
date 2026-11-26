@@ -10,6 +10,10 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#ifdef __APPLE__
+#include <dlfcn.h>
+#include <filesystem>
+#endif
 
 namespace host {
 namespace {
@@ -51,6 +55,44 @@ void menu_pause() {
         current->present_again(menu::frame());
     }
 }
+
+#ifdef __APPLE__
+// macOS has no Vulkan of its own: it is MoltenVK, through the Vulkan loader (libvulkan.1.dylib: the SDK's or
+// Homebrew's, which finds MoltenVK's ICD) or on its own (libMoltenVK.dylib). SDL (the window's surface) and
+// Granite (the device) load it separately and must load the same one, from where neither looks by itself:
+// beside libeltale_host.dylib first (tools/build_macos.sh puts libMoltenVK.dylib there), then Homebrew's and
+// /usr/local's. GRANITE_VULKAN_LIBRARY or SDL_VULKAN_LIBRARY, when set, is used for both.
+void choose_vulkan_library() {
+    const char *granite = std::getenv("GRANITE_VULKAN_LIBRARY");
+    const char *sdl = SDL_GetHint(SDL_HINT_VULKAN_LIBRARY);
+    std::string chosen = granite && *granite ? granite : sdl && *sdl ? sdl : "";
+    if (chosen.empty()) {
+        namespace fs = std::filesystem;
+        fs::path here;
+        Dl_info info;
+        if (dladdr(reinterpret_cast<const void *>(&choose_vulkan_library), &info) && info.dli_fname)
+            here = fs::path(info.dli_fname).parent_path();
+        const fs::path candidates[] = {
+            here / "libvulkan.1.dylib",           here / "libMoltenVK.dylib",
+            "/opt/homebrew/lib/libvulkan.1.dylib", "/usr/local/lib/libvulkan.1.dylib",
+            "/opt/homebrew/lib/libMoltenVK.dylib", "/usr/local/lib/libMoltenVK.dylib",
+        };
+        std::error_code ec;
+        for (const fs::path &p : candidates)
+            if (!p.empty() && fs::exists(p, ec)) {
+                chosen = p.string();
+                break;
+            }
+    }
+    if (chosen.empty()) {
+        std::fprintf(stderr, "[host] no Vulkan library found (libMoltenVK.dylib or libvulkan.1.dylib)\n");
+        return;
+    }
+    setenv("GRANITE_VULKAN_LIBRARY", chosen.c_str(), 1);
+    SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, chosen.c_str());
+    std::fprintf(stderr, "[host] Vulkan: %s\n", chosen.c_str());
+}
+#endif
 
 } // namespace
 
@@ -118,6 +160,9 @@ extern "C" ELHOST_API int ElHost_Init(const char *title, int width, int height) 
         return -1;
     }
     load_settings();
+#ifdef __APPLE__
+    choose_vulkan_library(); // (before the window: SDL loads Vulkan when it makes one)
+#endif
     current.reset(make_native_renderer());
     const bool hidden = std::getenv("ELTALE_HIDDEN_WINDOW") != nullptr;
     // R7: a 16:9 picture (widescreen) starts in a 16:9 window as high as the 4:3 one would be, made smaller if
@@ -211,6 +256,9 @@ extern "C" ELHOST_API void ElHost_QueueAudio(const int16_t *samples, uint32_t by
 }
 
 extern "C" ELHOST_API int ElHost_InitHeadless(void) {
+#ifdef __APPLE__
+    choose_vulkan_library();
+#endif
     current.reset(make_native_renderer());
     if (!current->init_headless()) {
         std::fprintf(stderr, "[host] the native renderer could not be set up without a window\n");

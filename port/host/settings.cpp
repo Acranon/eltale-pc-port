@@ -77,6 +77,11 @@ const std::string &data_dir() {
         if (env && *env) path = fs::u8path(env);
         else if (base && *base) path = fs::u8path(base) / "eltale";
         else path = "eltale-data";
+#elif defined(__APPLE__)
+        const char *home = std::getenv("HOME");
+        if (env && *env) path = env;
+        else if (home && *home) path = fs::path(home) / "Library/Application Support/eltale";
+        else path = "eltale-data";
 #else
         const char *xdg = std::getenv("XDG_DATA_HOME"), *home = std::getenv("HOME");
         if (env && *env) path = env;

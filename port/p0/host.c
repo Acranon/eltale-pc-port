@@ -25,9 +25,35 @@
 #else
 #include <sys/mman.h>
 #endif
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
+
+/* The main executable's span in memory, slide included: from its header to the end of its last segment
+ * (what __executable_start and end give on Linux). */
+static void macho_image_bounds(uintptr_t *start, uintptr_t *end) {
+    extern const struct mach_header_64 _mh_execute_header;
+    const struct mach_header_64 *mh = &_mh_execute_header;
+    const intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+    const struct load_command *lc = (const struct load_command *)(mh + 1);
+    uintptr_t hi = (uintptr_t)mh;
+    for (uint32_t i = 0; i < mh->ncmds; i++, lc = (const struct load_command *)((const char *)lc + lc->cmdsize)) {
+        if (lc->cmd != LC_SEGMENT_64) continue;
+        const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
+        if (seg->initprot == 0 && seg->maxprot == 0) continue; /* __PAGEZERO */
+        const uintptr_t seg_end = (uintptr_t)(seg->vmaddr + seg->vmsize + slide);
+        if (seg_end > hi) hi = seg_end;
+    }
+    *start = (uintptr_t)mh;
+    *end = hi;
+}
+#endif
 
 enum { ROM_BYTES = 16 * 1024 * 1024, RDRAM_BYTES = 8 * 1024 * 1024 };
-static const uintptr_t RDRAM_BASE = 0x80000000u;
+static const uintptr_t RDRAM_N64 = 0x80000000u;               /* RDRAM's N64 (KSEG0) address */
+static const uintptr_t RDRAM_BASE = 0x80000000u + PORT_ADDR_HI; /* where it is on the host (port/addr.h) */
 static unsigned char *rom_bytes;
 static unsigned dma_count;
 static size_t dma_bytes;
@@ -107,15 +133,31 @@ void Port_HostPace(uint64_t virtual_ticks) {
     }
 }
 
-#if defined(ELTALE_P1_OS) && defined(_WIN32)
+#if defined(ELTALE_P1_OS) && (defined(_WIN32) || defined(__APPLE__))
 /* A reset (the menu's Reset game): the program's writable sections and RDRAM as they were just
  * before Boot_Main, put back. Everything the game and the port keep is in those (the fiber stacks
  * have fixed slots, and the window and sound live in eltale_host.dll), so the game boots again as
- * if the program had just started. */
+ * if the program had just started. On macOS the writable segments are the image's own (__DATA:
+ * its variables, BSS and binding pointers); __DATA_CONST, read-only once loaded, never changes. */
 static struct { unsigned char *at, *copy; size_t bytes; } snapshot_parts[16];
 static unsigned snapshot_count;
 
 void Port_HostSnapshot(void) {
+#ifdef __APPLE__
+    extern const struct mach_header_64 _mh_execute_header;
+    const struct mach_header_64 *mh = &_mh_execute_header;
+    const intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+    const struct load_command *lc = (const struct load_command *)(mh + 1);
+    unsigned count = 0;
+    for (uint32_t i = 0; i < mh->ncmds && count < 15; i++, lc = (const struct load_command *)((const char *)lc + lc->cmdsize)) {
+        if (lc->cmd != LC_SEGMENT_64) continue;
+        const struct segment_command_64 *seg = (const struct segment_command_64 *)lc;
+        if (!(seg->initprot & VM_PROT_WRITE) || strstr(seg->segname, "_CONST")) continue;
+        snapshot_parts[count].at = (unsigned char *)(uintptr_t)(seg->vmaddr + slide);
+        snapshot_parts[count].bytes = (size_t)seg->vmsize;
+        count++;
+    }
+#else
     extern IMAGE_DOS_HEADER __ImageBase;
     unsigned char *base = (unsigned char *)&__ImageBase;
     IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + __ImageBase.e_lfanew);
@@ -127,6 +169,7 @@ void Port_HostSnapshot(void) {
             snapshot_parts[count].bytes = sec[i].Misc.VirtualSize;
             count++;
         }
+#endif
     snapshot_parts[count].at = (unsigned char *)RDRAM_BASE;
     snapshot_parts[count].bytes = RDRAM_BYTES;
     count++;
@@ -229,6 +272,13 @@ int Port_HostInit(const char *rom_path) {
     /* the AddressSanitizer build: RDRAM sits inside ASan's shadow layout (port/p0/asan_rdram.c) */
     void *mem = Port_AsanMapRdram(RDRAM_BASE, RDRAM_BYTES);
     if (mem == NULL) mem = MAP_FAILED;
+#elif defined(__APPLE__)
+    /* macOS has no MAP_FIXED_NOREPLACE and ignores a plain mmap hint this low: a fixed Mach allocation
+     * takes the address or fails, and never replaces what is there */
+    mach_vm_address_t at = RDRAM_BASE;
+    kern_return_t kr = mach_vm_allocate(mach_task_self(), &at, RDRAM_BYTES, VM_FLAGS_FIXED);
+    void *mem = kr == KERN_SUCCESS ? (void *)(uintptr_t)at : MAP_FAILED;
+    if (kr != KERN_SUCCESS) errno = kr == KERN_NO_SPACE ? EEXIST : ENOMEM;
 #else
     void *mem = mmap((void *)RDRAM_BASE, RDRAM_BYTES, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
@@ -254,6 +304,9 @@ int Port_HostInit(const char *rom_path) {
     const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)&__ImageBase + __ImageBase.e_lfanew);
     uintptr_t image_start = (uintptr_t)&__ImageBase;
     uintptr_t image_end = image_start + nt->OptionalHeader.SizeOfImage;
+#elif defined(__APPLE__)
+    uintptr_t image_start, image_end;
+    macho_image_bounds(&image_start, &image_end);
 #else
     extern char __executable_start, end;
     uintptr_t image_start = (uintptr_t)&__executable_start;
@@ -262,6 +315,13 @@ int Port_HostInit(const char *rom_path) {
     if (image_end > RDRAM_BASE) {
         fprintf(stderr, "P0 error: image %#llx..%#llx is not below the RDRAM range\n",
                 (unsigned long long)image_start, (unsigned long long)image_end);
+        return -1;
+    }
+    /* arm64 macOS: the image must be in RDRAM's 4 GiB window, at or above its 0x10000000 (lower 32-bit
+     * addresses read as segmented ones); the link puts it at 0x8_10000000 (docs/MACOS.md) */
+    if (PORT_ADDR_HI && (image_start < PORT_ADDR_HI || image_start - PORT_ADDR_HI < 0x10000000u)) {
+        fprintf(stderr, "P0 error: image %#llx..%#llx is not at or above %#llx\n", (unsigned long long)image_start,
+                (unsigned long long)image_end, (unsigned long long)(PORT_ADDR_HI + 0x10000000u));
         return -1;
     }
 #ifdef ELTALE_P1_OS
@@ -284,9 +344,9 @@ unsigned Port_HostRunThreadCount(void) { return run_count; }
 #endif
 int Port_HostRomSpanMatches(uint32_t rom_offset, uintptr_t ram_address, size_t length) {
     if (rom_offset > ROM_BYTES || length > ROM_BYTES - rom_offset ||
-        ram_address < RDRAM_BASE || length > RDRAM_BYTES ||
-        ram_address - RDRAM_BASE > RDRAM_BYTES - length) return 0;
-    return memcmp((void *)ram_address, rom_bytes + rom_offset, length) == 0;
+        ram_address < RDRAM_N64 || length > RDRAM_BYTES ||
+        ram_address - RDRAM_N64 > RDRAM_BYTES - length) return 0;
+    return memcmp(PORT_PTR(ram_address), rom_bytes + rom_offset, length) == 0;
 }
 
 const unsigned char *Port_HostRom(void) { return rom_bytes; }
@@ -439,7 +499,10 @@ void osContGetReadData(OSContPad *pads) { memset(pads, 0, 4 * sizeof *pads); }
 u32 osVirtualToPhysical(void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
 #ifdef ELTALE_P1_OS
-    if (addr > UINT32_MAX) Port_HostFatal("N64 address exceeds 32-bit display-list word");
+    /* arm64 macOS (port/addr.h): only what is in the 4 GiB window (the image, RDRAM, the raw labels, segmented
+     * ones too) cut to 32 bits; a heap or stack block is outside it and is refused, as above 4 GiB elsewhere */
+    if (PORT_ADDR_HI ? addr && addr - PORT_ADDR_HI > UINT32_MAX : addr > UINT32_MAX)
+        Port_HostFatal("N64 address exceeds 32-bit display-list word");
     return (u32)addr;
 #else
     if (addr >= RDRAM_BASE && addr < RDRAM_BASE + RDRAM_BYTES)
@@ -456,7 +519,7 @@ u32 osVirtualToPhysical(void *ptr) {
 }
 
 uint32_t Port_HostNormalizeFrameAddress(uint32_t word) {
-    uintptr_t addr = word;
+    uintptr_t addr = (uintptr_t)PORT_PTR(word); /* the word as the host address it names (port/addr.h) */
     for (unsigned i = 0; i < 2; i++) {
         uintptr_t data = (uintptr_t)&port_gfx_frames[i].data;
         if (addr >= data && addr < data + sizeof port_gfx_frames[i].data)

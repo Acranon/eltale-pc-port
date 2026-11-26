@@ -118,7 +118,8 @@ struct Settings {
 };
 extern Settings settings;
 
-// ELTALE_DATA_DIR, else %APPDATA%\eltale ($XDG_DATA_HOME/eltale, ~/.local/share/eltale), created if missing (UTF-8).
+// ELTALE_DATA_DIR, else %APPDATA%\eltale ($XDG_DATA_HOME/eltale, ~/.local/share/eltale; on macOS
+// ~/Library/Application Support/eltale), created if missing (UTF-8).
 const std::string &data_dir();
 void load_settings();
 void save_settings();

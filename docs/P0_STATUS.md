@@ -47,6 +47,9 @@ the exact path and data read before the checkpoint.
   the generated `gbi.h` casts packet words through `uintptr_t`, and the game's
   own pointer/integer casts go through `uptr`. Stacks are not checked: the game
   never puts a stack address in a list. Fiber stacks in P1 can live anywhere.
+  arm64 macOS keeps the image and RDRAM in a 4 GiB window higher up, and a 32-bit
+  address becomes a pointer through `PORT_PTR` (port/include/port/addr.h,
+  docs/MACOS.md); elsewhere that compiles to the plain cast.
 - A mapped N64 address range receives raw ROM DMA bytes. Fixed linker labels
   are generated from unresolved `D_` names by `tools/gen_abs_symbols.py`
   (linker flags on Linux, an absolute COFF symbol object on Windows).

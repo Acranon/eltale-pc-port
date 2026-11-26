@@ -32,7 +32,7 @@ static uint32_t swap_shape(uint32_t a, const char *shape) {
 static void swap_rows(const uint8_t *table, uint32_t size, const char *shape) {
     for (int g = 0; g < 5; g++) {
         uint32_t row = (uint32_t)(uintptr_t)Port_N64Ptr(table, g);
-        if (!Port_InRdram((void *)(uintptr_t)row)) Port_HostFatal("magic block: a group table is not in RDRAM");
+        if (!Port_InRdram(PORT_PTR(row))) Port_HostFatal("magic block: a group table is not in RDRAM");
         for (int i = 0; i < 15; i++, row += size)
             if (swap_shape(row, shape) != row + size) Port_HostFatal("magic block: record shape does not match its size");
     }

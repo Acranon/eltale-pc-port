@@ -82,9 +82,9 @@ static uint32_t to_host(uint32_t rsp_addr) {
 static uint8_t *host_byte(uint32_t a) {
     if (!in_image(a)) Port_HostFatal("RSP DMA outside the image");
     uint32_t o = a - IMAGE_BASE;
-    if (rom_bytes_map[o >> 6] & (1 << ((o >> 3) & 7))) return (uint8_t *)(uintptr_t)a;
+    if (rom_bytes_map[o >> 6] & (1 << ((o >> 3) & 7))) return (uint8_t *)PORT_PTR(a);
     if (a >= list_start && a < list_end) return (uint8_t *)list_copy + ((a - list_start) ^ 3);
-    return (uint8_t *)(uintptr_t)(a ^ 1);
+    return (uint8_t *)PORT_PTR(a ^ 1);
 }
 
 /* ---- write logs: the microcode's (to undo and compare) and the native code's ---- */
@@ -144,8 +144,8 @@ static void store(uint32_t a, int bytes, uint32_t v) {
 
 /* what rspboot leaves: the microcode text at IMEM 0x080, its data at DMEM 0 */
 static void load_ucode(const OSTask *task) {
-    memcpy(imem + 0x80, (const void *)(uintptr_t)((uint32_t)(uintptr_t)task->t.ucode | 0x80000000u), 0x1000 - 0x80);
-    memcpy(dmem, (const void *)(uintptr_t)((uint32_t)(uintptr_t)task->t.ucode_data | 0x80000000u), task->t.ucode_data_size);
+    memcpy(imem + 0x80, (const void *)PORT_PTR((uint32_t)(uintptr_t)task->t.ucode | 0x80000000u), 0x1000 - 0x80);
+    memcpy(dmem, (const void *)PORT_PTR((uint32_t)(uintptr_t)task->t.ucode_data | 0x80000000u), task->t.ucode_data_size);
 }
 
 /* Run the `words` command words `cmds` as a list at host address `at` (the task's list, or one
@@ -341,7 +341,7 @@ static s16 rnd16(void) {
 
 static void fuzz_fill(u32 dram_addr, u32 bytes) {
     if (!dram_addr) return;
-    u8 *p = (u8 *)(uintptr_t)(dram_addr < 0x00800000u ? (dram_addr | 0x80000000u) : dram_addr);
+    u8 *p = (u8 *)PORT_PTR(dram_addr < 0x00800000u ? (dram_addr | 0x80000000u) : dram_addr);
     note_host_write(p, bytes);
     for (u32 i = 0; i < bytes; i += 2) { s16 v = rnd16(); memcpy(p + i, &v, 2); }
 }

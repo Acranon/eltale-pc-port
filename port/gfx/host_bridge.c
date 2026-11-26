@@ -17,6 +17,9 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h> /* _NSGetExecutablePath */
+#endif
 
 extern void (*Port_ViHook)(u32 framebuffer);
 extern void (*Port_AiBufferHook)(void *buffer, u32 bytes, u32 rate);
@@ -66,7 +69,7 @@ static void present(u32 framebuffer) {
      * frames exist): native pixels, 320x240 RGBA5551 */
     int cpu = framebuffer && framebuffer != GAME_FB0 && framebuffer != GAME_FB1;
     if (cpu) {
-        h_present_cpu((const uint16_t *)(uptr)framebuffer, 320, 240);
+        h_present_cpu((const uint16_t *)PORT_PTR(framebuffer), 320, 240);
     } else if (Port_ViRegs(framebuffer, &r)) {
         ElHostVi vi = { r.status, r.origin, r.width, r.intr, r.v_current, r.timing, r.v_sync, r.h_sync, r.leap,
                         r.h_start, r.v_start, r.v_burst, r.x_scale, r.y_scale };
@@ -153,6 +156,23 @@ int Port_WindowSetRenderer(const char *name) {
 #ifdef _WIN32
 #define SYM(name) (void *)GetProcAddress((HMODULE)lib, name)
 static HMODULE load_host(void) { return LoadLibraryA("eltale_host.dll"); }
+#elif defined(__APPLE__)
+#define SYM(name) dlsym(lib, name)
+/* libeltale_host.dylib beside the exe, else wherever dlopen looks */
+static void *load_host(void) {
+    char path[4096];
+    uint32_t size = sizeof path - 32;
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        char *slash = strrchr(path, '/');
+        if (slash) {
+            strcpy(slash + 1, "libeltale_host.dylib");
+            void *lib = dlopen(path, RTLD_NOW);
+            if (lib) return lib;
+            fprintf(stderr, "[port] %s\n", dlerror());
+        }
+    }
+    return dlopen("libeltale_host.dylib", RTLD_NOW);
+}
 #else
 #define SYM(name) dlsym(lib, name)
 /* libeltale_host.so beside the exe (as the DLL is on Windows), else wherever dlopen looks */

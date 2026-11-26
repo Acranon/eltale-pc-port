@@ -107,7 +107,7 @@ static uintptr_t native_host(u32 word) {
         if (word < RDRAM_BYTES) word |= RDRAM;
     }
     if (is_rdram(word)) return Port_N64ToNative(word);
-    return word;
+    return (uintptr_t)PORT_PTR(word);
 }
 
 static void walk(u32 word, int depth);
@@ -140,10 +140,10 @@ static void texture_load(u32 bytes, int block) {
     if (!timg.native) return;
     if (block && timg.siz == 2) {
         flush_block(2);
-        pending_block.host = timg.addr;
+        pending_block.host = (uintptr_t)PORT_PTR(timg.addr);
         pending_block.bytes = bytes;
     } else {
-        texture_copy(timg.addr, bytes, timg.siz == 2 ? 2 : timg.siz == 3 ? 4 : 1);
+        texture_copy((uintptr_t)PORT_PTR(timg.addr), bytes, timg.siz == 2 ? 2 : timg.siz == 3 ? 4 : 1);
     }
 }
 
@@ -234,7 +234,7 @@ const u8 *Port_BuildFrameImage(u32 dl_word, u32 *root_n64, PortFrameStats *out) 
     memset(segments, 0, sizeof segments);
     memset(&timg, 0, sizeof timg);
     pending_block.bytes = 0;
-    memcpy(image, (const void *)(uintptr_t)RDRAM, RDRAM_BYTES);
+    memcpy(image, PORT_PTR(RDRAM), RDRAM_BYTES);
     trace_copies = getenv("ELTALE_TRACE_COPIES") != NULL && getenv("ELTALE_DUMP_IMAGE") != NULL;
     int native;
     *root_n64 = resolve(dl_word, &native);

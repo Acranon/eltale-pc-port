@@ -49,10 +49,10 @@ static Ptr resolve(uint32_t w) {
     }
     if (is_rdram(w)) {
         uintptr_t n = Port_N64ToNative(w);
-        r.p = n ? (const uint8_t *)n : (const uint8_t *)(uintptr_t)w;
+        r.p = n ? (const uint8_t *)n : (const uint8_t *)PORT_PTR(w);
         r.native = n != 0;
     } else {
-        r.p = (const uint8_t *)(uintptr_t)w;
+        r.p = (const uint8_t *)PORT_PTR(w);
         r.native = 1;
     }
     return r;
@@ -706,7 +706,7 @@ static NdMesh *convert(uint32_t dl, const void *entry) {
     for (int i = 0; i < 3; i++) { out.bounds[i] = 1e30f; out.bounds[3 + i] = -1e30f; }
     cur_material_valid = 0;
     memset(segments, 0, sizeof segments);
-    uintptr_t s1 = (uintptr_t)gfx_segment1_base;
+    uintptr_t s1 = PORT_ADDR_NARROW((uintptr_t)gfx_segment1_base); /* (its 32-bit address: port/addr.h) */
     segments[1] = (uint32_t)(s1 >= RDRAM && s1 < RDRAM + RDRAM_BYTES ? s1 - RDRAM : s1);
     if (entry) {
         st.in_entry = 1;
